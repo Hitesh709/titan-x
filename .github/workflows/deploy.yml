@@ -1,0 +1,89 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Deploy target"
+        required: true
+        default: staging
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+  DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+  DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+
+jobs:
+  deploy-staging:
+    if: (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging') || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to staging
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: ${{ env.DEPLOY_USER }}
+          key: ${{ env.DEPLOY_KEY }}
+          script: |
+            cd /opt/titan-x
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            docker system prune -f --filter "until=24h"
+            echo "Staging deployment complete: $(date)"
+
+  deploy-production:
+    if: (github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    environment: production
+    needs: deploy-staging
+    concurrency: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Notify deploy start
+        uses: slackapi/slack-github-action@v2
+        with:
+          webhook: ${{ secrets.SLACK_DEPLOY_WEBHOOK }}
+          webhook-type: incoming-webhook
+          payload: |
+            {"text": "🚀 Production deploy starting: ${{ github.sha }}"}
+      - name: Deploy to production
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: ${{ env.DEPLOY_USER }}
+          key: ${{ env.DEPLOY_KEY }}
+          script: |
+            set -e
+            cd /opt/titan-x
+            echo "Pulling latest images..."
+            docker compose -f docker-compose.prod.yml pull
+            echo "Running database migrations..."
+            docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head
+            echo "Starting services..."
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            echo "Waiting for health check..."
+            sleep 15
+            curl -sf http://localhost/health/ready || { echo "Health check failed"; docker compose -f docker-compose.prod.yml logs --tail=50 api; exit 1; }
+            echo "Cleaning up old images..."
+            docker system prune -f --filter "until=48h"
+            echo "Production deployment complete: $(date)"
+      - name: Notify deploy result
+        if: always()
+        uses: slackapi/slack-github-action@v2
+        with:
+          webhook: ${{ secrets.SLACK_DEPLOY_WEBHOOK }}
+          webhook-type: incoming-webhook
+          payload: |
+            {"text": "${{ job.status == 'success' && '✅' || '❌' }} Production deploy ${{ job.status }}: ${{ github.sha }}"}

@@ -1,0 +1,22 @@
+.env
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+.idea/
+.vscode/
+coverage.xml
+
+# Android / BeeWare build artifacts
+android/build/
+android/Android/
+android/gradle/
+android/*.keystore
+android/*.p12
