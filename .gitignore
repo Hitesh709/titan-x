@@ -20,3 +20,7 @@ android/Android/
 android/gradle/
 android/*.keystore
 android/*.p12
+
+.env
+.env.local
+*.db
