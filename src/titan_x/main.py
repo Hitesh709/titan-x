@@ -71,6 +71,15 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    @_app.get("/")
+    async def root() -> dict[str, str]:
+        return {
+            "app": settings.app_name,
+            "version": settings.app_version,
+            "docs": "/docs" if settings.docs_enabled else "/api/v1/",
+            "api": "/api/v1/",
+        }
+
     _app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.parsed_cors_origins,
