@@ -91,6 +91,18 @@ from titan_x.api.v1.search import router as search_router
 from titan_x.api.v1.export import router as export_router
 
 v1_router = APIRouter(prefix="/api/v1")
+
+
+@v1_router.get("/")
+async def v1_root() -> dict[str, str]:
+    return {
+        "app": "TITAN X API",
+        "version": "0.1.0",
+        "docs": "/docs",
+        "health": "/api/v1/health/live",
+    }
+
+
 v1_router.include_router(ai_registry_router)
 v1_router.include_router(audit_router)
 v1_router.include_router(health_router)
