@@ -8,7 +8,10 @@ interface RequestOptions {
 
 class ApiClient {
   private token: string | null = null
-  private apiKey: string | null = null
+  private apiKey: string | null =
+    typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_KEY
+      ? process.env.NEXT_PUBLIC_API_KEY
+      : null
 
   setToken(token: string | null) {
     this.token = token
