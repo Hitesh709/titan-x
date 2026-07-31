@@ -1,17 +1,16 @@
 export interface User {
-  id: string
+  id: number
   email: string
-  full_name: string
+  role: string
   is_active: boolean
   is_verified: boolean
-  created_at: string
+  full_name?: string
 }
 
 export interface AuthResponse {
   access_token: string
   refresh_token: string
   token_type: string
-  user: User
 }
 
 export interface MarketIndex {

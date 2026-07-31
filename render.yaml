@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: titan-x-web
+    runtime: node
+    rootDir: web
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        value: https://titan-x.onrender.com/api/v1
+      - key: NODE_ENV
+        value: production

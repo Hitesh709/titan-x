@@ -1,8 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/AuthContext"
 import {
   LayoutDashboard, BarChart3, Briefcase, TrendingUp, Newspaper,
@@ -30,7 +30,24 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const pathname = usePathname()
-  const { user, logout } = useAuth()
+  const router = useRouter()
+  const { user, logout, loading } = useAuth()
+
+  useEffect(() => {
+    if (!loading && !user) {
+      router.replace("/login")
+    }
+  }, [loading, user, router])
+
+  if (loading || !user) {
+    return (
+      <div className="min-h-screen bg-titan-950 flex items-center justify-center">
+        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-titan-500 to-titan-700 flex items-center justify-center">
+          <span className="text-white font-bold text-xs">TX</span>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-titan-950 flex">
@@ -82,7 +99,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="p-3 border-t border-titan-800/30">
           {!collapsed && user && (
             <div className="px-3 py-2 mb-2">
-              <div className="text-sm text-white font-medium truncate">{user.full_name}</div>
+              <div className="text-sm text-white font-medium truncate">{user.full_name || user.email}</div>
               <div className="text-xs text-gray-500 truncate">{user.email}</div>
             </div>
           )}

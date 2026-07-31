@@ -8,6 +8,7 @@ interface RequestOptions {
 
 class ApiClient {
   private token: string | null = null
+  private apiKey: string | null = null
 
   setToken(token: string | null) {
     this.token = token
@@ -25,6 +26,10 @@ class ApiClient {
     return this.token
   }
 
+  setApiKey(key: string | null) {
+    this.apiKey = key
+  }
+
   async request<T = unknown>(endpoint: string, options: RequestOptions = {}): Promise<T> {
     const { method = "GET", body, headers = {} } = options
     const token = this.getToken()
@@ -34,7 +39,8 @@ class ApiClient {
       ...headers,
     }
 
-    if (token) h["X-API-Key"] = token
+    if (token) h["Authorization"] = `Bearer ${token}`
+    if (this.apiKey) h["X-API-Key"] = this.apiKey
 
     const res = await fetch(`${API_BASE}${endpoint}`, {
       method,
@@ -44,7 +50,8 @@ class ApiClient {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }))
-      throw new Error(err.detail || "API Error")
+      const detail = typeof err.detail === "string" ? err.detail : Array.isArray(err.detail) ? err.detail.map((d: { msg?: string }) => d.msg).filter(Boolean).join("; ") : err.message || res.statusText
+      throw new Error(detail || "API Error")
     }
 
     return res.json()

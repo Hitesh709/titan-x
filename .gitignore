@@ -24,3 +24,9 @@ android/*.p12
 .env
 .env.local
 *.db
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+npm-debug.log*

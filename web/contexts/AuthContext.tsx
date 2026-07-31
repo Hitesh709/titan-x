@@ -24,8 +24,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const token = api.getToken()
     if (token) {
-      api.get<User[]>("/users/me")
-        .then((u) => setUser(Array.isArray(u) ? u[0] : u))
+      api.get<User>("/auth/me")
+        .then(setUser)
         .catch(() => api.setToken(null))
         .finally(() => setLoading(false))
     } else {
@@ -34,32 +34,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const login = useCallback(async (email: string, password: string) => {
-    const formData = new URLSearchParams({ username: email, password })
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: formData,
-    })
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: "Login failed" }))
-      throw new Error(err.detail)
-    }
-    const data: AuthResponse = await res.json()
+    const data: AuthResponse = await api.post("/auth/login", { email, password })
     api.setToken(data.access_token)
-    setUser(data.user)
+    const me = await api.get<User>("/auth/me")
+    setUser(me)
     router.push("/dashboard")
   }, [router])
 
-  const register = useCallback(async (email: string, password: string, fullName: string) => {
-    const data: AuthResponse = await api.post("/auth/register", {
-      email,
-      password,
-      full_name: fullName,
-    })
-    api.setToken(data.access_token)
-    setUser(data.user)
-    router.push("/dashboard")
-  }, [router])
+  const register = useCallback(async (email: string, password: string, _fullName: string) => {
+    await api.post("/auth/register", { email, password })
+    await login(email, password)
+  }, [login])
 
   const logout = useCallback(() => {
     api.setToken(null)
