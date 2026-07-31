@@ -19,6 +19,8 @@ from titan_x.jobs import (
     process_delayed_trades,
     prune_old_executions,
 )
+from titan_x.db.base import Base
+from titan_x.models import *  # noqa: F401, F403 - register all models
 
 logger = structlog.get_logger(__name__)
 
@@ -28,6 +30,10 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
     session_factory = create_session_factory(engine)
     app.state.engine = engine
     app.state.session_factory = session_factory
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    logger.info("database_tables_ready")
 
     redis: Redis | None = None
     try:

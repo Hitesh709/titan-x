@@ -182,12 +182,18 @@ def get_user_service(
     return UserService(session, settings)
 
 
-def get_rate_limiter(request: Request) -> RateLimiter:
-    return RateLimiter(request.app.state.redis)
+def get_rate_limiter(request: Request) -> RateLimiter | None:
+    redis = getattr(request.app.state, "redis", None)
+    if redis is None:
+        return None
+    return RateLimiter(redis)
 
 
-def get_brute_force_protector(request: Request) -> BruteForceProtector:
-    return BruteForceProtector(request.app.state.redis)
+def get_brute_force_protector(request: Request) -> BruteForceProtector | None:
+    redis = getattr(request.app.state, "redis", None)
+    if redis is None:
+        return None
+    return BruteForceProtector(redis)
 
 
 def get_cache(request: Request) -> RedisCache:

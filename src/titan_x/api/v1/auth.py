@@ -49,27 +49,29 @@ async def register(
 async def login(
     body: LoginRequest,
     service: Annotated[AuthService, Depends(get_auth_service)],
-    rate_limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
-    brute_force: Annotated[BruteForceProtector, Depends(get_brute_force_protector)],
+    rate_limiter: Annotated[RateLimiter | None, Depends(get_rate_limiter)],
+    brute_force: Annotated[BruteForceProtector | None, Depends(get_brute_force_protector)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> TokenResponse:
-    if settings.rate_limit_enabled:
+    if rate_limiter is not None and settings.rate_limit_enabled:
         allowed, remaining, _ = await rate_limiter.check(f"login:{body.email}", settings.rate_limit_requests, settings.rate_limit_window_seconds)
         if not allowed:
             raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many requests")
 
-    blocked = await brute_force.is_blocked(body.email, settings.brute_force_max_attempts, settings.brute_force_window_minutes, settings.brute_force_block_minutes)
-    if blocked:
-        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Account temporarily blocked. Try again later.")
+    if brute_force is not None:
+        blocked = await brute_force.is_blocked(body.email, settings.brute_force_max_attempts, settings.brute_force_window_minutes, settings.brute_force_block_minutes)
+        if blocked:
+            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Account temporarily blocked. Try again later.")
 
     try:
         _, access, refresh, _ = await service.login(email=body.email, password=body.password)
     except ValueError as exc:
-        if settings.rate_limit_enabled:
+        if brute_force is not None and settings.rate_limit_enabled:
             await brute_force.record_failure_sorted(body.email, settings.brute_force_max_attempts, settings.brute_force_window_minutes, settings.brute_force_block_minutes)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc))
 
-    await brute_force.reset_attempts(body.email)
+    if brute_force is not None:
+        await brute_force.reset_attempts(body.email)
     return TokenResponse(access_token=access, refresh_token=refresh)
 
 
