@@ -21,6 +21,8 @@ from titan_x.api.schemas import (
     RegisterRequest,
     RegisterResponse,
     ResetPasswordRequest,
+    SendVerificationRequest,
+    SendVerificationResponse,
     TokenResponse,
     VerifyEmailRequest,
 )
@@ -79,10 +81,10 @@ async def login(
 async def refresh(
     body: RefreshTokenRequest,
     service: Annotated[AuthService, Depends(get_auth_service)],
-    current_user: Annotated[User, Depends(get_current_user)],
 ) -> RefreshTokenResponse:
     try:
-        access, new_refresh, _ = await service.refresh(body.access_token, current_user.id)
+        jti, user_id = service.decode_refresh_token(body.refresh_token)
+        access, new_refresh, _ = await service.refresh(jti, user_id)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc))
     return RefreshTokenResponse(access_token=access, refresh_token=new_refresh)
@@ -92,9 +94,12 @@ async def refresh(
 async def logout(
     body: LogoutRequest,
     service: Annotated[AuthService, Depends(get_auth_service)],
-    current_user: Annotated[User, Depends(get_current_user)],
 ) -> MessageResponse:
-    await service.logout(body.refresh_token, current_user.id)
+    try:
+        jti, user_id = service.decode_refresh_token(body.refresh_token)
+        await service.logout(jti, user_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc))
     return MessageResponse(message="Logged out successfully")
 
 
@@ -102,10 +107,15 @@ async def logout(
 async def forgot_password(
     body: ForgotPasswordRequest,
     service: Annotated[AuthService, Depends(get_auth_service)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> ForgotPasswordResponse:
-    await service.forgot_password(email=body.email)
+    token = await service.forgot_password(email=body.email)
+    reset_url = None
+    if token is not None:
+        reset_url = f"{settings.frontend_url.rstrip('/')}/reset-password?token={token}"
     return ForgotPasswordResponse(
-        message="If the email exists, a password reset link has been sent"
+        message="If the email exists, a password reset link has been sent",
+        reset_url=reset_url,
     )
 
 
@@ -119,6 +129,23 @@ async def reset_password(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     return MessageResponse(message="Password reset successfully")
+
+
+@auth_router.post("/auth/send-verification", response_model=SendVerificationResponse)
+async def send_verification(
+    body: SendVerificationRequest,
+    service: Annotated[AuthService, Depends(get_auth_service)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> SendVerificationResponse:
+    result = await service.get_user_for_verification(email=body.email)
+    if result is None:
+        return SendVerificationResponse(message="If the email exists, a verification link has been sent")
+    user, token = result
+    verification_url = f"{settings.frontend_url.rstrip('/')}/verify-email?token={token}"
+    return SendVerificationResponse(
+        message="Verification email sent",
+        verification_url=verification_url,
+    )
 
 
 @auth_router.post("/auth/verify-email", response_model=MessageResponse)

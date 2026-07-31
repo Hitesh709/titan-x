@@ -47,7 +47,7 @@ class TokenResponse(BaseModel):
 
 
 class RefreshTokenRequest(BaseModel):
-    access_token: str
+    refresh_token: str
 
 
 class RefreshTokenResponse(BaseModel):
@@ -66,6 +66,7 @@ class ForgotPasswordRequest(BaseModel):
 
 class ForgotPasswordResponse(BaseModel):
     message: str
+    reset_url: str | None = None
 
 
 class ResetPasswordRequest(BaseModel):
@@ -75,6 +76,15 @@ class ResetPasswordRequest(BaseModel):
 
 class VerifyEmailRequest(BaseModel):
     token: str
+
+
+class SendVerificationRequest(BaseModel):
+    email: EmailStr
+
+
+class SendVerificationResponse(BaseModel):
+    message: str
+    verification_url: str | None = None
 
 
 class MessageResponse(BaseModel):

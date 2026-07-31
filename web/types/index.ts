@@ -13,6 +13,28 @@ export interface AuthResponse {
   token_type: string
 }
 
+export interface MessageResponse {
+  message: string
+}
+
+export interface ForgotPasswordResponse {
+  message: string
+  reset_url?: string | null
+}
+
+export interface SendVerificationResponse {
+  message: string
+  verification_url?: string | null
+}
+
+export interface RegisterResponse {
+  id: number
+  email: string
+  role: string
+  is_active: boolean
+  is_verified: boolean
+}
+
 export interface MarketIndex {
   symbol: string
   name: string

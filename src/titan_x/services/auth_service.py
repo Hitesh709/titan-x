@@ -132,3 +132,33 @@ class AuthService:
             raise ValueError("User not found")
 
         await self._user_repo.update(user.id, is_verified=True)
+
+    def decode_refresh_token(self, token: str) -> tuple[str, int]:
+        """Return (jti, user_id) from a refresh token JWT."""
+        try:
+            payload = decode_token(
+                token,
+                self._settings.jwt_secret_key.get_secret_value(),
+                self._settings.jwt_algorithm,
+            )
+        except ValueError:
+            raise ValueError("Invalid or expired refresh token")
+        if payload.get("type") != "refresh":
+            raise ValueError("Invalid token type")
+        return str(payload["jti"]), int(payload["sub"])
+
+    async def create_verification_token(self, user_id: int, email: str) -> str:
+        user = await self._user_repo.get(user_id)
+        if user is None:
+            raise ValueError("User not found")
+        if user.is_verified:
+            raise ValueError("Email already verified")
+        return create_email_verification_token(user.id, user.email, self._settings)
+
+    async def get_user_for_verification(self, email: str) -> tuple[User, str] | None:
+        """Return (user, verification_token) for an unverified user, else None."""
+        result = await self._session.execute(select(User).where(User.email == email))
+        user = result.scalar_one_or_none()
+        if user is None or user.is_verified:
+            return None
+        return user, create_email_verification_token(user.id, user.email, self._settings)

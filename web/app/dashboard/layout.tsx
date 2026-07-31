@@ -29,15 +29,29 @@ const sidebarItems = [
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [sendingVerification, setSendingVerification] = useState(false)
   const pathname = usePathname()
   const router = useRouter()
-  const { user, logout, loading } = useAuth()
+  const { user, logout, loading, sendVerification } = useAuth()
 
   useEffect(() => {
     if (!loading && !user) {
       router.replace("/login")
     }
   }, [loading, user, router])
+
+  const handleVerifyClick = async () => {
+    if (!user || sendingVerification) return
+    setSendingVerification(true)
+    try {
+      const res = await sendVerification(user.email)
+      if (res.verification_url) window.location.href = res.verification_url
+    } catch {
+      // ignore
+    } finally {
+      setSendingVerification(false)
+    }
+  }
 
   if (loading || !user) {
     return (
@@ -144,7 +158,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </header>
 
         {/* Page content */}
-        <main className="flex-1 p-4 lg:p-6 overflow-auto">{children}</main>
+        <main className="flex-1 p-4 lg:p-6 overflow-auto">
+          {user && !user.is_verified && (
+            <div className="mb-4 flex items-center justify-between gap-3 px-4 py-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-yellow-300 text-sm">
+              <span>
+                Your email is not verified yet. Some features may be limited until you confirm your address.
+              </span>
+              <button
+                onClick={handleVerifyClick}
+                disabled={sendingVerification}
+                className="text-yellow-200 font-medium hover:text-white shrink-0 disabled:opacity-50"
+              >
+                {sendingVerification ? "Sending..." : "Verify now"}
+              </button>
+            </div>
+          )}
+          {children}
+        </main>
       </div>
     </div>
   )

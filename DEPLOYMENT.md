@@ -25,6 +25,7 @@ LOG_LEVEL=INFO
 ENABLE_HTTPS_REDIRECT=true
 CORS_ORIGINS=https://titan-x-web.onrender.com,http://localhost:3000
 SEED_DEMO_ON_STARTUP=true  # optional; seeds demo data on first startup
+FRONTEND_URL=https://titan-x-web.onrender.com  # base URL for password-reset & email-verification links
 ```
 
 Notes:
@@ -67,6 +68,8 @@ Or create it manually:
 - **CORS errors in the browser console** — `CORS_ORIGINS` on the backend does not include the frontend origin, or the backend hasn't been redeployed after the change.
 - **Login 500** — usually an old backend build before the startup table-creation fix; redeploy the backend (push a commit or click Deploy on the service).
 - **Stale frontend** — `NEXT_PUBLIC_API_URL` is inlined at build time; change it, rebuild, and redeploy.
+- **Password reset / verification link uses `localhost`** — `FRONTEND_URL` is not set (or stale) on the backend; set it to `https://titan-x-web.onrender.com` and redeploy.
+- **Forgot-password / verify pages show "invalid link"** — the reset/verification token expired (30 min / 48 h) or was already used; request a new one.
 
 ## Local development
 

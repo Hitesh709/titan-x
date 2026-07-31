@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     trusted_hosts: str = ""
     enable_https_redirect: bool = False
     seed_demo_on_startup: bool = False
+    frontend_url: str = "http://localhost:3000"
     rate_limit_enabled: bool = True
     rate_limit_requests: int = Field(default=60, ge=1, le=10000)
     rate_limit_window_seconds: int = Field(default=60, ge=1, le=3600)
