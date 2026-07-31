@@ -146,6 +146,12 @@ export interface AiPick {
   combined_signal: string
   combined_confidence: number
   as_of_date?: string | null
+  expected_return_pct?: number | null
+  risk?: string | null
+  holding_period_days?: number | null
+  evidence?: string[]
+  why_buy?: string[]
+  why_not_buy?: string[]
 }
 
 export interface DashboardNewsItem {

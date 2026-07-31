@@ -149,12 +149,7 @@ export default function DashboardPage() {
           error={errors.dashboard ?? null}
           onRetry={handleRefresh}
         />
-        <AiRecommendations
-          data={dashboard?.ai_picks ?? []}
-          loading={loading}
-          error={errors.dashboard ?? null}
-          onRetry={handleRefresh}
-        />
+        <AiRecommendations />
         <WatchlistWidget
           data={dashboard?.watchlists ?? []}
           loading={loading}

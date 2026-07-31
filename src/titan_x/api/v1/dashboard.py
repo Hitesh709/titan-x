@@ -20,3 +20,12 @@ async def get_dashboard(
 ) -> dict:
     svc = DashboardService(session)
     return await svc.get_dashboard(current_user.id)
+
+
+@router.get("/ai-picks")
+async def get_ai_picks(
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    session: Annotated[AsyncSession, Depends(request_session)],
+) -> list[dict]:
+    svc = DashboardService(session)
+    return await svc.get_ai_picks(current_user.id)
