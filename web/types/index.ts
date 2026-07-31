@@ -284,3 +284,127 @@ export interface PaginatedResponse<T> {
   skip: number
   limit: number
 }
+
+export interface IndexSnapshot {
+  symbol: string
+  name: string
+  trade_date: string
+  open: number
+  high: number
+  low: number
+  close: number
+  prev_close: number | null
+  change: number
+  change_pct: number
+  volume: number
+}
+
+export interface IndicesListResponse {
+  items: IndexSnapshot[]
+}
+
+export interface IndexHistoryPoint {
+  trade_date: string
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number
+}
+
+export interface IndexHistoryResponse {
+  symbol: string
+  range: string
+  points: IndexHistoryPoint[]
+}
+
+export interface IndexPerformance {
+  symbol: string
+  trade_date: string
+  close: number
+  periods: {
+    "1W"?: number | null
+    "1M"?: number | null
+    "3M"?: number | null
+    "6M"?: number | null
+    YTD?: number | null
+    "1Y"?: number | null
+  }
+}
+
+export interface SectorRanking {
+  rank: number | null
+  sector: string
+  momentum_score: number | null
+  relative_strength: number | null
+  ytd_return: number | null
+  constituent_count: number | null
+  periods: Record<string, number | null>
+  rotation_signal: string | null
+}
+
+export interface SectorRotation {
+  as_of_date: string
+  leading: Array<Record<string, unknown>>
+  lagging: Array<Record<string, unknown>>
+  neutral: Array<Record<string, unknown>>
+  rotation_breadth: number
+}
+
+export interface BreadthSummary {
+  trade_date: string
+  advancing: number
+  declining: number
+  advance_decline_ratio: number | null
+  advance_decline_line: number | null
+  new_highs: number
+  new_lows: number
+  advancing_volume: number
+  declining_volume: number
+  volume_breadth_ratio: number | null
+  breadth_oscillator: number | null
+  index_strength_score: number | null
+}
+
+export interface ADLinePoint {
+  trade_date: string
+  advance_decline_line: number | null
+}
+
+export interface OscillatorPoint {
+  trade_date: string
+  breadth_oscillator: number | null
+}
+
+export interface HighLowPoint {
+  trade_date: string
+  new_highs: number
+  new_lows: number
+}
+
+export interface VolumeBreadthPoint {
+  trade_date: string
+  advancing_volume: number
+  declining_volume: number
+  volume_breadth_ratio: number | null
+}
+
+export interface StoredBreadth {
+  id: number
+  trade_date: string
+  advancing: number
+  declining: number
+  unchanged: number
+  total_stocks: number
+  advancing_volume: number
+  declining_volume: number
+  unchanged_volume: number
+  total_volume: number
+  new_highs: number
+  new_lows: number
+  advance_decline_ratio: number | null
+  advance_decline_line: number | null
+  volume_breadth_ratio: number | null
+  breadth_oscillator: number | null
+  index_strength_score: number | null
+}

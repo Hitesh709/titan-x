@@ -52,6 +52,7 @@ from titan_x.models.corporate_tracking import (
 from titan_x.models.price import AdjustedPrice, CorporateAction, DailyPrice
 from titan_x.models.sector import SectorPerformance
 from titan_x.models.technical import TechnicalIndicator
+from titan_x.models.index_price import IndexDaily
 from titan_x.models.watchlist import (
     Notification,
     Watchlist,
@@ -177,6 +178,7 @@ __all__ = [
     "NewsNLPAnalysis", "NewsEntity",
     "TechnicalIndicator",
     "FundamentalMetric",
+    "IndexDaily",
     "MarketBreadth",
     "ChartPattern",
     "SupportResistance",

@@ -56,6 +56,7 @@ from titan_x.api.v1.microstructure import router as microstructure_router
 from titan_x.api.v1.regime_detection import router as regime_router
 from titan_x.api.v1.valuation import router as valuation_router
 from titan_x.api.v1.market_data import router as market_data_router
+from titan_x.api.v1.indices import router as indices_router
 from titan_x.api.v1.strategy import strategy_router
 from titan_x.api.v1.trading_calendar import router as trading_calendar_router
 from titan_x.api.v1.timescaledb import router as timescaledb_router
@@ -150,6 +151,7 @@ v1_router.include_router(strategy_router)
 v1_router.include_router(trading_calendar_router)
 v1_router.include_router(timescaledb_router)
 v1_router.include_router(market_data_router)
+v1_router.include_router(indices_router)
 v1_router.include_router(correlation_router)
 v1_router.include_router(datalake_router)
 v1_router.include_router(global_market_router)

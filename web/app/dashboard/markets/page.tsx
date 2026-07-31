@@ -1,95 +1,158 @@
 "use client"
 
-import { TrendingUp, TrendingDown, Search, Filter, Star } from "lucide-react"
-import { formatCurrency, formatPercent, getChangeColor } from "@/lib/utils"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, RefreshCw } from "lucide-react"
+import api from "@/lib/api"
+import type { IndexSnapshot } from "@/types"
+import { formatCurrency, formatPercent, getChangeColor, formatDate } from "@/lib/utils"
+import { WidgetLoading, WidgetError, RefreshButton } from "@/components/dashboard/widget"
 
-const marketData = [
-  { symbol: "NVDA", name: "NVIDIA Corp", price: 874.32, change: 4.56, volume: "45.2M", marketCap: "2.15T", sector: "Technology" },
-  { symbol: "AAPL", name: "Apple Inc", price: 187.45, change: -1.23, volume: "62.1M", marketCap: "2.89T", sector: "Technology" },
-  { symbol: "MSFT", name: "Microsoft Corp", price: 412.67, change: 2.34, volume: "28.7M", marketCap: "3.07T", sector: "Technology" },
-  { symbol: "TSLA", name: "Tesla Inc", price: 245.89, change: -3.45, volume: "89.3M", marketCap: "782.4B", sector: "Automotive" },
-  { symbol: "AMZN", name: "Amazon.com", price: 178.23, change: 1.56, volume: "35.6M", marketCap: "1.85T", sector: "Consumer Cyclical" },
-  { symbol: "GOOGL", name: "Alphabet Inc", price: 156.78, change: 0.89, volume: "22.4M", marketCap: "1.97T", sector: "Technology" },
-  { symbol: "META", name: "Meta Platforms", price: 498.12, change: 3.21, volume: "18.9M", marketCap: "1.27T", sector: "Technology" },
-  { symbol: "JPM", name: "JPMorgan Chase", price: 198.45, change: -0.67, volume: "8.4M", marketCap: "572.1B", sector: "Financial" },
-  { symbol: "V", name: "Visa Inc", price: 275.34, change: 1.12, volume: "12.3M", marketCap: "565.8B", sector: "Financial" },
-  { symbol: "JNJ", name: "Johnson & Johnson", price: 156.23, change: -0.45, volume: "6.7M", marketCap: "376.2B", sector: "Healthcare" },
-  { symbol: "WMT", name: "Walmart Inc", price: 172.89, change: 0.78, volume: "9.8M", marketCap: "465.3B", sector: "Consumer Defensive" },
-  { symbol: "PG", name: "Procter & Gamble", price: 167.45, change: -0.23, volume:  "5.6M", marketCap: "394.1B", sector: "Consumer Defensive" },
-]
-
-const sectors = ["All", "Technology", "Financial", "Healthcare", "Automotive", "Consumer Cyclical", "Consumer Defensive"]
+const HERO_INDICES = ["NIFTY", "SENSEX", "BANKNIFTY"]
 
 export default function MarketsPage() {
+  const [indices, setIndices] = useState<IndexSnapshot[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
+  const mounted = useRef(true)
+
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
+    try {
+      const res = await api.get<{ items: IndexSnapshot[] }>("/indices")
+      if (!mounted.current) return
+      setIndices(res.items ?? [])
+      setError(null)
+    } catch (e) {
+      if (!mounted.current) return
+      setError(e instanceof Error ? e.message : "Failed to load index data")
+    } finally {
+      if (mounted.current) {
+        setLoading(false)
+        setRefreshing(false)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    mounted.current = true
+    load()
+    return () => {
+      mounted.current = false
+    }
+  }, [load])
+
+  const handleRefresh = () => {
+    setRefreshing(true)
+    load(true)
+  }
+
+  const hero = indices.filter((i) => HERO_INDICES.includes(i.symbol))
+  const others = indices.filter((i) => !HERO_INDICES.includes(i.symbol))
+  const tradeDate = indices[0]?.trade_date
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Markets</h1>
-          <p className="text-gray-500 text-sm mt-1">Real-time market data across all asset classes</p>
+          <p className="text-gray-500 text-sm">
+            {tradeDate ? `As of ${formatDate(tradeDate)}` : "Live market data"}
+          </p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-            <input type="text" placeholder="Search symbols..." className="pl-9 pr-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-gray-300 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-titan-500 w-48" />
-          </div>
-          <button className="btn-secondary text-sm"><Filter size={14} /> Filters</button>
-        </div>
+        <RefreshButton onClick={handleRefresh} spinning={refreshing} />
       </div>
 
-      <div className="flex gap-2 flex-wrap">
-        {sectors.map((s) => (
-          <button key={s} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-            s === "All" ? "bg-titan-600/20 text-titan-400 border border-titan-600/30" : "bg-white/5 text-gray-400 hover:text-gray-200 border border-white/10"
-          }`}>{s}</button>
-        ))}
-      </div>
-
-      <div className="glass-card overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-titan-800/30">
-                <th className="text-left py-3 px-4 text-gray-500 font-medium text-xs uppercase tracking-wider">Symbol</th>
-                <th className="text-left py-3 px-4 text-gray-500 font-medium text-xs uppercase tracking-wider">Name</th>
-                <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs uppercase tracking-wider">Price</th>
-                <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs uppercase tracking-wider">Change</th>
-                <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs uppercase tracking-wider">Volume</th>
-                <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs uppercase tracking-wider">Market Cap</th>
-                <th className="text-left py-3 px-4 text-gray-500 font-medium text-xs uppercase tracking-wider">Sector</th>
-                <th className="text-center py-3 px-4 text-gray-500 font-medium text-xs uppercase tracking-wider">Watch</th>
-              </tr>
-            </thead>
-            <tbody>
-              {marketData.map((stock) => (
-                <tr key={stock.symbol} className="border-b border-titan-800/20 hover:bg-white/5 transition-colors">
-                  <td className="py-3 px-4">
-                    <span className="text-white font-medium">{stock.symbol}</span>
-                  </td>
-                  <td className="py-3 px-4 text-gray-400">{stock.name}</td>
-                  <td className="py-3 px-4 text-right text-white font-medium">${stock.price.toFixed(2)}</td>
-                  <td className={`py-3 px-4 text-right font-medium ${getChangeColor(stock.change)}`}>
-                    <div className="flex items-center justify-end gap-1">
-                      {stock.change >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-                      {formatPercent(stock.change)}
+      {loading ? (
+        <div className="grid gap-4 md:grid-cols-3">
+          <WidgetLoading lines={4} />
+          <WidgetLoading lines={4} />
+          <WidgetLoading lines={4} />
+        </div>
+      ) : error ? (
+        <WidgetError message={error} onRetry={handleRefresh} />
+      ) : (
+        <>
+          {/* Hero index cards */}
+          <div className="grid gap-4 md:grid-cols-3">
+            {hero.map((idx) => {
+              const up = idx.change_pct >= 0
+              return (
+                <div key={idx.symbol} className="glass-card p-5">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">{idx.name}</p>
+                      <p className="mt-2 text-2xl font-bold text-white">
+                        {formatCurrency(idx.close, "INR").replace("₹", "")}
+                      </p>
                     </div>
-                  </td>
-                  <td className="py-3 px-4 text-right text-gray-400">{stock.volume}</td>
-                  <td className="py-3 px-4 text-right text-gray-400">{stock.marketCap}</td>
-                  <td className="py-3 px-4">
-                    <span className="badge-blue text-[10px]">{stock.sector}</span>
-                  </td>
-                  <td className="py-3 px-4 text-center">
-                    <button className="text-gray-600 hover:text-yellow-500 transition-colors">
-                      <Star size={14} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                    <div
+                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold ${
+                        up ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"
+                      }`}
+                    >
+                      {up ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
+                      {Math.abs(idx.change).toFixed(2)}
+                    </div>
+                  </div>
+                  <div className={`mt-3 text-sm font-medium ${getChangeColor(idx.change_pct)}`}>
+                    {up ? <TrendingUp size={14} className="inline mr-1" /> : <TrendingDown size={14} className="inline mr-1" />}
+                    {formatPercent(idx.change_pct)} today
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-titan-800/30 flex justify-between text-xs text-gray-500">
+                    <span>High <span className="text-gray-300">{formatCurrency(idx.high, "INR").replace("₹", "")}</span></span>
+                    <span>Low <span className="text-gray-300">{formatCurrency(idx.low, "INR").replace("₹", "")}</span></span>
+                    <span>Vol <span className="text-gray-300">{idx.volume.toLocaleString()}</span></span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* All indices table */}
+          <div className="glass-card overflow-hidden">
+            <div className="px-5 py-4 border-b border-titan-800/30">
+              <h3 className="text-sm font-semibold text-white">All Indices</h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-titan-800/30">
+                    <th className="text-left py-3 px-4 text-gray-500 font-medium text-xs uppercase tracking-wider">Index</th>
+                    <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs uppercase tracking-wider">Open</th>
+                    <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs uppercase tracking-wider">High</th>
+                    <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs uppercase tracking-wider">Low</th>
+                    <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs uppercase tracking-wider">Close</th>
+                    <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs uppercase tracking-wider">Change</th>
+                    <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs uppercase tracking-wider">Change %</th>
+                    <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs uppercase tracking-wider">Volume</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...hero, ...others].map((idx) => (
+                    <tr key={idx.symbol} className="border-b border-titan-800/20 hover:bg-white/5 transition-colors">
+                      <td className="py-3 px-4">
+                        <span className="text-white font-medium">{idx.name}</span>
+                        <span className="ml-2 text-xs text-gray-600">{idx.symbol}</span>
+                      </td>
+                      <td className="py-3 px-4 text-right text-gray-400">{formatCurrency(idx.open, "INR").replace("₹", "")}</td>
+                      <td className="py-3 px-4 text-right text-gray-400">{formatCurrency(idx.high, "INR").replace("₹", "")}</td>
+                      <td className="py-3 px-4 text-right text-gray-400">{formatCurrency(idx.low, "INR").replace("₹", "")}</td>
+                      <td className="py-3 px-4 text-right text-white font-medium">{formatCurrency(idx.close, "INR").replace("₹", "")}</td>
+                      <td className={`py-3 px-4 text-right font-medium ${getChangeColor(idx.change)}`}>
+                        {idx.change >= 0 ? "+" : ""}{idx.change.toFixed(2)}
+                      </td>
+                      <td className={`py-3 px-4 text-right font-medium ${getChangeColor(idx.change_pct)}`}>
+                        {formatPercent(idx.change_pct)}
+                      </td>
+                      <td className="py-3 px-4 text-right text-gray-400">{idx.volume.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }

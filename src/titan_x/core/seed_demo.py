@@ -300,5 +300,11 @@ async def seed_demo_user(session_factory: async_sessionmaker) -> User:
 async def seed_all(session_factory: async_sessionmaker) -> None:
     random.seed(42)
     await seed_market_data(session_factory)
+    from titan_x.services.index_service import IndexService
+
+    async with session_factory() as session:
+        async with session.begin():
+            result = await IndexService(session).seed()
+        print(f"Seeded indices: {result}")
     await seed_demo_user(session_factory)
     print("Seed complete.")
