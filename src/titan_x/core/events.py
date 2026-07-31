@@ -35,6 +35,12 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
         await conn.run_sync(Base.metadata.create_all)
     logger.info("database_tables_ready")
 
+    if settings.seed_demo_on_startup:
+        from titan_x.core.seed_demo import seed_all
+
+        await seed_all(session_factory)
+        logger.info("demo_seeded_on_startup")
+
     redis: Redis | None = None
     try:
         redis = Redis.from_url(str(settings.redis_url), encoding="utf-8", decode_responses=True)

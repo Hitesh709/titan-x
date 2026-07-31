@@ -24,12 +24,14 @@ DOCS_ENABLED=true
 LOG_LEVEL=INFO
 ENABLE_HTTPS_REDIRECT=true
 CORS_ORIGINS=https://titan-x-web.onrender.com,http://localhost:3000
+SEED_DEMO_ON_STARTUP=true  # optional; seeds demo data on first startup
 ```
 
 Notes:
 - `CORS_ORIGINS` is a comma-separated list of allowed browser origins. It **must** include the frontend origin or browser requests will be rejected. Wildcards (`*`) are disallowed.
 - The DB tables are created automatically on startup (`Base.metadata.create_all` in `on_startup`), so no separate migration step is required.
 - Redis is optional. If unavailable, the app falls back to in-memory/no-op stubs and auth still works (rate-limiting/brute-force protection is skipped).
+- **Demo data**: set `SEED_DEMO_ON_STARTUP=true` to populate the DB on startup with 26 companies, ~260 days of prices, sector performance, market breadth, plus a demo user `demo@titanx.app` / `Demo1234!` with a paper account, watchlists, AI scores, news and alerts. The seed is idempotent (re-running replaces the seeded rows) and runs after table creation. Run it standalone with `python scripts/seed_demo.py`. Unset the variable after the first successful deploy to stop re-seeding on every restart.
 
 ## 2. Frontend (`titan-x-web`)
 
