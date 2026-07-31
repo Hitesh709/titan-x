@@ -147,6 +147,24 @@ async def get_portfolio(
     return await svc.get_portfolio(current_user.id)
 
 
+@router.get("/sector-exposure")
+async def get_sector_exposure(
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    session: Annotated[AsyncSession, Depends(request_session)],
+) -> list[dict]:
+    svc = PaperTradingService(session)
+    return await svc.get_sector_exposure(current_user.id)
+
+
+@router.get("/equity-curve")
+async def get_equity_curve(
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    session: Annotated[AsyncSession, Depends(request_session)],
+) -> list[dict]:
+    svc = PaperTradingService(session)
+    return await svc.get_equity_curve(current_user.id)
+
+
 @router.post("/portfolio/refresh")
 async def refresh_portfolio_prices(
     current_user: Annotated[User, Depends(get_current_active_user)],

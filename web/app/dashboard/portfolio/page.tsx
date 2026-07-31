@@ -1,154 +1,174 @@
 "use client"
 
-import { useState } from "react"
-import { TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, Plus, PieChart } from "lucide-react"
-import { formatCurrency, formatPercent, getChangeColor, formatCompactNumber } from "@/lib/utils"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { ArrowUpRight, ArrowDownRight, RefreshCw } from "lucide-react"
+import api from "@/lib/api"
+import type { PaperAccountSummary, PaperPosition } from "@/types"
+import { formatCurrency, formatPercent, getChangeColor } from "@/lib/utils"
+import { WidgetLoading, WidgetError, RefreshButton } from "@/components/dashboard/widget"
 
-const holdings = [
-  { symbol: "NVDA", name: "NVIDIA Corp", shares: 1250, avgPrice: 642.15, currentPrice: 874.32, sector: "Technology", weight: 18.5 },
-  { symbol: "MSFT", name: "Microsoft Corp", shares: 2100, avgPrice: 345.80, currentPrice: 412.67, sector: "Technology", weight: 14.2 },
-  { symbol: "AAPL", name: "Apple Inc", shares: 3200, avgPrice: 172.30, currentPrice: 187.45, sector: "Technology", weight: 9.8 },
-  { symbol: "AMZN", name: "Amazon.com", shares: 1500, avgPrice: 152.45, currentPrice: 178.23, sector: "Consumer Cyclical", weight: 4.4 },
-  { symbol: "GOOGL", name: "Alphabet Inc", shares: 1800, avgPrice: 138.90, currentPrice: 156.78, sector: "Technology", weight: 4.6 },
-  { symbol: "TSLA", name: "Tesla Inc", shares: 800, avgPrice: 268.50, currentPrice: 245.89, sector: "Automotive", weight: -3.2 },
-  { symbol: "JPM", name: "JPMorgan Chase", shares: 2800, avgPrice: 182.30, currentPrice: 198.45, sector: "Financial", weight: 9.1 },
-  { symbol: "V", name: "Visa Inc", shares: 1500, avgPrice: 245.60, currentPrice: 275.34, sector: "Financial", weight: 6.8 },
-]
+export default function PortfolioHoldingsPage() {
+  const [account, setAccount] = useState<PaperAccountSummary | null>(null)
+  const [positions, setPositions] = useState<PaperPosition[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
+  const mounted = useRef(true)
 
-const riskMetrics = [
-  { label: "Beta (1Y)", value: "1.12", status: "neutral" as const },
-  { label: "Sharpe Ratio", value: "1.84", status: "positive" as const },
-  { label: "Volatility (30d)", value: "18.4%", status: "warning" as const },
-  { label: "VaR (95%)", value: "-2.3%", status: "neutral" as const },
-  { label: "Max Drawdown", value: "-8.7%", status: "warning" as const },
-  { label: "Alpha", value: "3.42%", status: "positive" as const },
-]
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
+    try {
+      const [accRes, posRes] = await Promise.allSettled([
+        api.get<PaperAccountSummary>("/paper-trading/account"),
+        api.get<PaperPosition[]>("/paper-trading/portfolio"),
+      ])
+      if (!mounted.current) return
+      if (accRes.status === "fulfilled") setAccount(accRes.value)
+      if (posRes.status === "fulfilled") setPositions(posRes.value)
+      if (accRes.status === "rejected" && posRes.status === "rejected") {
+        setError(accRes.reason instanceof Error ? accRes.reason.message : "Failed to load portfolio")
+      } else {
+        setError(null)
+      }
+    } catch (e) {
+      if (!mounted.current) return
+      setError(e instanceof Error ? e.message : "Failed to load portfolio")
+    } finally {
+      if (mounted.current) {
+        setLoading(false)
+        setRefreshing(false)
+      }
+    }
+  }, [])
 
-export default function PortfolioPage() {
-  const [positionSize, setPositionSize] = useState<"all" | "long" | "short">("all")
+  useEffect(() => {
+    mounted.current = true
+    load()
+    return () => {
+      mounted.current = false
+    }
+  }, [load])
 
-  const totalValue = holdings.reduce((sum, h) => sum + (h.shares * h.currentPrice), 0)
-  const totalCost = holdings.reduce((sum, h) => sum + (h.shares * h.avgPrice), 0)
-  const totalGain = totalValue - totalCost
-  const totalGainPercent = (totalGain / totalCost) * 100
+  const handleRefresh = () => {
+    setRefreshing(true)
+    load(true)
+  }
+
+  const totalValue = positions.reduce((s, p) => s + p.market_value, 0)
+  const totalCost = positions.reduce((s, p) => s + p.cost_basis, 0)
+  const totalPnl = totalValue - totalCost
+  const totalPnlPct = totalCost ? (totalPnl / totalCost) * 100 : 0
+  const sectors = new Set(positions.map((p) => p.sector).filter(Boolean))
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-white">Portfolio</h1>
-        <p className="text-gray-500 text-sm mt-1">Manage and monitor your investment portfolio</p>
+      <div className="flex items-center justify-between">
+        <p className="text-gray-500 text-sm">Current holdings and account summary</p>
+        <RefreshButton onClick={handleRefresh} spinning={refreshing} />
       </div>
 
-      {/* Summary */}
-      <div className="grid md:grid-cols-3 gap-4">
-        <div className="glass-card p-5">
-          <p className="text-sm text-gray-400 mb-1">Total Value</p>
-          <h2 className="text-2xl font-bold text-white">{formatCurrency(totalValue)}</h2>
-          <div className={`flex items-center gap-1 text-sm mt-1 ${getChangeColor(totalGain)}`}>
-            {totalGain >= 0 ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}
-            {formatCurrency(totalGain)} ({formatPercent(totalGainPercent)})
-          </div>
-        </div>
-        <div className="glass-card p-5">
-          <p className="text-sm text-gray-400 mb-1">Cost Basis</p>
-          <h2 className="text-2xl font-bold text-white">{formatCurrency(totalCost)}</h2>
-          <p className="text-sm text-gray-500 mt-1">{holdings.length} positions across 4 sectors</p>
-        </div>
-        <div className="glass-card p-5">
-          <p className="text-sm text-gray-400 mb-1">Cash Balance</p>
-          <h2 className="text-2xl font-bold text-white">{formatCurrency(124567.89)}</h2>
-          <p className="text-sm text-gray-500 mt-1">Available for trading</p>
-        </div>
-      </div>
-
-      <div className="grid lg:grid-cols-3 gap-6">
-        {/* Holdings */}
-        <div className="lg:col-span-2 glass-card p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-white">Positions</h3>
-            <div className="flex gap-1">
-              {(["all", "long", "short"] as const).map((size) => (
-                <button key={size} onClick={() => setPositionSize(size)} className={`px-3 py-1 rounded text-xs font-medium capitalize ${
-                  positionSize === size ? "bg-titan-600/20 text-titan-400 border border-titan-600/30" : "text-gray-500 hover:text-gray-300"
-                }`}>{size}</button>
-              ))}
-            </div>
-          </div>
-          <div className="space-y-3">
-            {holdings.map((h) => {
-              const gainLoss = (h.currentPrice - h.avgPrice) * h.shares
-              const gainLossPercent = ((h.currentPrice - h.avgPrice) / h.avgPrice) * 100
-              return (
-                <div key={h.symbol} className="flex items-center justify-between py-2.5 border-b border-titan-800/20 last:border-0">
-                  <div className="flex items-center gap-3">
-                    <div>
-                      <div className="text-sm font-medium text-white">{h.symbol}</div>
-                      <div className="text-xs text-gray-500">{h.shares} shares</div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-6">
-                    <div className="text-right">
-                      <div className="text-sm text-white">${h.currentPrice.toFixed(2)}</div>
-                      <div className="text-xs text-gray-500">Avg: ${h.avgPrice.toFixed(2)}</div>
-                    </div>
-                    <div className="text-right w-28">
-                      <div className="text-sm text-white">{formatCurrency(h.shares * h.currentPrice)}</div>
-                      <div className={`text-xs font-medium ${getChangeColor(gainLoss)}`}>
-                        {gainLoss >= 0 ? "+" : ""}{formatCurrency(gainLoss)} ({formatPercent(gainLossPercent)})
-                      </div>
-                    </div>
-                    <div className="text-right w-16">
-                      <span className="text-xs text-gray-400">{h.weight.toFixed(1)}%</span>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* Side panel */}
-        <div className="space-y-4">
-          {/* Risk Metrics */}
-          <div className="glass-card p-5">
-            <h3 className="text-sm font-semibold text-white mb-4">Risk Metrics</h3>
-            <div className="space-y-3">
-              {riskMetrics.map((metric) => (
-                <div key={metric.label} className="flex items-center justify-between">
-                  <span className="text-sm text-gray-400">{metric.label}</span>
-                  <span className={`text-sm font-medium ${
-                    metric.status === "positive" ? "text-emerald-400" :
-                    metric.status === "warning" ? "text-yellow-400" : "text-white"
-                  }`}>{metric.value}</span>
-                </div>
-              ))}
-            </div>
+      {loading ? (
+        <WidgetLoading lines={6} />
+      ) : error ? (
+        <WidgetError message={error} onRetry={handleRefresh} />
+      ) : (
+        <>
+          {/* Summary cards */}
+          <div className="grid md:grid-cols-3 gap-4">
+            <SummaryCard label="Portfolio Value" value={formatCurrency(account?.portfolio_value ?? totalValue)} />
+            <SummaryCard label="Cost Basis" value={formatCurrency(totalCost)} sub={`${positions.length} positions across ${sectors.size} sectors`} />
+            <SummaryCard
+              label="Cash Balance"
+              value={formatCurrency(account?.cash_balance ?? 0)}
+              sub="Available for trading"
+            />
           </div>
 
-          {/* Sector Allocation */}
-          <div className="glass-card p-5">
-            <h3 className="text-sm font-semibold text-white mb-4">Sector Allocation</h3>
-            <div className="space-y-3">
-              {["Technology", "Financial", "Consumer Cyclical", "Automotive"].map((sector) => {
-                const sectorHoldings = holdings.filter(h => h.sector === sector)
-                const sectorValue = sectorHoldings.reduce((sum, h) => sum + (h.shares * h.currentPrice), 0)
-                const sectorWeight = (sectorValue / totalValue) * 100
-                return (
-                  <div key={sector}>
-                    <div className="flex items-center justify-between text-sm mb-1">
-                      <span className="text-gray-400">{sector}</span>
-                      <span className="text-white">{sectorWeight.toFixed(1)}%</span>
-                    </div>
-                    <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
-                      <div className="h-full rounded-full bg-titan-500" style={{ width: `${sectorWeight}%` }} />
-                    </div>
-                  </div>
-                )
-              })}
+          {/* PnL strip */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <PnlStat label="Total PnL" value={account?.total_pnl ?? totalPnl} pct={account?.total_pnl_pct} />
+            <PnlStat label="Realized" value={account?.total_realized_pnl ?? 0} />
+            <PnlStat label="Unrealized" value={account?.total_unrealized_pnl ?? totalPnl} />
+            <PnlStat label="Initial Capital" value={account?.initial_capital ?? 0} neutral />
+          </div>
+
+          {/* Holdings table */}
+          <div className="glass-card overflow-hidden">
+            <div className="px-5 py-4 border-b border-titan-800/30">
+              <h3 className="text-sm font-semibold text-white">Current Holdings</h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-titan-800/30">
+                    <th className="text-left py-3 px-4 text-gray-500 font-medium text-xs uppercase tracking-wider">Symbol</th>
+                    <th className="text-left py-3 px-4 text-gray-500 font-medium text-xs uppercase tracking-wider">Sector</th>
+                    <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs uppercase tracking-wider">Qty</th>
+                    <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs uppercase tracking-wider">Avg Price</th>
+                    <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs uppercase tracking-wider">Current</th>
+                    <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs uppercase tracking-wider">Market Value</th>
+                    <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs uppercase tracking-wider">Unrealized PnL</th>
+                    <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs uppercase tracking-wider">Realized PnL</th>
+                    <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs uppercase tracking-wider">Allocation</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {positions.map((p) => (
+                    <tr key={p.symbol} className="border-b border-titan-800/20 hover:bg-white/5 transition-colors">
+                      <td className="py-3 px-4">
+                        <span className="text-white font-medium">{p.symbol}</span>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="badge-blue text-[10px]">{p.sector ?? "—"}</span>
+                      </td>
+                      <td className="py-3 px-4 text-right text-gray-300">{p.quantity.toLocaleString()}</td>
+                      <td className="py-3 px-4 text-right text-gray-400">{formatCurrency(p.average_price)}</td>
+                      <td className="py-3 px-4 text-right text-gray-300">
+                        {p.current_price !== null ? formatCurrency(p.current_price) : "—"}
+                      </td>
+                      <td className="py-3 px-4 text-right text-white font-medium">{formatCurrency(p.market_value)}</td>
+                      <td className={`py-3 px-4 text-right font-medium ${getChangeColor(p.unrealized_pnl)}`}>
+                        <div className="flex items-center justify-end gap-1">
+                          {p.unrealized_pnl >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
+                          {formatCurrency(p.unrealized_pnl)}
+                          <span className="text-xs text-gray-500">({formatPercent(p.unrealized_pnl_pct)})</span>
+                        </div>
+                      </td>
+                      <td className={`py-3 px-4 text-right font-medium ${getChangeColor(p.realized_pnl)}`}>
+                        {formatCurrency(p.realized_pnl)}
+                      </td>
+                      <td className="py-3 px-4 text-right text-gray-400">{p.allocation_pct.toFixed(2)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
-        </div>
-      </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function SummaryCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="glass-card p-5">
+      <p className="text-sm text-gray-400 mb-1">{label}</p>
+      <h2 className="text-2xl font-bold text-white">{value}</h2>
+      {sub && <p className="text-sm text-gray-500 mt-1">{sub}</p>}
+    </div>
+  )
+}
+
+function PnlStat({ label, value, pct, neutral }: { label: string; value: number; pct?: number; neutral?: boolean }) {
+  const cls = neutral ? "text-white" : getChangeColor(value)
+  return (
+    <div className="glass-card p-4">
+      <p className="text-xs text-gray-500">{label}</p>
+      <p className={`mt-1 text-lg font-bold ${cls}`}>{formatCurrency(value)}</p>
+      {pct !== undefined && (
+        <p className={`text-xs mt-0.5 ${getChangeColor(pct)}`}>{formatPercent(pct)}</p>
+      )}
     </div>
   )
 }

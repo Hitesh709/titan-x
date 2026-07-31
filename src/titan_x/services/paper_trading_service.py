@@ -8,6 +8,7 @@ from sqlalchemy import desc, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from titan_x.db.repository import BaseRepository
+from titan_x.models.company import Company
 from titan_x.models.paper_trading import PaperAccount, PaperOrder, PaperPosition, PaperTrade, SimulatedOrder
 from titan_x.models.price import DailyPrice
 from titan_x.services.price_service import PriceService
@@ -370,8 +371,10 @@ class PaperTradingService:
                 market_value = Decimal("0")
                 unrealized_pnl = Decimal("0")
                 unrealized_pnl_pct = 0
+            sector = await self._position_sector(p.symbol)
             result.append({
                 "symbol": p.symbol,
+                "sector": sector,
                 "quantity": p.quantity,
                 "average_price": float(p.average_price),
                 "current_price": float(p.current_price) if p.current_price else None,
@@ -383,6 +386,59 @@ class PaperTradingService:
                 "allocation_pct": round(float(p.cost_basis / account.cash_balance * 100), 2) if account.cash_balance else 0,
             })
         return sorted(result, key=lambda x: x["market_value"], reverse=True)
+
+    async def _position_sector(self, symbol: str) -> str | None:
+        result = await self._session.execute(
+            select(Company.sector).where(Company.symbol == symbol.upper())
+        )
+        return result.scalar_one_or_none()
+
+    async def get_sector_exposure(self, user_id: int) -> list[dict]:
+        portfolio = await self.get_portfolio(user_id)
+        total_value = sum(p["market_value"] for p in portfolio) or 1
+        exposure: dict[str, dict] = {}
+        for p in portfolio:
+            sector = p["sector"] or "Unknown"
+            entry = exposure.setdefault(sector, {"sector": sector, "market_value": 0.0, "positions": 0})
+            entry["market_value"] += p["market_value"]
+            entry["positions"] += 1
+        for entry in exposure.values():
+            entry["allocation_pct"] = round(entry["market_value"] / total_value * 100, 2)
+        return sorted(exposure.values(), key=lambda x: x["market_value"], reverse=True)
+
+    async def get_equity_curve(self, user_id: int) -> list[dict]:
+        account = await self.get_account(user_id)
+        if account is None:
+            return []
+        closed = (await self._session.execute(
+            select(SimulatedOrder)
+            .where(SimulatedOrder.user_id == user_id, SimulatedOrder.status == "closed")
+            .order_by(SimulatedOrder.exit_date)
+        )).scalars().all()
+        positions = (await self._session.execute(
+            select(PaperPosition).where(PaperPosition.account_id == account.id)
+        )).scalars().all()
+        unrealized = Decimal("0")
+        for p in positions:
+            if p.current_price and p.quantity:
+                unrealized += p.current_price * p.quantity - p.cost_basis
+
+        curve: list[dict] = []
+        running = account.initial_capital
+        for sim in closed:
+            running += sim.net_pnl or Decimal("0")
+            curve.append({
+                "date": (sim.exit_date or datetime.now(timezone.utc)).isoformat(),
+                "equity": round(float(running), 2),
+                "event": f"{sim.symbol} {sim.outcome or 'closed'}",
+            })
+        running += unrealized
+        curve.append({
+            "date": datetime.now(timezone.utc).isoformat(),
+            "equity": round(float(running), 2),
+            "event": "current",
+        })
+        return curve
 
     async def refresh_prices(self, user_id: int) -> int:
         account = await self.get_account(user_id)

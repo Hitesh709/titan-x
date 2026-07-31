@@ -408,3 +408,80 @@ export interface StoredBreadth {
   breadth_oscillator: number | null
   index_strength_score: number | null
 }
+
+export interface PaperAccountSummary {
+  account_id: number
+  initial_capital: number
+  cash_balance: number
+  portfolio_value: number
+  total_invested: number
+  total_realized_pnl: number
+  total_unrealized_pnl: number
+  total_pnl: number
+  total_pnl_pct: number
+  positions_count: number
+  is_active: boolean
+}
+
+export interface PaperPosition {
+  symbol: string
+  sector: string | null
+  quantity: number
+  average_price: number
+  current_price: number | null
+  cost_basis: number
+  market_value: number
+  realized_pnl: number
+  unrealized_pnl: number
+  unrealized_pnl_pct: number
+  allocation_pct: number
+}
+
+export interface SectorExposure {
+  sector: string
+  market_value: number
+  positions: number
+  allocation_pct: number
+}
+
+export interface EquityCurvePoint {
+  date: string
+  equity: number
+  event?: string | null
+}
+
+export interface PaperTradeRow {
+  id: number
+  symbol: string
+  side: string
+  quantity: number
+  price: number
+  commission: number
+  realized_pnl: number | null
+  trade_time: string | null
+}
+
+export interface PerformanceReport {
+  account: PaperAccountSummary | null
+  total_trades: number
+  filled_orders: number
+  cancelled_orders: number
+  winning_trades: number
+  losing_trades: number
+  win_rate: number
+}
+
+export interface PaperAnalytics {
+  cagr: number | null
+  win_rate: number
+  profit_factor: number | null
+  sharpe_ratio: number | null
+  sortino_ratio: number | null
+  max_drawdown: number | null
+  max_drawdown_amount: number | null
+  expectancy: number | null
+  total_trades: number
+  winning_trades: number
+  losing_trades: number
+  breakeven_trades: number
+}

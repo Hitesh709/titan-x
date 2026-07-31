@@ -15,7 +15,13 @@ from titan_x.models.company import Company
 from titan_x.models.dynamic_ai_score import DynamicAIScore
 from titan_x.models.market_breadth import MarketBreadth
 from titan_x.models.news import NewsArticle, NewsArticleCategory, NewsCategory
-from titan_x.models.paper_trading import PaperAccount, PaperPosition
+from titan_x.models.paper_trading import (
+    PaperAccount,
+    PaperOrder,
+    PaperPosition,
+    PaperTrade,
+    SimulatedOrder,
+)
 from titan_x.models.price import DailyPrice
 from titan_x.models.sector import SectorPerformance
 from titan_x.models.user import User
@@ -185,6 +191,9 @@ async def seed_demo_user(session_factory: async_sessionmaker) -> User:
                 ))
             )
             await session.execute(delete(Watchlist).where(Watchlist.user_id == user.id))
+            await session.execute(delete(PaperOrder).where(PaperOrder.user_id == user.id))
+            await session.execute(delete(PaperTrade).where(PaperTrade.user_id == user.id))
+            await session.execute(delete(SimulatedOrder).where(SimulatedOrder.user_id == user.id))
             await session.execute(delete(PaperPosition).where(PaperPosition.user_id == user.id))
             await session.execute(delete(PaperAccount).where(PaperAccount.user_id == user.id))
             await session.flush()
@@ -217,6 +226,51 @@ async def seed_demo_user(session_factory: async_sessionmaker) -> User:
                     average_price=round(px * 0.93, 2), cost_basis=round(px * qty * 0.93, 2),
                     realized_pnl=round(qty * px * random.uniform(0.01, 0.06), 2),
                     current_price=round(px, 2),
+                ))
+
+            # Trade history (buy+sell pairs that produced the positions)
+            now = datetime.now(timezone.utc)
+            for idx, (symbol, qty) in enumerate(positions):
+                px = latest[symbol]
+                entry = round(px * 0.93, 2)
+                exit_px = round(px * random.uniform(0.94, 0.99), 2)
+                for side, price, days_ago in (("buy", entry, 120 + idx * 3), ("sell", exit_px, 60 + idx * 3)):
+                    order = PaperOrder(
+                        account_id=account.id, user_id=user.id, symbol=symbol, side=side,
+                        order_type="market", quantity=qty, filled_quantity=qty, price=price,
+                        status="filled", time_in_force="day", filled_at=now - timedelta(days=days_ago),
+                    )
+                    session.add(order)
+                    await session.flush()
+                    session.add(PaperTrade(
+                        order_id=order.id, account_id=account.id, user_id=user.id, symbol=symbol,
+                        side=side, quantity=qty, price=price,
+                        commission=round(price * qty * 0.001, 2),
+                        realized_pnl=round((exit_px - entry) * qty, 2) if side == "sell" else None,
+                        trade_time=now - timedelta(days=days_ago),
+                    ))
+
+            # Simulated orders (closed win/loss) to power analytics + equity curve
+            sim_symbols = [s for s, _ in positions]
+            for idx, symbol in enumerate(sim_symbols):
+                px = latest[symbol]
+                entry = round(px * 0.9, 2)
+                win = random.random() > 0.35
+                exit_px = round(px * random.uniform(0.92, 1.08), 2) if win else round(px * random.uniform(0.8, 0.9), 2)
+                qty = 500 + (idx * 50)
+                entry_fee = round(entry * qty * 0.001, 2)
+                exit_fee = round(exit_px * qty * 0.001, 2)
+                gross = (exit_px - entry) * qty
+                net = gross - entry_fee - exit_fee
+                session.add(SimulatedOrder(
+                    account_id=account.id, user_id=user.id, symbol=symbol, direction="long",
+                    entry_price=entry, exit_price=exit_px, quantity=qty,
+                    entry_fee=entry_fee, exit_fee=exit_fee, total_fees=round(entry_fee + exit_fee, 2),
+                    slippage=round(random.uniform(-0.5, 0.5), 2),
+                    gross_pnl=round(gross, 2), net_pnl=round(net, 2),
+                    outcome="win" if win else "loss",
+                    entry_date=now - timedelta(days=200 - idx * 8), exit_date=now - timedelta(days=40 - idx * 3),
+                    status="closed",
                 ))
 
             # Watchlists
