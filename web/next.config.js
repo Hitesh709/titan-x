@@ -6,6 +6,14 @@ const nextConfig = {
   images: {
     domains: [],
   },
+  async rewrites() {
+    return [
+      {
+        source: '/api/v1/:path*',
+        destination: 'https://titan-x-api.onrender.com/api/v1/:path*',
+      },
+    ]
+  },
   webpack: (config) => {
     config.resolve.alias = {
       ...config.resolve.alias,
