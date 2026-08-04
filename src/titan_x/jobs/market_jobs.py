@@ -31,7 +31,7 @@ class MarketDataIngestionJob(ScheduledJob):
         super().__init__("market_data_ingestion", "market", max_retries=5, retry_delay=120)
 
     async def _run(self, payload: dict) -> dict:
-        symbols: list[str] = payload.get("symbols", ["AAPL", "GOOGL", "MSFT"])
+        symbols: list[str] = payload.get("symbols", ["RELIANCE", "TCS", "HDFCBANK"])
         logger.info("ingesting_market_data", symbols=symbols, count=len(symbols))
         return {"symbols_ingested": len(symbols), "symbols": symbols}
 

@@ -4,18 +4,18 @@ import { Target, Filter, Search, Save, TrendingUp, TrendingDown } from "lucide-r
 import { getChangeColor } from "@/lib/utils"
 
 const screeners = [
-  { name: "High Momentum", criteria: "RSI > 70, Volume > 2M, Price > $20", results: 34, lastRun: "2h ago" },
+  { name: "High Momentum", criteria: "RSI > 70, Volume > 2M, Price > ₹500", results: 34, lastRun: "2h ago" },
   { name: "Undervalued Growth", criteria: "P/E < 20, EPS Growth > 15%, PEG < 1.5", results: 22, lastRun: "4h ago" },
   { name: "Breakout Candidates", criteria: "Price > SMA20, Volume Spike > 50%, RSI 50-65", results: 18, lastRun: "1h ago" },
 ]
 
 const screenerResults = [
-  { symbol: "NVDA", price: 874.32, change: 4.56, volume: "45.2M", rsi: 72, volumeRatio: 2.1, marketCap: "2.15T" },
-  { symbol: "AMD", price: 156.78, change: 3.21, volume: "28.9M", rsi: 68, volumeRatio: 1.8, marketCap: "253.4B" },
-  { symbol: "SMCI", price: 725.45, change: 5.67, volume: "12.3M", rsi: 75, volumeRatio: 2.5, marketCap: "42.1B" },
-  { symbol: "ARM", price: 134.23, change: 2.89, volume: "8.7M", rsi: 65, volumeRatio: 1.4, marketCap: "138.2B" },
-  { symbol: "MRVL", price: 68.45, change: 1.34, volume: "6.2M", rsi: 62, volumeRatio: 1.2, marketCap: "59.3B" },
-  { symbol: "MU", price: 128.90, change: -0.45, volume: "15.6M", rsi: 55, volumeRatio: 0.9, marketCap: "142.8B" },
+  { symbol: "RELIANCE", price: 1300.00, change: 1.45, volume: "10.2M", rsi: 68, volumeRatio: 1.8, marketCap: "₹8.8L Cr" },
+  { symbol: "HDFCBANK", price: 1750.00, change: 0.95, volume: "8.9M", rsi: 62, volumeRatio: 1.5, marketCap: "₹9.5L Cr" },
+  { symbol: "INFY", price: 1520.00, change: 2.10, volume: "12.3M", rsi: 71, volumeRatio: 2.2, marketCap: "₹6.3L Cr" },
+  { symbol: "TATAMOTORS", price: 1050.00, change: -0.85, volume: "15.6M", rsi: 55, volumeRatio: 1.1, marketCap: "₹3.9L Cr" },
+  { symbol: "ONGC", price: 260.00, change: 1.30, volume: "18.2M", rsi: 58, volumeRatio: 1.4, marketCap: "₹3.3L Cr" },
+  { symbol: "TCS", price: 2460.00, change: 0.80, volume: "3.1M", rsi: 64, volumeRatio: 1.2, marketCap: "₹8.9L Cr" },
 ]
 
 export default function ScreenerPage() {
@@ -53,10 +53,10 @@ export default function ScreenerPage() {
         </h3>
         <div className="flex flex-wrap gap-3">
           {[
-            { label: "Market Cap", value: "> $10B" },
+            { label: "Market Cap", value: "> ₹1L Cr" },
             { label: "RSI (14)", value: "> 60" },
             { label: "Volume", value: "> 2M" },
-            { label: "Price", value: "> $20" },
+            { label: "Price", value: "> ₹500" },
             { label: "Sector", value: "Technology" },
           ].map((f) => (
             <div key={f.label} className="flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-xs">
@@ -96,7 +96,7 @@ export default function ScreenerPage() {
                   <td className="py-3 px-4">
                     <span className="text-white font-medium">{s.symbol}</span>
                   </td>
-                  <td className="py-3 px-4 text-right text-white">${s.price.toFixed(2)}</td>
+                  <td className="py-3 px-4 text-right text-white">₹{s.price.toFixed(2)}</td>
                   <td className={`py-3 px-4 text-right font-medium ${getChangeColor(s.change)}`}>
                     <div className="flex items-center justify-end gap-1">
                       {s.change >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}

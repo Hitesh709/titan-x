@@ -12,9 +12,9 @@ const strategies = [
 ]
 
 const backtestHistory = [
-  { name: "Momentum Breakout v3", symbol: "NVDA", period: "2023-06 to 2024-06", return: 45.8, benchmark: 28.4, alpha: 17.4 },
-  { name: "Mean Reversion v2", symbol: "AAPL", period: "2023-06 to 2024-06", return: 12.3, benchmark: 8.2, alpha: 4.1 },
-  { name: "ML Ensemble v5", symbol: "QQQ", period: "2023-01 to 2024-06", return: 38.2, benchmark: 24.6, alpha: 13.6 },
+  { name: "Momentum Breakout v3", symbol: "RELIANCE", period: "2024-07 to 2025-07", return: 45.8, benchmark: 28.4, alpha: 17.4 },
+  { name: "Mean Reversion v2", symbol: "TCS", period: "2024-07 to 2025-07", return: 12.3, benchmark: 8.2, alpha: 4.1 },
+  { name: "ML Ensemble v5", symbol: "NIFTY", period: "2024-01 to 2025-07", return: 38.2, benchmark: 24.6, alpha: 13.6 },
 ]
 
 export default function BacktestPage() {

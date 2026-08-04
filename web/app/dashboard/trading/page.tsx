@@ -3,22 +3,22 @@
 import { Activity, TrendingUp, ArrowRight, Zap, Clock, CheckCircle, XCircle } from "lucide-react"
 
 const openOrders = [
-  { symbol: "NVDA", type: "Limit Buy", shares: 500, limit: 860.00, status: "Working", submitted: "09:32:15" },
-  { symbol: "TSLA", type: "Stop Sell", shares: 300, limit: 235.00, status: "Working", submitted: "10:15:42" },
-  { symbol: "MSFT", type: "Limit Sell", shares: 200, limit: 420.00, status: "Partial", submitted: "09:45:00" },
+  { symbol: "RELIANCE", type: "Limit Buy", shares: 500, limit: 1290.00, status: "Working", submitted: "09:32:15" },
+  { symbol: "TATAMOTORS", type: "Stop Sell", shares: 300, limit: 1000.00, status: "Working", submitted: "10:15:42" },
+  { symbol: "TCS", type: "Limit Sell", shares: 200, limit: 2500.00, status: "Partial", submitted: "09:45:00" },
 ]
 
 const orderHistory = [
-  { symbol: "AAPL", type: "Market Buy", shares: 1000, price: 187.23, filled: "09:30:01", status: "Filled" },
-  { symbol: "AMZN", type: "Limit Buy", shares: 500, price: 178.00, filled: "10:22:33", status: "Filled" },
-  { symbol: "GOOGL", type: "Limit Sell", shares: 300, price: 158.50, filled: "11:05:18", status: "Filled" },
-  { symbol: "NVDA", type: "Market Sell", shares: 200, price: 875.12, filled: "13:42:55", status: "Filled" },
+  { symbol: "HDFCBANK", type: "Market Buy", shares: 1000, price: 1730.00, filled: "09:30:01", status: "Filled" },
+  { symbol: "INFY", type: "Limit Buy", shares: 500, price: 1500.00, filled: "10:22:33", status: "Filled" },
+  { symbol: "SBIN", type: "Limit Sell", shares: 300, price: 800.00, filled: "11:05:18", status: "Filled" },
+  { symbol: "RELIANCE", type: "Market Sell", shares: 200, price: 1305.00, filled: "13:42:55", status: "Filled" },
 ]
 
 const brokers = [
-  { name: "Interactive Brokers", status: "Connected", latency: "12ms" },
-  { name: "Charles Schwab", status: "Connected", latency: "18ms" },
-  { name: "Alpaca Trading", status: "Connected", latency: "8ms" },
+  { name: "Zerodha", status: "Connected", latency: "25ms" },
+  { name: "Groww", status: "Connected", latency: "32ms" },
+  { name: "Upstox", status: "Connected", latency: "28ms" },
 ]
 
 export default function TradingPage() {
@@ -57,7 +57,7 @@ export default function TradingPage() {
                     <span className="text-sm font-medium text-white">{o.symbol}</span>
                     <span className="badge-blue text-[10px]">{o.type}</span>
                   </div>
-                  <div className="text-xs text-gray-500 mt-0.5">{o.shares} shares @ ${o.limit.toFixed(2)}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">{o.shares} shares @ ₹{o.limit.toFixed(2)}</div>
                 </div>
                 <div className="text-right">
                   <span className={`text-xs font-medium ${
@@ -82,7 +82,7 @@ export default function TradingPage() {
                     <span className="text-sm font-medium text-white">{o.symbol}</span>
                     <span className="badge-blue text-[10px]">{o.type}</span>
                   </div>
-                  <div className="text-xs text-gray-500 mt-0.5">{o.shares} shares @ ${o.price.toFixed(2)}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">{o.shares} shares @ ₹{o.price.toFixed(2)}</div>
                 </div>
                 <div className="text-right">
                   <span className="text-xs text-emerald-400 font-medium">{o.status}</span>
@@ -102,7 +102,7 @@ export default function TradingPage() {
         <div className="flex flex-wrap gap-4 items-end">
           <div>
             <label className="block text-xs text-gray-500 mb-1">Symbol</label>
-            <input type="text" className="input-field w-24 text-sm" placeholder="NVDA" />
+            <input type="text" className="input-field w-24 text-sm" placeholder="RELIANCE" />
           </div>
           <div>
             <label className="block text-xs text-gray-500 mb-1">Side</label>

@@ -6,18 +6,18 @@ import { getChangeColor } from "@/lib/utils"
 const indicators = [
   { name: "RSI (14)", value: "62.4", signal: "Neutral", status: "neutral" as const },
   { name: "MACD", value: "Bullish", signal: "Buy", status: "positive" as const },
-  { name: "SMA (50)", value: "$843.21", signal: "Above", status: "positive" as const },
-  { name: "SMA (200)", value: "$721.45", signal: "Above", status: "positive" as const },
-  { name: "Bollinger Bands", value: "Upper $892", signal: "Near Upper", status: "warning" as const },
-  { name: "Volume", value: "45.2M", signal: "Above Avg", status: "positive" as const },
+  { name: "SMA (50)", value: "₹1,278.00", signal: "Above", status: "positive" as const },
+  { name: "SMA (200)", value: "₹1,210.00", signal: "Above", status: "positive" as const },
+  { name: "Bollinger Bands", value: "Upper ₹1,310", signal: "Near Upper", status: "warning" as const },
+  { name: "Volume", value: "10.2M", signal: "Above Avg", status: "positive" as const },
 ]
 
 const recommendations = [
-  { symbol: "NVDA", action: "Buy", confidence: 92, target: 950, current: 874.32, timeframe: "3M" },
-  { symbol: "MSFT", action: "Buy", confidence: 85, target: 450, current: 412.67, timeframe: "6M" },
-  { symbol: "TSLA", action: "Hold", confidence: 60, target: 260, current: 245.89, timeframe: "1M" },
-  { symbol: "AAPL", action: "Sell", confidence: 78, target: 175, current: 187.45, timeframe: "2M" },
-  { symbol: "AMZN", action: "Buy", confidence: 88, target: 200, current: 178.23, timeframe: "6M" },
+  { symbol: "RELIANCE", action: "Buy", confidence: 92, target: 1550, current: 1300.00, timeframe: "3M" },
+  { symbol: "TCS", action: "Buy", confidence: 85, target: 2700, current: 2460.00, timeframe: "6M" },
+  { symbol: "HDFCBANK", action: "Hold", confidence: 60, target: 1900, current: 1750.00, timeframe: "1M" },
+  { symbol: "TATAMOTORS", action: "Sell", confidence: 78, target: 990, current: 1050.00, timeframe: "2M" },
+  { symbol: "INFY", action: "Buy", confidence: 88, target: 1680, current: 1520.00, timeframe: "6M" },
 ]
 
 export default function AnalysisPage() {
@@ -66,10 +66,10 @@ export default function AnalysisPage() {
                       rec.action === "Sell" ? "badge-red" : "badge-yellow"
                     }`}>{rec.action}</span>
                   </div>
-                  <div className="text-xs text-gray-500 mt-0.5">Target: ${rec.target} | {rec.timeframe}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">Target: ₹{rec.target} | {rec.timeframe}</div>
                 </div>
                 <div className="text-right">
-                  <div className="text-sm text-white">${rec.current.toFixed(2)}</div>
+                  <div className="text-sm text-white">₹{rec.current.toFixed(2)}</div>
                   <div className="flex items-center gap-1 text-xs text-titan-400">
                     <TrendingUp size={12} />
                     {rec.confidence}% confidence
@@ -88,12 +88,12 @@ export default function AnalysisPage() {
         </h3>
         <div className="grid md:grid-cols-3 gap-4">
           {[
-            { pattern: "Bull Flag", symbol: "NVDA", timeframe: "1H", strength: "Strong", direction: "bullish" as const },
-            { pattern: "Double Bottom", symbol: "MSFT", timeframe: "4H", strength: "Moderate", direction: "bullish" as const },
-            { pattern: "Head & Shoulders", symbol: "TSLA", timeframe: "1D", strength: "Weak", direction: "bearish" as const },
-            { pattern: "Ascending Triangle", symbol: "AMZN", timeframe: "1D", strength: "Strong", direction: "bullish" as const },
-            { pattern: "Engulfing", symbol: "AAPL", timeframe: "1H", strength: "Moderate", direction: "bearish" as const },
-            { pattern: "Golden Cross", symbol: "GOOGL", timeframe: "1D", strength: "Strong", direction: "bullish" as const },
+            { pattern: "Bull Flag", symbol: "RELIANCE", timeframe: "1H", strength: "Strong", direction: "bullish" as const },
+            { pattern: "Double Bottom", symbol: "TCS", timeframe: "4H", strength: "Moderate", direction: "bullish" as const },
+            { pattern: "Head & Shoulders", symbol: "TATAMOTORS", timeframe: "1D", strength: "Weak", direction: "bearish" as const },
+            { pattern: "Ascending Triangle", symbol: "HDFCBANK", timeframe: "1D", strength: "Strong", direction: "bullish" as const },
+            { pattern: "Engulfing", symbol: "INFY", timeframe: "1H", strength: "Moderate", direction: "bearish" as const },
+            { pattern: "Golden Cross", symbol: "SBIN", timeframe: "1D", strength: "Strong", direction: "bullish" as const },
           ].map((p) => (
             <div key={p.pattern + p.symbol} className="bg-white/5 rounded-lg p-3 border border-white/10">
               <div className="flex items-center justify-between mb-2">
@@ -117,18 +117,18 @@ export default function AnalysisPage() {
       {/* Fundamental Analysis quick view */}
       <div className="glass-card p-5">
         <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-          <BarChart3 size={16} className="text-titan-400" /> Fundamental Metrics — NVDA
+          <BarChart3 size={16} className="text-titan-400" /> Fundamental Metrics — RELIANCE
         </h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { label: "P/E Ratio", value: "34.2" },
-            { label: "EPS (TTM)", value: "$25.56" },
-            { label: "Revenue (TTM)", value: "$60.9B" },
-            { label: "Profit Margin", value: "48.3%" },
-            { label: "Debt/Equity", value: "0.45" },
-            { label: "ROE", value: "42.1%" },
-            { label: "Div Yield", value: "0.04%" },
-            { label: "Beta", value: "1.68" },
+            { label: "P/E Ratio", value: "22.8" },
+            { label: "EPS (TTM)", value: "₹57.10" },
+            { label: "Revenue (TTM)", value: "₹7.1L Cr" },
+            { label: "Profit Margin", value: "11.2%" },
+            { label: "Debt/Equity", value: "0.42" },
+            { label: "ROE", value: "14.3%" },
+            { label: "Div Yield", value: "0.38%" },
+            { label: "Beta", value: "1.05" },
           ].map((m) => (
             <div key={m.label} className="text-center p-3 bg-white/5 rounded-lg">
               <div className="text-xs text-gray-500 mb-1">{m.label}</div>

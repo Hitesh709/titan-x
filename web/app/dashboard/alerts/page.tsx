@@ -4,14 +4,14 @@ import { Bell, Plus, BellOff, BellRing, Trash2 } from "lucide-react"
 import { getChangeColor } from "@/lib/utils"
 
 const alerts = [
-  { symbol: "NVDA", type: "Price Above", condition: "Price > $900.00", triggered: false, created: "2024-06-10" },
-  { symbol: "TSLA", type: "Price Below", condition: "Price < $230.00", triggered: false, created: "2024-06-09" },
-  { symbol: "MSFT", type: "Percent Change", condition: "Daily change > 5%", triggered: false, created: "2024-06-08" },
-  { symbol: "AAPL", type: "Volume", condition: "Volume > 80M", triggered: true, created: "2024-06-07" },
-  { symbol: "AMZN", type: "RSI", condition: "RSI > 75", triggered: true, created: "2024-06-06" },
-  { symbol: "GOOGL", type: "Earnings", condition: "Earnings release date", triggered: false, created: "2024-06-05" },
-  { symbol: "META", type: "Technical", condition: "SMA50 crosses SMA200", triggered: false, created: "2024-06-04" },
-  { symbol: "NVDA", type: "Price Target", condition: "Price hits analyst target $950", triggered: false, created: "2024-06-03" },
+  { symbol: "RELIANCE", type: "Price Above", condition: "Price > ₹1350.00", triggered: false, created: "2024-06-10" },
+  { symbol: "TATAMOTORS", type: "Price Below", condition: "Price < ₹1000.00", triggered: false, created: "2024-06-09" },
+  { symbol: "TCS", type: "Percent Change", condition: "Daily change > 3%", triggered: false, created: "2024-06-08" },
+  { symbol: "HDFCBANK", type: "Volume", condition: "Volume > 8M", triggered: true, created: "2024-06-07" },
+  { symbol: "INFY", type: "RSI", condition: "RSI > 75", triggered: true, created: "2024-06-06" },
+  { symbol: "SBIN", type: "Earnings", condition: "Earnings release date", triggered: false, created: "2024-06-05" },
+  { symbol: "HCLTECH", type: "Technical", condition: "SMA50 crosses SMA200", triggered: false, created: "2024-06-04" },
+  { symbol: "RELIANCE", type: "Price Target", condition: "Price hits analyst target ₹1550", triggered: false, created: "2024-06-03" },
 ]
 
 export default function AlertsPage() {

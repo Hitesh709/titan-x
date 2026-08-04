@@ -5,29 +5,30 @@ import { getChangeColor } from "@/lib/utils"
 
 const watchlists = [
   {
-    name: "AI & Semiconductors",
+    name: "Nifty IT",
     symbols: [
-      { symbol: "NVDA", price: 874.32, change: 4.56 },
-      { symbol: "AMD", price: 156.78, change: 3.21 },
-      { symbol: "SMCI", price: 725.45, change: 5.67 },
-      { symbol: "INTC", price: 34.23, change: -0.89 },
+      { symbol: "TCS", price: 2460.00, change: 1.20 },
+      { symbol: "INFY", price: 1520.00, change: 2.10 },
+      { symbol: "WIPRO", price: 520.00, change: 0.80 },
+      { symbol: "HCLTECH", price: 1750.00, change: 1.45 },
     ],
   },
   {
-    name: "Portfolio Core",
+    name: "Banks & Financials",
     symbols: [
-      { symbol: "MSFT", price: 412.67, change: 2.34 },
-      { symbol: "AAPL", price: 187.45, change: -1.23 },
-      { symbol: "AMZN", price: 178.23, change: 1.56 },
+      { symbol: "HDFCBANK", price: 1750.00, change: 0.95 },
+      { symbol: "ICICIBANK", price: 1250.00, change: -0.65 },
+      { symbol: "SBIN", price: 790.00, change: 1.10 },
+      { symbol: "AXISBANK", price: 1130.00, change: 0.45 },
     ],
   },
   {
-    name: "Earnings Watch",
+    name: "Energy & Metals",
     symbols: [
-      { symbol: "TSLA", price: 245.89, change: -3.45 },
-      { symbol: "META", price: 498.12, change: 3.21 },
-      { symbol: "GOOGL", price: 156.78, change: 0.89 },
-      { symbol: "NFLX", price: 634.50, change: 2.78 },
+      { symbol: "RELIANCE", price: 1300.00, change: -0.90 },
+      { symbol: "ONGC", price: 260.00, change: 1.30 },
+      { symbol: "TATAMOTORS", price: 1050.00, change: 2.20 },
+      { symbol: "JSWSTEEL", price: 950.00, change: 0.70 },
     ],
   },
 ]
@@ -61,7 +62,7 @@ export default function WatchlistsPage() {
                     <span className="text-sm font-medium text-white">{s.symbol}</span>
                   </div>
                   <div className="flex items-center gap-4">
-                    <span className="text-sm text-white">${s.price.toFixed(2)}</span>
+                    <span className="text-sm text-white">₹{s.price.toFixed(2)}</span>
                     <span className={`flex items-center gap-1 text-xs font-medium ${getChangeColor(s.change)}`}>
                       {s.change >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
                       {s.change >= 0 ? "+" : ""}{s.change.toFixed(2)}%

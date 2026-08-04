@@ -3,19 +3,19 @@
 import { BookOpen, Building2, Globe, FileText, TrendingUp, ExternalLink } from "lucide-react"
 
 const companies = [
-  { symbol: "NVDA", name: "NVIDIA Corporation", sector: "Semiconductors", price: 874.32, rating: "Strong Buy", target: 950, employees: "29,600", founded: "1993" },
-  { symbol: "MSFT", name: "Microsoft Corporation", sector: "Software", price: 412.67, rating: "Buy", target: 450, employees: "228,000", founded: "1975" },
-  { symbol: "AAPL", name: "Apple Inc", sector: "Consumer Electronics", price: 187.45, rating: "Hold", target: 200, employees: "164,000", founded: "1976" },
-  { symbol: "TSLA", name: "Tesla Inc", sector: "Automotive", price: 245.89, rating: "Hold", target: 260, employees: "140,000", founded: "2003" },
-  { symbol: "AMZN", name: "Amazon.com Inc", sector: "E-Commerce", price: 178.23, rating: "Strong Buy", target: 210, employees: "1,525,000", founded: "1994" },
+  { symbol: "RELIANCE", name: "Reliance Industries Ltd", sector: "Energy · Oil & Gas", price: 1300.00, rating: "Strong Buy", target: 1550, employees: "330,000", founded: "1966" },
+  { symbol: "TCS", name: "Tata Consultancy Services Ltd", sector: "Technology · IT Services", price: 2460.00, rating: "Buy", target: 2700, employees: "600,000", founded: "1968" },
+  { symbol: "HDFCBANK", name: "HDFC Bank Ltd", sector: "Financials · Banks", price: 1750.00, rating: "Hold", target: 1900, employees: "200,000", founded: "1994" },
+  { symbol: "INFY", name: "Infosys Ltd", sector: "Technology · IT Services", price: 1520.00, rating: "Hold", target: 1650, employees: "340,000", founded: "1981" },
+  { symbol: "BHARTIARTL", name: "Bharti Airtel Ltd", sector: "Communication Services · Telecom", price: 1450.00, rating: "Strong Buy", target: 1700, employees: "85,000", founded: "1995" },
 ]
 
 const peerComparison = [
-  { metric: "Market Cap", nvda: "2.15T", peers: "1.85T" },
-  { metric: "Revenue", nvda: "$60.9B", peers: "$45.2B" },
-  { metric: "Gross Margin", nvda: "72.8%", peers: "65.4%" },
-  { metric: "P/E Ratio", nvda: "34.2x", peers: "28.6x" },
-  { metric: "Revenue Growth", nvda: "126%", peers: "42%" },
+  { metric: "Market Cap", nvda: "₹8.8L Cr", peers: "₹7.4L Cr" },
+  { metric: "Revenue", nvda: "₹7.1L Cr", peers: "₹5.2L Cr" },
+  { metric: "Gross Margin", nvda: "45.4%", peers: "41.2%" },
+  { metric: "P/E Ratio", nvda: "22.8x", peers: "19.6x" },
+  { metric: "Revenue Growth", nvda: "9.2%", peers: "6.4%" },
 ]
 
 export default function ResearchPage() {
@@ -43,14 +43,14 @@ export default function ResearchPage() {
                 </div>
               </div>
               <div className="text-right">
-                <div className="text-lg font-bold text-white">${c.price.toFixed(2)}</div>
+                <div className="text-lg font-bold text-white">₹{c.price.toFixed(2)}</div>
                 <div className="flex items-center gap-2 justify-end text-xs mt-1">
                   <span className={`badge ${
                     c.rating === "Strong Buy" ? "badge-green" :
                     c.rating === "Buy" ? "badge-blue" :
                     "badge-yellow"
                   }`}>{c.rating}</span>
-                  <span className="text-gray-500">Target: ${c.target}</span>
+                  <span className="text-gray-500">Target: ₹{c.target}</span>
                 </div>
               </div>
             </div>
