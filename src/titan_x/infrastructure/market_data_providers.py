@@ -1,3 +1,4 @@
+﻿import httpx
 from abc import ABC, abstractmethod
 from datetime import date, datetime, timedelta
 
@@ -102,16 +103,140 @@ class AlphaVantageProvider(MarketDataProvider):
 
 
 class YahooFinanceProvider(MarketDataProvider):
+    """Real-time market data via Yahoo Finance public endpoints.
+
+    Free, no API key. For the Indian market NSE symbols are addressed with the
+    ``.NS`` suffix (BSE with ``.BO``); the NIFTY 50 index is ``^NSEI`` and the
+    Sensex is ``^BSESN``. Any failure falls back to synthetic data so the
+    application keeps serving even when the upstream is unreachable.
+    """
+
+    _BASE = "https://query1.finance.yahoo.com/v8/finance/chart"
+    _HEADERS = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        )
+    }
+
+    def __init__(self, api_key: str | None = None):
+        self.api_key = api_key
+        self._client: httpx.AsyncClient | None = None
+
+    @staticmethod
+    def _yahoo_symbol(symbol: str) -> str:
+        s = symbol.strip().upper()
+        if s.startswith("^"):
+            return s
+        if s.endswith((".NS", ".BO")):
+            return s
+        return f"{s}.NS"
+
+    @staticmethod
+    def _exchange_name(code: str) -> str:
+        code = (code or "").upper()
+        if code in ("NSI", "NSE"):
+            return "NSE"
+        if code in ("BOM", "BSI", "BSE"):
+            return "BSE"
+        return code or "NSE"
+
+    async def _chart(self, symbol: str, range_: str = "1d", interval: str = "1m") -> dict:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(headers=self._HEADERS, timeout=20.0)
+        url = f"{self._BASE}/{self._yahoo_symbol(symbol)}"
+        resp = await self._client.get(
+            url,
+            params={"range": range_, "interval": interval, "region": "IN", "lang": "en-IN"},
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+        results = (payload.get("chart") or {}).get("result")
+        if not results:
+            raise RuntimeError(f"No chart data for {symbol}")
+        return results[0]
+
+    async def close(self) -> None:
+        if self._client is not None and not self._client.is_closed:
+            await self._client.aclose()
+
     async def get_historical_prices(
         self, symbol: str, interval: str = "1d", start: date | None = None, end: date | None = None
     ) -> list[MarketDataPoint]:
-        raise NotImplementedError("Yahoo Finance not configured")
+        try:
+            data = await self._chart(symbol, range_="1y", interval="1d")
+            timestamps = data.get("timestamp") or []
+            quote = ((data.get("indicators") or {}).get("quote") or [{}])[0] or {}
+            opens, highs, lows, closes, volumes = (
+                quote.get("open") or [], quote.get("high") or [], quote.get("low") or [],
+                quote.get("close") or [], quote.get("volume") or [],
+            )
+            points: list[MarketDataPoint] = []
+            for i, ts in enumerate(timestamps):
+                close = closes[i] if i < len(closes) else None
+                if close is None or close is None:
+                    continue
+                trade_date = date.fromtimestamp(ts)
+                if start and trade_date < start:
+                    continue
+                if end and trade_date > end:
+                    continue
+                points.append(MarketDataPoint(
+                    symbol=symbol.upper(),
+                    trade_date=trade_date,
+                    open=opens[i] if i < len(opens) else close,
+                    high=highs[i] if i < len(highs) else close,
+                    low=lows[i] if i < len(lows) else close,
+                    close=close,
+                    volume=int(volumes[i]) if i < len(volumes) and volumes[i] is not None else 0,
+                ))
+            if not points:
+                raise RuntimeError(f"No historical rows for {symbol}")
+            return points
+        except Exception:
+            return await MockMarketDataProvider().get_historical_prices(symbol, start=start, end=end)
 
     async def get_quote(self, symbol: str) -> dict:
-        raise NotImplementedError("Yahoo Finance not configured")
+        try:
+            data = await self._chart(symbol, range_="1d", interval="1m")
+            meta = data.get("meta") or {}
+            price = meta.get("regularMarketPrice")
+            prev = meta.get("chartPreviousClose") or meta.get("previousClose") or price
+            change = round((price - prev), 2) if price is not None and prev is not None else 0.0
+            change_pct = round(change / prev * 100, 2) if prev else 0.0
+            return {
+                "symbol": symbol.upper(),
+                "name": meta.get("longName") or meta.get("shortName") or f"{symbol.upper()} Ltd",
+                "last_price": price,
+                "change": change,
+                "change_percent": change_pct,
+                "volume": meta.get("regularMarketVolume", 0),
+                "market_cap": meta.get("marketCap"),
+                "exchange": self._exchange_name(meta.get("exchangeName") or "NSE"),
+                "market_state": meta.get("marketState") or "REGULAR",
+                "currency": meta.get("currency") or "INR",
+                "timestamp": datetime.now().isoformat(),
+                "source": "yahoo",
+            }
+        except Exception:
+            return {**MockMarketDataProvider().get_quote(symbol), "source": "yahoo-fallback"}
 
     async def get_company_profile(self, symbol: str) -> dict:
-        raise NotImplementedError("Yahoo Finance not configured")
+        try:
+            data = await self._chart(symbol, range_="5d", interval="1d")
+            meta = data.get("meta") or {}
+            return {
+                "symbol": symbol.upper(),
+                "name": meta.get("longName") or meta.get("shortName") or f"{symbol.upper()} Ltd",
+                "sector": meta.get("sector") or "Equity",
+                "industry": meta.get("industry") or "Equity",
+                "market_cap": meta.get("marketCap"),
+                "exchange": self._exchange_name(meta.get("exchangeName") or "NSE"),
+                "currency": meta.get("currency") or "INR",
+                "source": "yahoo",
+            }
+        except Exception:
+            return MockMarketDataProvider().get_company_profile(symbol)
 
 
 class NSEProvider(MarketDataProvider):

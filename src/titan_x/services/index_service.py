@@ -24,6 +24,22 @@ INDICES = [
 
 PERIOD_DAYS = {"1W": 7, "1M": 30, "3M": 90, "6M": 180, "YTD": None, "1Y": 260}
 
+# Internal symbol -> Yahoo Finance ticker for the NSE indices
+YAHOO_INDEX = {
+    "NIFTY": "^NSEI",
+    "SENSEX": "^BSESN",
+    "BANKNIFTY": "^NSEBANK",
+    "NIFTYIT": "^CNXIT",
+    "NIFTYMID": "^NSEMDCP50",
+    "NIFTYSMALLCAP": "^NSESMCP50",
+    "NIFTYAUTO": "^CNXAUTO",
+    "NIFTYPHARMA": "^CNXPHARMA",
+    "NIFTYFMCG": "^CNXFMCG",
+    "NIFTYMETAL": "^CNXMETAL",
+    "NIFTYENERGY": "^CNXENERGY",
+    "NIFTYREALTY": "^CNXREALTY",
+}
+
 
 class IndexService:
     def __init__(self, session: AsyncSession):
@@ -31,12 +47,47 @@ class IndexService:
 
     async def seed(self, trading_days: int = 260) -> dict[str, int]:
         await self.session.execute(delete(IndexDaily))
-        days = self._trading_days(trading_days)
+
+        # Real index history from Yahoo Finance; falls back to a synthetic walk.
+        real: dict[str, dict[date, tuple[float, float, float, float, int]]] = {}
+        provider = None
+        try:
+            from titan_x.infrastructure.market_data_providers import YahooFinanceProvider
+            provider = YahooFinanceProvider()
+            for symbol, *_ in INDICES:
+                yahoo_ticker = YAHOO_INDEX.get(symbol)
+                if not yahoo_ticker:
+                    continue
+                points = await provider.get_historical_prices(yahoo_ticker)
+                real[symbol] = {p.trade_date: (p.open, p.high, p.low, p.close, p.volume) for p in points}
+        except Exception:
+            real = {}
+        finally:
+            if provider is not None:
+                await provider.close()
+
+        if real:
+            days = sorted({d for m in real.values() for d in m})
+        else:
+            days = self._trading_days(trading_days)
+
         closes: dict[str, list[float]] = {symbol: [] for symbol, *_ in INDICES}
         added = 0
 
-        for idx, d in enumerate(days):
+        for d in days:
             for symbol, name, base, drift, vol in INDICES:
+                row = real.get(symbol, {}).get(d)
+                if row is not None:
+                    o, h, l, c, v = row
+                    closes[symbol].append(c)
+                    self.session.add(IndexDaily(
+                        symbol=symbol, name=name, trade_date=d,
+                        open=round(o, 2), high=round(h, 2),
+                        low=round(l, 2), close=round(c, 2),
+                        volume=int(v or 0),
+                    ))
+                    added += 1
+                    continue
                 if not closes[symbol]:
                     close = base * (1 + random.gauss(0, 0.002))
                 else:

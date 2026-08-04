@@ -3,6 +3,7 @@ from datetime import date, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from titan_x.core.config import get_settings
 from titan_x.infrastructure.market_data_providers import (
     MarketDataProvider,
     get_market_data_provider,
@@ -15,14 +16,20 @@ class MarketDataService:
     def __init__(self, session: AsyncSession):
         self.session = session
 
+    def _resolve_provider(self, provider_name: str | None) -> str:
+        if provider_name and provider_name != "default":
+            return provider_name
+        return get_settings().market_data_provider
+
     async def fetch_and_store_historical(
         self,
         symbol: str,
-        provider_name: str = "mock",
+        provider_name: str | None = None,
         api_key: str | None = None,
         start: date | None = None,
         end: date | None = None,
     ) -> dict:
+        provider_name = self._resolve_provider(provider_name)
         provider = get_market_data_provider(provider_name, api_key)
         points = await provider.get_historical_prices(symbol, start=start, end=end)
 
@@ -76,18 +83,20 @@ class MarketDataService:
     async def get_quote(
         self,
         symbol: str,
-        provider_name: str = "mock",
+        provider_name: str | None = None,
         api_key: str | None = None,
     ) -> dict:
+        provider_name = self._resolve_provider(provider_name)
         provider = get_market_data_provider(provider_name, api_key)
         return await provider.get_quote(symbol.upper())
 
     async def get_company_profile(
         self,
         symbol: str,
-        provider_name: str = "mock",
+        provider_name: str | None = None,
         api_key: str | None = None,
     ) -> dict:
+        provider_name = self._resolve_provider(provider_name)
         provider = get_market_data_provider(provider_name, api_key)
         profile = await provider.get_company_profile(symbol.upper())
 

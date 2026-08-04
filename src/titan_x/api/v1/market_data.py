@@ -29,7 +29,7 @@ async def fetch_historical(
     symbol: str,
     user: Annotated[User, Depends(get_current_active_user)],
     svc: Annotated[MarketDataService, Depends(get_market_data_service)],
-    provider: str = Query("mock"),
+    provider: str = Query(None),
     api_key: str | None = Query(None),
     start: date | None = Query(None),
     end: date | None = Query(None),
@@ -52,7 +52,7 @@ async def get_quote(
     symbol: str,
     user: Annotated[User, Depends(get_current_active_user)],
     svc: Annotated[MarketDataService, Depends(get_market_data_service)],
-    provider: str = Query("mock"),
+    provider: str = Query(None),
     api_key: str | None = Query(None),
 ):
     try:
@@ -66,7 +66,7 @@ async def get_company_profile(
     symbol: str,
     user: Annotated[User, Depends(get_current_active_user)],
     svc: Annotated[MarketDataService, Depends(get_market_data_service)],
-    provider: str = Query("mock"),
+    provider: str = Query(None),
     api_key: str | None = Query(None),
 ):
     try:

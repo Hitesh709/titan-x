@@ -33,32 +33,32 @@ DEMO_NAME = "Demo User"
 
 # (symbol, name, sector, industry, exchange, base_price, drift_pct, volatility_pct)
 COMPANIES = [
-    ("AAPL", "Apple Inc", "Technology", "Consumer Electronics", "NASDAQ", 190.0, 0.0015, 0.015),
-    ("MSFT", "Microsoft Corp", "Technology", "Software", "NASDAQ", 410.0, 0.0018, 0.014),
-    ("NVDA", "NVIDIA Corp", "Technology", "Semiconductors", "NASDAQ", 120.0, 0.0035, 0.025),
-    ("INTC", "Intel Corp", "Technology", "Semiconductors", "NASDAQ", 34.0, -0.0010, 0.020),
-    ("AMD", "Advanced Micro Devices", "Technology", "Semiconductors", "NASDAQ", 155.0, 0.0025, 0.024),
-    ("ORCL", "Oracle Corp", "Technology", "Software", "NYSE", 122.0, 0.0012, 0.016),
-    ("GOOGL", "Alphabet Inc", "Communication Services", "Internet", "NASDAQ", 175.0, 0.0010, 0.015),
-    ("META", "Meta Platforms", "Communication Services", "Internet", "NASDAQ", 480.0, 0.0016, 0.018),
-    ("NFLX", "Netflix Inc", "Communication Services", "Entertainment", "NASDAQ", 620.0, 0.0005, 0.020),
-    ("DIS", "Walt Disney Co", "Communication Services", "Entertainment", "NYSE", 95.0, -0.0005, 0.015),
-    ("AMZN", "Amazon.com Inc", "Consumer Discretionary", "E-Commerce", "NASDAQ", 185.0, 0.0020, 0.017),
-    ("TSLA", "Tesla Inc", "Consumer Discretionary", "Automobiles", "NASDAQ", 245.0, 0.0012, 0.030),
-    ("NKE", "Nike Inc", "Consumer Discretionary", "Apparel", "NYSE", 82.0, -0.0012, 0.014),
-    ("JPM", "JPMorgan Chase", "Financials", "Banks", "NYSE", 200.0, 0.0008, 0.013),
-    ("V", "Visa Inc", "Financials", "Fintech", "NYSE", 265.0, 0.0009, 0.011),
-    ("JNJ", "Johnson & Johnson", "Health Care", "Pharmaceuticals", "NYSE", 152.0, -0.0004, 0.009),
-    ("PFE", "Pfizer Inc", "Health Care", "Pharmaceuticals", "NYSE", 28.0, -0.0015, 0.012),
-    ("XOM", "Exxon Mobil", "Energy", "Oil & Gas", "NYSE", 112.0, 0.0014, 0.014),
-    ("CVX", "Chevron Corp", "Energy", "Oil & Gas", "NYSE", 150.0, 0.0010, 0.013),
-    ("CAT", "Caterpillar Inc", "Industrials", "Machinery", "NYSE", 330.0, 0.0007, 0.013),
-    ("BA", "Boeing Co", "Industrials", "Aerospace", "NYSE", 178.0, -0.0008, 0.020),
-    ("KO", "Coca-Cola Co", "Consumer Staples", "Beverages", "NYSE", 62.0, -0.0006, 0.009),
-    ("PG", "Procter & Gamble", "Consumer Staples", "Household Products", "NYSE", 165.0, -0.0003, 0.008),
-    ("WMT", "Walmart Inc", "Consumer Staples", "Retail", "NYSE", 68.0, 0.0005, 0.010),
-    ("NEE", "NextEra Energy", "Utilities", "Utilities", "NYSE", 74.0, 0.0003, 0.010),
-    ("LIN", "Linde plc", "Materials", "Chemicals", "NYSE", 430.0, -0.0004, 0.010),
+    ("RELIANCE", "Reliance Industries Ltd", "Energy", "Oil & Gas", "NSE", 1300.0, 0.0012, 0.013),
+    ("TCS", "Tata Consultancy Services Ltd", "Technology", "IT Services", "NSE", 2460.0, 0.0010, 0.012),
+    ("HDFCBANK", "HDFC Bank Ltd", "Financials", "Banks", "NSE", 1750.0, 0.0011, 0.011),
+    ("INFY", "Infosys Ltd", "Technology", "IT Services", "NSE", 1520.0, 0.0009, 0.014),
+    ("ICICIBANK", "ICICI Bank Ltd", "Financials", "Banks", "NSE", 1250.0, 0.0013, 0.012),
+    ("BHARTIARTL", "Bharti Airtel Ltd", "Communication Services", "Telecom", "NSE", 1450.0, 0.0014, 0.012),
+    ("SBIN", "State Bank of India", "Financials", "Banks", "NSE", 790.0, 0.0010, 0.014),
+    ("ITC", "ITC Ltd", "Consumer Staples", "Tobacco & FMCG", "NSE", 460.0, 0.0007, 0.010),
+    ("LT", "Larsen & Toubro Ltd", "Industrials", "Engineering & Construction", "NSE", 3750.0, 0.0011, 0.013),
+    ("HINDUNILVR", "Hindustan Unilever Ltd", "Consumer Staples", "FMCG", "NSE", 2450.0, 0.0004, 0.009),
+    ("KOTAKBANK", "Kotak Mahindra Bank Ltd", "Financials", "Banks", "NSE", 1950.0, 0.0008, 0.011),
+    ("BAJFINANCE", "Bajaj Finance Ltd", "Financials", "Financial Services", "NSE", 7200.0, 0.0012, 0.015),
+    ("AXISBANK", "Axis Bank Ltd", "Financials", "Banks", "NSE", 1130.0, 0.0010, 0.013),
+    ("MARUTI", "Maruti Suzuki India Ltd", "Consumer Discretionary", "Automobiles", "NSE", 12400.0, 0.0008, 0.012),
+    ("TITAN", "Titan Company Ltd", "Consumer Discretionary", "Retail", "NSE", 3400.0, 0.0011, 0.014),
+    ("SUNPHARMA", "Sun Pharmaceutical Industries Ltd", "Health Care", "Pharmaceuticals", "NSE", 1580.0, 0.0009, 0.011),
+    ("ADANIENT", "Adani Enterprises Ltd", "Industrials", "Infrastructure", "NSE", 2400.0, 0.0016, 0.018),
+    ("WIPRO", "Wipro Ltd", "Technology", "IT Services", "NSE", 520.0, 0.0005, 0.012),
+    ("ONGC", "Oil & Natural Gas Corporation Ltd", "Energy", "Oil & Gas", "NSE", 260.0, 0.0007, 0.012),
+    ("NTPC", "NTPC Ltd", "Utilities", "Power", "NSE", 340.0, 0.0008, 0.010),
+    ("POWERGRID", "Power Grid Corporation of India Ltd", "Utilities", "Power", "NSE", 300.0, 0.0007, 0.010),
+    ("ASIANPAINT", "Asian Paints Ltd", "Materials", "Chemicals", "NSE", 2800.0, 0.0003, 0.011),
+    ("ULTRACEMCO", "UltraTech Cement Ltd", "Materials", "Cement", "NSE", 10800.0, 0.0006, 0.012),
+    ("HCLTECH", "HCL Technologies Ltd", "Technology", "IT Services", "NSE", 1750.0, 0.0008, 0.012),
+    ("TATAMOTORS", "Tata Motors Ltd", "Consumer Discretionary", "Automobiles", "NSE", 1050.0, 0.0013, 0.016),
+    ("JSWSTEEL", "JSW Steel Ltd", "Materials", "Steel", "NSE", 950.0, 0.0009, 0.015),
 ]
 
 SECTOR_HEADERS = [
@@ -71,7 +71,7 @@ SECTOR_HEADERS = [
 
 
 def _isin(index: int) -> str:
-    return f"US{index:09d}0"
+    return f"INE{1000000 + index:06d}00A"
 
 
 def _trading_days(days: int) -> list[date]:
@@ -107,7 +107,7 @@ async def seed_market_data(session_factory: async_sessionmaker) -> None:
                 session.add(Company(
                     symbol=symbol, company_name=name, isin=_isin(index),
                     sector=sector, industry=industry, exchange=exchange,
-                    market_cap=int(base * (10 ** 6.5)),
+                    market_cap=int(base * 1_000_000),
                     listing_date=date(2000, 1, 1), status="active",
                     description=f"{name} demo company", website=f"https://example.com/{symbol}",
                 ))
@@ -115,14 +115,42 @@ async def seed_market_data(session_factory: async_sessionmaker) -> None:
 
             await session.flush()
 
+            # Real daily history from Yahoo Finance per company; falls back to a
+            # synthetic random walk when the upstream is unreachable.
+            real: dict[str, dict[date, tuple[float, float, float, float, int]]] = {}
+            provider = None
+            try:
+                from titan_x.infrastructure.market_data_providers import YahooFinanceProvider
+                provider = YahooFinanceProvider()
+                for symbol, *_ in COMPANIES:
+                    points = await provider.get_historical_prices(symbol)
+                    real[symbol] = {p.trade_date: (p.open, p.high, p.low, p.close, p.volume) for p in points}
+            except Exception:
+                real = {}
+            finally:
+                if provider is not None:
+                    await provider.close()
+
+            if real:
+                days = sorted({d for m in real.values() for d in m})
+            else:
+                days = _trading_days(260)
+
             closes: dict[str, list[float]] = {symbol: [] for symbol, *_ in COMPANIES}
-            for idx, d in enumerate(days):
+            for d in days:
                 for symbol, _name, _sector, _ind, _exch, base, drift, vol in COMPANIES:
+                    row = real.get(symbol, {}).get(d)
+                    if row is not None:
+                        o, h, l, c, v = row
+                        closes[symbol].append(c)
+                        session.add(DailyPrice(
+                            symbol=symbol, trade_date=d, open=round(o, 2),
+                            high=round(h, 2), low=round(l, 2), close=round(c, 2),
+                            volume=int(v or 0),
+                        ))
+                        continue
                     shock = random.gauss(0, 1)
-                    if len(closes[symbol]) == 0:
-                        close = base
-                    else:
-                        close = max(1.0, closes[symbol][-1] * (1 + drift + shock * vol))
+                    close = base if not closes[symbol] else max(1.0, closes[symbol][-1] * (1 + drift + shock * vol))
                     closes[symbol].append(close)
                     opn = closes[symbol][-2] if len(closes[symbol]) > 1 else close * (1 - drift)
                     high = max(opn, close) * (1 + abs(random.gauss(0, vol * 0.5)))
@@ -200,8 +228,8 @@ async def seed_demo_user(session_factory: async_sessionmaker) -> User:
 
             # Paper account + positions
             account = PaperAccount(
-                user_id=user.id, initial_capital=1_000_000.00,
-                cash_balance=412_500.00, currency="USD", is_active=True,
+                user_id=user.id, initial_capital=10_000_000.00,
+                cash_balance=4_125_000.00, currency="INR", is_active=True,
             )
             session.add(account)
             await session.flush()
@@ -215,9 +243,9 @@ async def seed_demo_user(session_factory: async_sessionmaker) -> User:
                 latest[symbol] = row if row is not None else base
 
             positions = [
-                ("AAPL", 1500), ("NVDA", 2000), ("MSFT", 800), ("GOOGL", 600),
-                ("AMZN", 900), ("TSLA", 700), ("JPM", 500), ("XOM", 1200),
-                ("JNJ", 400), ("CAT", 300), ("KO", 800), ("V", 350),
+                ("RELIANCE", 100), ("TCS", 80), ("HDFCBANK", 120), ("INFY", 150),
+                ("ICICIBANK", 200), ("BHARTIARTL", 90), ("SBIN", 250), ("ITC", 300),
+                ("LT", 40), ("HINDUNILVR", 60), ("KOTAKBANK", 70), ("MARUTI", 20),
             ]
             for symbol, qty in positions:
                 px = latest[symbol]
@@ -279,8 +307,8 @@ async def seed_demo_user(session_factory: async_sessionmaker) -> User:
             session.add_all([wl1, wl2])
             await session.flush()
 
-            wl1_symbols = ["AAPL", "NVDA", "MSFT", "GOOGL", "AMD", "META", "NFLX", "ORCL"]
-            wl2_symbols = ["JPM", "V", "XOM", "CVX", "KO", "PG", "JNJ", "WMT"]
+            wl1_symbols = ["TCS", "INFY", "WIPRO", "HCLTECH", "BHARTIARTL", "RELIANCE", "TITAN", "ADANIENT"]
+            wl2_symbols = ["ITC", "HINDUNILVR", "SBIN", "ONGC", "NTPC", "POWERGRID", "KOTAKBANK", "AXISBANK"]
             for s in wl1_symbols:
                 session.add(WatchlistItem(watchlist_id=wl1.id, symbol=s, sort_order=0))
             for s in wl2_symbols:
@@ -289,12 +317,12 @@ async def seed_demo_user(session_factory: async_sessionmaker) -> User:
 
             # AI scores for watchlisted symbols
             signals = [
-                ("AAPL", "buy", 0.82), ("NVDA", "strong_buy", 0.91), ("MSFT", "buy", 0.78),
-                ("GOOGL", "strong_buy", 0.86), ("AMD", "buy", 0.74), ("META", "buy", 0.71),
-                ("NFLX", "hold", 0.55), ("ORCL", "buy", 0.69),
-                ("JPM", "buy", 0.72), ("V", "hold", 0.58), ("XOM", "buy", 0.76),
-                ("CVX", "hold", 0.61), ("KO", "hold", 0.52), ("PG", "hold", 0.5),
-                ("JNJ", "sell", 0.63), ("WMT", "buy", 0.66),
+                ("RELIANCE", "buy", 0.80), ("TCS", "buy", 0.77), ("HDFCBANK", "buy", 0.74),
+                ("INFY", "strong_buy", 0.85), ("ICICIBANK", "buy", 0.79), ("BHARTIARTL", "strong_buy", 0.86),
+                ("SBIN", "buy", 0.73), ("ITC", "hold", 0.58),
+                ("LT", "buy", 0.76), ("HINDUNILVR", "hold", 0.52), ("KOTAKBANK", "buy", 0.72),
+                ("AXISBANK", "hold", 0.61), ("WIPRO", "buy", 0.68), ("TITAN", "buy", 0.70),
+                ("NTPC", "hold", 0.55), ("ONGC", "buy", 0.66),
             ]
             for symbol, signal, conf in signals:
                 session.add(DynamicAIScore(
