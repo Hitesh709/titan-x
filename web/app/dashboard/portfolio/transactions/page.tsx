@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { ArrowUpRight, ArrowDownRight } from "lucide-react"
 import api from "@/lib/api"
+import { useLiveRefresh } from "@/lib/live"
 import type { PaginatedResponse, PaperTradeRow } from "@/types"
 import { formatCurrency, formatDate, getChangeColor } from "@/lib/utils"
 import { WidgetLoading, WidgetError } from "@/components/dashboard/widget"
@@ -38,11 +39,12 @@ export default function PortfolioTransactionsPage() {
 
   useEffect(() => {
     mounted.current = true
-    load(0)
     return () => {
       mounted.current = false
     }
-  }, [load])
+  }, [])
+
+  useLiveRefresh(() => void load(skip), [load, skip])
 
   const hasPrev = skip > 0
   const hasNext = skip + trades.length < total

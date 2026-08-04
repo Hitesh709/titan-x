@@ -6,6 +6,7 @@ import {
 } from "recharts"
 import { RefreshCw } from "lucide-react"
 import api from "@/lib/api"
+import { useLiveRefresh } from "@/lib/live"
 import type { IndexHistoryPoint, IndexSnapshot } from "@/types"
 import { formatCurrency, formatPercent, getChangeColor } from "@/lib/utils"
 import { WidgetLoading, WidgetError } from "@/components/dashboard/widget"
@@ -35,8 +36,8 @@ export default function ChartsPage() {
     }
   }, [symbol])
 
-  const loadHistory = useCallback(async () => {
-    setLoading(true)
+  const loadHistory = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
     try {
       const res = await api.get<{ points: IndexHistoryPoint[] }>(
         `/indices/${symbol}/history?range=${range}`
@@ -54,15 +55,18 @@ export default function ChartsPage() {
 
   useEffect(() => {
     mounted.current = true
-    loadIndices()
     return () => {
       mounted.current = false
     }
-  }, [loadIndices])
+  }, [])
 
-  useEffect(() => {
-    loadHistory()
-  }, [loadHistory])
+  useLiveRefresh(
+    () => {
+      loadIndices()
+      loadHistory(true)
+    },
+    [loadIndices, loadHistory]
+  )
 
   const chartData = points.map((p) => ({
     ...p,

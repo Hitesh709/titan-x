@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import api from "@/lib/api"
+import { useLiveRefresh } from "@/lib/live"
 import type { PerformanceReport } from "@/types"
 import { formatCurrency, formatPercent } from "@/lib/utils"
 import { WidgetLoading, WidgetError } from "@/components/dashboard/widget"
@@ -28,11 +29,12 @@ export default function PortfolioPerformancePage() {
 
   useEffect(() => {
     mounted.current = true
-    load()
     return () => {
       mounted.current = false
     }
-  }, [load])
+  }, [])
+
+  useLiveRefresh(() => void load(), [load])
 
   return (
     <div className="space-y-6">

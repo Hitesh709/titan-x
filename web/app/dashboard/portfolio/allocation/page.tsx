@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip, Legend } from "recharts"
 import { useRouter } from "next/navigation"
 import api from "@/lib/api"
+import { useLiveRefresh } from "@/lib/live"
 import type { PaperPosition } from "@/types"
 import { formatCurrency } from "@/lib/utils"
 import { WidgetLoading, WidgetError } from "@/components/dashboard/widget"
@@ -33,11 +34,12 @@ export default function PortfolioAllocationPage() {
 
   useEffect(() => {
     mounted.current = true
-    load()
     return () => {
       mounted.current = false
     }
-  }, [load])
+  }, [])
+
+  useLiveRefresh(() => void load(), [load])
 
   const total = positions.reduce((s, p) => s + p.market_value, 0)
   const chartData = positions

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, Legend } from "recharts"
 import { TrendingUp, TrendingDown, Minus, Activity, Shield, RefreshCw } from "lucide-react"
 import api from "@/lib/api"
+import { useLiveRefresh } from "@/lib/live"
 import type { BreadthSummary, ADLinePoint, OscillatorPoint, HighLowPoint, VolumeBreadthPoint } from "@/types"
 import { getChangeColor, formatDate } from "@/lib/utils"
 import { WidgetLoading, WidgetError, RefreshButton } from "@/components/dashboard/widget"
@@ -55,11 +56,12 @@ export default function BreadthPage() {
 
   useEffect(() => {
     mounted.current = true
-    load()
     return () => {
       mounted.current = false
     }
-  }, [load])
+  }, [])
+
+  useLiveRefresh(() => void load(true), [load])
 
   const handleRefresh = () => {
     setRefreshing(true)

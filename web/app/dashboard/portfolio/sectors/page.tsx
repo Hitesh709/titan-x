@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip, Legend } from "recharts"
 import api from "@/lib/api"
+import { useLiveRefresh } from "@/lib/live"
 import type { SectorExposure } from "@/types"
 import { formatCurrency } from "@/lib/utils"
 import { WidgetLoading, WidgetError } from "@/components/dashboard/widget"
@@ -31,11 +32,12 @@ export default function PortfolioSectorsPage() {
 
   useEffect(() => {
     mounted.current = true
-    load()
     return () => {
       mounted.current = false
     }
-  }, [load])
+  }, [])
+
+  useLiveRefresh(() => void load(), [load])
 
   const chartData = sectors.map((s) => ({ name: s.sector, value: Number(s.market_value.toFixed(2)) }))
 

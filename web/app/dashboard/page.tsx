@@ -17,9 +17,9 @@ import { TopMoversWidget } from "@/components/dashboard/TopMovers"
 import { SectorHeatmap } from "@/components/dashboard/SectorHeatmap"
 import { RecentAlertsWidget } from "@/components/dashboard/RecentAlerts"
 import type { NewsRow } from "@/components/dashboard/types"
+import { useLiveRefresh } from "@/lib/live"
 
 const PERIODS = ["1W", "1M", "3M", "6M", "YTD"] as const
-const REFRESH_INTERVAL_MS = 60_000
 
 function normalizeNews(
   marketNews: NewsArticle[],
@@ -95,15 +95,12 @@ export default function DashboardPage() {
 
   useEffect(() => {
     mounted.current = true
-    void load()
-    const interval = setInterval(() => {
-      void load(true)
-    }, REFRESH_INTERVAL_MS)
     return () => {
       mounted.current = false
-      clearInterval(interval)
     }
-  }, [load])
+  }, [])
+
+  useLiveRefresh(() => void load(true), [load])
 
   const handleRefresh = () => {
     setRefreshing(true)

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { TrendingUp, TrendingDown } from "lucide-react"
 import api from "@/lib/api"
+import { useLiveRefresh } from "@/lib/live"
 import type { PaperPosition } from "@/types"
 import { formatCurrency, formatPercent, getChangeColor } from "@/lib/utils"
 import { WidgetLoading, WidgetError } from "@/components/dashboard/widget"
@@ -29,11 +30,12 @@ export default function PortfolioPnlPage() {
 
   useEffect(() => {
     mounted.current = true
-    load()
     return () => {
       mounted.current = false
     }
-  }, [load])
+  }, [])
+
+  useLiveRefresh(() => void load(), [load])
 
   const totalUnrealized = positions.reduce((s, p) => s + p.unrealized_pnl, 0)
   const totalRealized = positions.reduce((s, p) => s + p.realized_pnl, 0)

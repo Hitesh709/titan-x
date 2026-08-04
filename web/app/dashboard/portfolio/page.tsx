@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { ArrowUpRight, ArrowDownRight, RefreshCw } from "lucide-react"
 import api from "@/lib/api"
+import { useLiveRefresh } from "@/lib/live"
 import type { PaperAccountSummary, PaperPosition } from "@/types"
 import { formatCurrency, formatPercent, getChangeColor } from "@/lib/utils"
 import { WidgetLoading, WidgetError, RefreshButton } from "@/components/dashboard/widget"
@@ -43,11 +44,12 @@ export default function PortfolioHoldingsPage() {
 
   useEffect(() => {
     mounted.current = true
-    load()
     return () => {
       mounted.current = false
     }
-  }, [load])
+  }, [])
+
+  useLiveRefresh(() => void load(true), [load])
 
   const handleRefresh = () => {
     setRefreshing(true)

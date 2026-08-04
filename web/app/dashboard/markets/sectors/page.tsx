@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { TrendingUp, TrendingDown, Minus, RefreshCw } from "lucide-react"
 import api from "@/lib/api"
+import { useLiveRefresh } from "@/lib/live"
 import type { SectorRanking, SectorRotation } from "@/types"
 import { formatPercent, getChangeColor, formatDate } from "@/lib/utils"
 import { WidgetLoading, WidgetError, RefreshButton } from "@/components/dashboard/widget"
@@ -49,11 +50,12 @@ export default function SectorsPage() {
 
   useEffect(() => {
     mounted.current = true
-    load()
     return () => {
       mounted.current = false
     }
-  }, [load])
+  }, [])
+
+  useLiveRefresh(() => void load(true), [load])
 
   const handleRefresh = () => {
     setRefreshing(true)

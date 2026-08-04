@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/AuthContext"
+import { startLiveTicker } from "@/lib/live"
 import {
   LayoutDashboard, BarChart3, Briefcase, TrendingUp, Newspaper,
   Bell, Star, Settings, LogOut, ChevronLeft, ChevronRight,
@@ -39,6 +40,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       router.replace("/login")
     }
   }, [loading, user, router])
+
+  useEffect(() => startLiveTicker(), [])
 
   const handleVerifyClick = async () => {
     if (!user || sendingVerification) return

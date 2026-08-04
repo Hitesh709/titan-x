@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, RefreshCw } from "lucide-react"
 import api from "@/lib/api"
+import { useLiveRefresh } from "@/lib/live"
 import type { IndexSnapshot } from "@/types"
 import { formatCurrency, formatPercent, getChangeColor, formatDate } from "@/lib/utils"
 import { WidgetLoading, WidgetError, RefreshButton } from "@/components/dashboard/widget"
@@ -37,11 +38,12 @@ export default function MarketsPage() {
 
   useEffect(() => {
     mounted.current = true
-    load()
     return () => {
       mounted.current = false
     }
-  }, [load])
+  }, [])
+
+  useLiveRefresh(() => void load(true), [load])
 
   const handleRefresh = () => {
     setRefreshing(true)

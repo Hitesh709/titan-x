@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import api from "@/lib/api"
+import { useLiveRefresh } from "@/lib/live"
 import type { EquityCurvePoint, PaperAccountSummary } from "@/types"
 import { formatCurrency } from "@/lib/utils"
 import { WidgetLoading, WidgetError } from "@/components/dashboard/widget"
@@ -38,11 +39,12 @@ export default function PortfolioProfitPage() {
 
   useEffect(() => {
     mounted.current = true
-    load()
     return () => {
       mounted.current = false
     }
-  }, [load])
+  }, [])
+
+  useLiveRefresh(() => void load(), [load])
 
   const chartData = useMemo(() => curve.map((p) => ({ date: p.date, equity: p.equity })), [curve])
 
