@@ -193,35 +193,77 @@ class SectorEngine:
         self._enrich_rotation_signal(all_results)
         return all_results
 
+    async def _load_latest_stored(
+        self, end_date: date | None = None,
+    ) -> dict[str, Sequence[SectorPerformance]]:
+        q = select(func.max(SectorPerformance.as_of_date))
+        if end_date is not None:
+            q = q.where(SectorPerformance.as_of_date <= end_date)
+        result = await self._session.execute(q)
+        latest = result.scalar_one_or_none()
+        if latest is None:
+            return {}
+
+        rows_result = await self._session.execute(
+            select(SectorPerformance).where(SectorPerformance.as_of_date == latest)
+        )
+        grouped: dict[str, list[SectorPerformance]] = {}
+        for r in rows_result.scalars().all():
+            grouped.setdefault(r.sector, []).append(r)
+        return grouped
+
     async def get_ranking(
         self, end_date: date | None = None,
     ) -> list[dict[str, Any]]:
-        results = await self.compute_all_sectors(end_date, store=False)
-        return [
-            {
-                "rank": r.get("rank"), "sector": r["sector"],
-                "momentum_score": r.get("momentum_score"),
-                "relative_strength": r.get("relative_strength"),
-                "ytd_return": r.get("ytd_return"),
-                "constituent_count": r.get("constituent_count"),
-                "periods": {k: r["periods"][k] for k in ["1M", "3M", "6M", "1Y"]},
-                "rotation_signal": r.get("rotation_signal"),
-            }
-            for r in results
-        ]
+        stored = await self._load_latest_stored(end_date)
+        if not stored:
+            return []
+
+        results: list[dict[str, Any]] = []
+        for sector, rows in stored.items():
+            by_label = {r.period_label: r for r in rows}
+            results.append({
+                "rank": None,
+                "sector": sector,
+                "momentum_score": next(
+                    (r.momentum_score for r in rows if r.momentum_score is not None), None,
+                ),
+                "relative_strength": next(
+                    (r.relative_strength for r in rows if r.relative_strength is not None), None,
+                ),
+                "ytd_return": by_label.get("YTD").return_pct if by_label.get("YTD") else None,
+                "constituent_count": next(
+                    (r.constituent_count for r in rows if r.constituent_count is not None), None,
+                ),
+                "periods": {
+                    label: (by_label.get(label).return_pct if by_label.get(label) else None)
+                    for label in ["1M", "3M", "6M", "1Y"]
+                },
+                "rotation_signal": None,
+            })
+
+        results.sort(key=lambda x: x.get("momentum_score") if x.get("momentum_score") is not None else -9999, reverse=True)
+        for rank, r in enumerate(results, 1):
+            r["rank"] = rank
+        self._enrich_rotation_signal(results)
+        return results
 
     async def get_rotation(
         self, end_date: date | None = None,
     ) -> dict[str, Any]:
-        sectors = await self.compute_all_sectors(end_date, store=False)
-        self._enrich_rotation_signal(sectors)
+        sectors = await self.get_ranking(end_date)
+        as_of_date = None
+        if sectors:
+            stored = await self._load_latest_stored(end_date)
+            if stored:
+                as_of_date = next(iter(next(iter(stored.values())))).as_of_date
 
         leading = [s for s in sectors if s.get("rotation_signal") == "leading"]
         lagging = [s for s in sectors if s.get("rotation_signal") == "lagging"]
         neutral = [s for s in sectors if s.get("rotation_signal") == "neutral"]
 
         return {
-            "as_of_date": (end_date or date.today()).isoformat(),
+            "as_of_date": as_of_date.isoformat() if as_of_date else (end_date or date.today()).isoformat(),
             "leading": [{"sector": s["sector"], "momentum_score": s.get("momentum_score"), "rank": s.get("rank")} for s in leading],
             "lagging": [{"sector": s["sector"], "momentum_score": s.get("momentum_score"), "rank": s.get("rank")} for s in lagging],
             "neutral": [{"sector": s["sector"], "momentum_score": s.get("momentum_score"), "rank": s.get("rank")} for s in neutral],

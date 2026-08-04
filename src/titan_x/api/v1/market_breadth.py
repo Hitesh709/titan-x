@@ -51,7 +51,7 @@ class BreadthDetailResponse(BaseModel):
 
 class ADLinePoint(BaseModel):
     trade_date: str
-    advance_decline_line: float
+    advance_decline_line: float | None
 
 
 class OscillatorPoint(BaseModel):
