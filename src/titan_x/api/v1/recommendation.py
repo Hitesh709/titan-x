@@ -102,6 +102,7 @@ async def trigger_scan(
 
             structlog.get_logger("recommendation.scan").error("background_scan_failed", error=str(exc))
 
+    background_tasks = BackgroundTasks()
     background_tasks.add_task(_background)
 
     return {"started": True, "max_age_minutes": max_age_minutes, "limit": limit}
