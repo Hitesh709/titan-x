@@ -2,6 +2,7 @@ import asyncio
 import structlog
 from fastapi import FastAPI
 from redis.asyncio import Redis
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 
 from titan_x.core.config import Settings
@@ -25,6 +26,31 @@ from titan_x.models import *  # noqa: F401, F403 - register all models
 logger = structlog.get_logger(__name__)
 
 
+async def _sync_missing_columns(engine: AsyncEngine) -> None:
+    """Create_all only creates missing *tables*; it never adds columns to
+    pre-existing tables. Because the project relies on create_all against a
+    persistent DB, drift shows up as UndefinedColumn errors on deploy. This
+    idempotently adds any missing nullable columns to keep model/table in sync.
+    """
+    from sqlalchemy import inspect as sa_inspect
+
+    changed = 0
+    async with engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            existing = await conn.run_sync(
+                lambda sync_conn: {c["name"] for c in sa_inspect(sync_conn).get_columns(table.name)}
+            )
+            for col in table.columns:
+                if col.name in existing or col.primary_key:
+                    continue
+                col_type = col.type.compile(dialect=conn.dialect)
+                stmt = f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {col_type}'
+                await conn.execute(text(stmt))
+                changed += 1
+                logger.info("schema_added_column", table=table.name, column=col.name, type=col_type)
+    logger.info("schema_sync_complete", columns_added=changed)
+
+
 async def on_startup(app: FastAPI, settings: Settings) -> None:
     engine: AsyncEngine = create_engine(settings)
     session_factory = create_session_factory(engine)
@@ -33,6 +59,7 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    await _sync_missing_columns(engine)
     logger.info("database_tables_ready")
 
     if settings.seed_demo_on_startup:

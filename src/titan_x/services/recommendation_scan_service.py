@@ -33,7 +33,7 @@ SOURCE = "yahoo-live"
 RECOMMENDATION_TYPE = "LIVE_SCAN"
 
 _scan_lock: asyncio.Lock | None = None
-_scan_state: dict[str, Any] = {"running": False, "last": None}
+_scan_state: dict[str, Any] = {"running": False, "last": None, "last_error": None, "last_universe": None}
 
 
 def _get_scan_lock() -> asyncio.Lock:
@@ -124,6 +124,7 @@ class RecommendationScanService:
 
         async with lock:
             _scan_state["running"] = True
+            _scan_state["last_error"] = None
             try:
                 return await self._scan_locked(
                     max_age_minutes=max_age_minutes,
@@ -131,6 +132,10 @@ class RecommendationScanService:
                     chunk_size=chunk_size,
                     limit=limit,
                 )
+            except Exception as exc:  # noqa: BLE001
+                _scan_state["last_error"] = str(exc)
+                logger.exception("scan_failed", error=str(exc))
+                raise
             finally:
                 _scan_state["running"] = False
 
@@ -286,10 +291,12 @@ async def run_universe_load(session_factory: async_sessionmaker) -> dict[str, An
         try:
             result = await service.load_universe()
             await session.commit()
+            _scan_state["last_universe"] = {"loaded": True, **result}
             return {"loaded": True, **result}
         except Exception as exc:  # noqa: BLE001
             logger.warning("universe_load_failed", error=str(exc))
             await session.rollback()
+            _scan_state["last_universe"] = {"loaded": False, "error": str(exc)}
             return {"loaded": False, "error": str(exc)}
 
 

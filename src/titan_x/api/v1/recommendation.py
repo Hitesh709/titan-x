@@ -101,6 +101,12 @@ async def trigger_scan(
             import structlog
 
             structlog.get_logger("recommendation.scan").error("background_scan_failed", error=str(exc))
+            try:
+                from titan_x.services.recommendation_scan_service import _scan_state
+
+                _scan_state["last_error"] = str(exc)
+            except Exception:  # noqa: BLE001
+                pass
 
     background_tasks = BackgroundTasks()
     background_tasks.add_task(_background)
