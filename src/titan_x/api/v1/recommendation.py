@@ -45,7 +45,7 @@ async def list_recommendations(
     )
     return PaginatedResponse(
         items=[_rec_dict(r) for r in items],
-        total=total, limit=limit, offset=offset,
+        total=total, skip=offset, limit=limit,
     )
 
 
@@ -129,7 +129,7 @@ async def get_recommendation_history(
     total = await svc.count_recommendations(symbol=symbol)
     return PaginatedResponse(
         items=[_rec_dict(r) for r in items],
-        total=total, limit=limit, offset=offset,
+        total=total, skip=offset, limit=limit,
     )
 
 
@@ -149,7 +149,7 @@ async def get_recommendations_by_symbol(
     total = await svc.count_recommendations(symbol=symbol, status=status)
     return PaginatedResponse(
         items=[_rec_dict(r) for r in items],
-        total=total, limit=limit, offset=offset,
+        total=total, skip=offset, limit=limit,
     )
 
 
