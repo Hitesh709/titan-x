@@ -527,3 +527,54 @@ export interface PaperAnalytics {
   losing_trades: number
   breakeven_trades: number
 }
+
+export interface StockRecommendation {
+  id: number
+  symbol: string
+  direction: "BUY" | "SELL" | "HOLD"
+  confidence: number | null
+  price_target: number | null
+  current_price: number | null
+  timeframe: string | null
+  reasoning: string | null
+  recommendation_type: string | null
+  status: string
+  score: number | null
+  risk_level: string | null
+  predicted_return_pct: number | null
+  source: string | null
+  metadata_json: string | null
+  generated_at: string | null
+  expires_at: string | null
+}
+
+export interface RecommendationMeta {
+  signal: string
+  as_of_date: string
+  evidence: string[]
+  caution: string[]
+  returns: Record<string, number | null>
+  indicators?: Record<string, unknown>
+}
+
+export interface RecommendationsPage {
+  items: StockRecommendation[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface ScanStatus {
+  started?: boolean
+  reason?: string
+  running?: boolean
+  last?: {
+    universe?: number
+    scanned?: number
+    stored?: number
+    insufficient_data?: number
+    failed?: number
+    skipped_fresh?: number
+    finished_at?: string
+  } | null
+}

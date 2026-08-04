@@ -1,0 +1,303 @@
+"""Scan the full NSE universe and generate live recommendations.
+
+Fetches real daily price history from Yahoo Finance for every active company,
+computes a recommendation with the RecommendationEngine and persists it to the
+``recommendations`` table. Designed to run in the background so the app stays
+responsive while a full-market scan progresses in chunks.
+"""
+import asyncio
+import json
+from datetime import date, datetime, timedelta, timezone
+from typing import Any
+
+import structlog
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from titan_x.infrastructure.market_data_providers import (
+    MarketDataPoint,
+    YahooFinanceProvider,
+)
+from titan_x.models.company import Company
+from titan_x.models.market_breadth import MarketBreadth
+from titan_x.models.recommendation import Recommendation
+from titan_x.models.sector import SectorPerformance
+from titan_x.services.recommendation_engine import RecommendationEngine
+from titan_x.services.recommendation_service import RecommendationService
+
+logger = structlog.get_logger(__name__)
+
+DEFAULT_CONCURRENCY = 12
+DEFAULT_CHUNK_SIZE = 40
+SOURCE = "yahoo-live"
+RECOMMENDATION_TYPE = "LIVE_SCAN"
+
+_scan_lock: asyncio.Lock | None = None
+_scan_state: dict[str, Any] = {"running": False, "last": None}
+
+
+def _get_scan_lock() -> asyncio.Lock:
+    global _scan_lock
+    if _scan_lock is None:
+        _scan_lock = asyncio.Lock()
+    return _scan_lock
+
+
+def get_scan_status() -> dict[str, Any]:
+    return dict(_scan_state)
+
+
+def _point_to_dict(p: MarketDataPoint) -> dict[str, Any]:
+    return {
+        "trade_date": p.trade_date,
+        "open": p.open,
+        "high": p.high,
+        "low": p.low,
+        "close": p.close,
+        "volume": p.volume,
+    }
+
+
+class RecommendationScanService:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+        self.engine = RecommendationEngine()
+
+    async def get_active_symbols(self, limit: int | None = None) -> list[str]:
+        stmt = select(Company.symbol).where(Company.status == "active").order_by(Company.symbol)
+        result = await self.session.execute(stmt)
+        symbols = [r[0] for r in result.all()]
+        return symbols[:limit] if limit else symbols
+
+    async def _build_sector_context(self) -> dict[str, dict[str, float]]:
+        result = await self.session.execute(
+            select(SectorPerformance.sector, SectorPerformance.momentum_score, SectorPerformance.relative_strength)
+            .order_by(SectorPerformance.sector, SectorPerformance.as_of_date.desc())
+        )
+        ctx: dict[str, dict[str, float]] = {}
+        for sector, momentum, strength in result.all():
+            if sector not in ctx:
+                ctx[sector] = {
+                    "momentum_score": momentum if momentum is not None else 50.0,
+                    "relative_strength": strength if strength is not None else 50.0,
+                }
+        return ctx
+
+    async def _build_breadth_context(self) -> dict[str, Any] | None:
+        result = await self.session.execute(
+            select(MarketBreadth).order_by(MarketBreadth.trade_date.desc()).limit(1)
+        )
+        b = result.scalar_one_or_none()
+        if b is None:
+            return None
+        adv_ratio = b.advancing / b.declining if b.declining and b.declining > 0 else 1.0
+        return {
+            "index_strength_score": b.index_strength_score or 50.0,
+            "adv_decl_ratio": adv_ratio,
+        }
+
+    async def _stale_symbols(self, max_age_minutes: int | None, symbols: list[str]) -> set[str]:
+        if max_age_minutes is None or max_age_minutes <= 0:
+            return set(symbols)
+        cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=max_age_minutes)
+        result = await self.session.execute(
+            select(Recommendation.symbol, Recommendation.generated_at)
+            .where(
+                Recommendation.symbol.in_(symbols),
+                Recommendation.status == "active",
+                Recommendation.generated_at >= cutoff,
+            )
+        )
+        fresh = {r[0] for r in result.all()}
+        return {s for s in symbols if s not in fresh}
+
+    async def scan_all(
+        self,
+        max_age_minutes: int | None = 60,
+        concurrency: int = DEFAULT_CONCURRENCY,
+        chunk_size: int = DEFAULT_CHUNK_SIZE,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        lock = _get_scan_lock()
+        if lock.locked():
+            return {"started": False, "reason": "A scan is already running"}
+
+        async with lock:
+            _scan_state["running"] = True
+            try:
+                return await self._scan_locked(
+                    max_age_minutes=max_age_minutes,
+                    concurrency=concurrency,
+                    chunk_size=chunk_size,
+                    limit=limit,
+                )
+            finally:
+                _scan_state["running"] = False
+
+    async def _scan_locked(
+        self,
+        max_age_minutes: int | None,
+        concurrency: int,
+        chunk_size: int,
+        limit: int | None,
+    ) -> dict[str, Any]:
+        all_symbols = await self.get_active_symbols(limit=limit)
+        sector_ctx = await self._build_sector_context()
+        breadth_ctx = await self._build_breadth_context()
+
+        symbols = await self._stale_symbols(max_age_minutes, all_symbols)
+        symbols = sorted(symbols)
+
+        sector_by_symbol: dict[str, str | None] = {}
+        if symbols:
+            res = await self.session.execute(
+                select(Company.symbol, Company.sector).where(Company.symbol.in_(symbols))
+            )
+            for sym, sec in res.all():
+                sector_by_symbol[sym] = sec
+        else:
+            res = await self.session.execute(select(Company.symbol, Company.sector))
+            for sym, sec in res.all():
+                sector_by_symbol[sym] = sec
+
+        processed = 0
+        stored = 0
+        insufficient = 0
+        failed = 0
+        skipped = 0
+
+        provider = YahooFinanceProvider()
+        try:
+            sem = asyncio.Semaphore(concurrency)
+
+            async def fetch(symbol: str) -> list[dict[str, Any]] | None:
+                async with sem:
+                    try:
+                        points = await provider.get_historical_prices(symbol, synthetic_ok=False)
+                    except Exception:  # noqa: BLE001
+                        return None
+                if not points:
+                    return None
+                return [_point_to_dict(p) for p in points]
+
+            svc = RecommendationService(self.session)
+            for start in range(0, len(symbols), chunk_size):
+                chunk = symbols[start:start + chunk_size]
+                results = await asyncio.gather(*[fetch(s) for s in chunk])
+
+                for symbol, points in zip(chunk, results):
+                    processed += 1
+                    if points is None:
+                        failed += 1
+                        continue
+                    rec = self.engine.build(
+                        symbol, points,
+                        sector_ctx=sector_ctx.get(sector_by_symbol.get(symbol) or ""),
+                        breadth_ctx=breadth_ctx,
+                    )
+                    if rec.get("insufficient_data"):
+                        insufficient += 1
+                        continue
+                    await self._store(rec, svc)
+                    stored += 1
+
+                await self.session.flush()
+                await self.session.commit()
+        finally:
+            await provider.close()
+
+        result = {
+            "started": True,
+            "universe": len(all_symbols),
+            "scanned": processed,
+            "stored": stored,
+            "insufficient_data": insufficient,
+            "failed": failed,
+            "skipped_fresh": len(all_symbols) - len(symbols),
+        }
+        _scan_state["last"] = {
+            "universe": result["universe"],
+            "scanned": result["scanned"],
+            "stored": result["stored"],
+            "insufficient_data": result["insufficient_data"],
+            "failed": result["failed"],
+            "skipped_fresh": result["skipped_fresh"],
+            "finished_at": datetime.now(timezone.utc).isoformat(),
+        }
+        return result
+
+    async def _store(self, rec: dict[str, Any], svc: RecommendationService) -> None:
+        await self.session.execute(
+            delete(Recommendation).where(Recommendation.symbol == rec["symbol"])
+        )
+
+        signal = rec["signal"]
+        direction = "BUY" if signal in ("strong_buy", "buy") else "SELL" if signal in ("strong_sell", "sell") else "HOLD"
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+        evidence = rec["evidence"]
+        caution = rec["caution"]
+        reasoning_lines = [f"{signal.upper()} recommendation for {rec['symbol']}"]
+        if evidence:
+            reasoning_lines.append("")
+            reasoning_lines.append("SUPPORTING EVIDENCE")
+            reasoning_lines.extend(f"  - {e}" for e in evidence)
+        if caution:
+            reasoning_lines.append("")
+            reasoning_lines.append("REASONS FOR CAUTION")
+            reasoning_lines.extend(f"  - {c}" for c in caution)
+
+        metadata = {
+            "signal": signal,
+            "as_of_date": rec["as_of_date"],
+            "evidence": evidence,
+            "caution": caution,
+            "returns": rec["returns"],
+            "indicators": rec["indicators"],
+        }
+
+        await svc.create_recommendation(
+            symbol=rec["symbol"],
+            direction=direction,
+            confidence=rec["confidence"],
+            price_target=rec["price_target"],
+            current_price=rec["current_price"],
+            timeframe=f"{rec['holding_period_days']} days",
+            reasoning="\n".join(reasoning_lines),
+            recommendation_type=RECOMMENDATION_TYPE,
+            score=rec["score"],
+            risk_level=rec["risk_level"],
+            predicted_return_pct=rec["expected_return_pct"],
+            source=SOURCE,
+            metadata_json=json.dumps(metadata),
+            status="active",
+            expires_at=now + timedelta(days=1),
+            inputs_json=json.dumps(rec["factors"]),
+            model_version_label="live-scan-v1",
+        )
+
+
+async def run_universe_load(session_factory: async_sessionmaker) -> dict[str, Any]:
+    """Ensure the NSE universe is present; runs on startup and on demand."""
+    from titan_x.services.nse_universe_service import NSEUniverseService
+
+    async with session_factory() as session:
+        service = NSEUniverseService(session)
+        try:
+            result = await service.load_universe()
+            await session.commit()
+            return {"loaded": True, **result}
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("universe_load_failed", error=str(exc))
+            await session.rollback()
+            return {"loaded": False, "error": str(exc)}
+
+
+async def run_background_scan(
+    session_factory: async_sessionmaker,
+    max_age_minutes: int | None = 60,
+    limit: int | None = None,
+) -> dict[str, Any]:
+    async with session_factory() as session:
+        service = RecommendationScanService(session)
+        return await service.scan_all(max_age_minutes=max_age_minutes, limit=limit)

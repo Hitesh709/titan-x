@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from starlette.background import BackgroundTasks
 
 from titan_x.api import deps
+from titan_x.api.deps import get_app_session_factory
 from titan_x.api.schemas import PaginatedResponse
 from titan_x.models.user import User
 from titan_x.services.recommendation_service import RecommendationService
@@ -63,6 +65,46 @@ async def get_top_recommendations(
         "recommendations": [_rec_dict(r) for r in items],
         "count": len(items),
     }
+
+
+@router.get("/recommendations/scan/status")
+async def scan_status(
+    _: User = Depends(deps.get_current_active_user),
+):
+    from titan_x.services.recommendation_scan_service import get_scan_status
+
+    return get_scan_status()
+
+
+@router.post("/recommendations/scan")
+async def trigger_scan(
+    max_age_minutes: int | None = Query(default=60, ge=0),
+    limit: int | None = Query(default=None, ge=1, le=2000),
+    session_factory=Depends(get_app_session_factory),
+    _: User = Depends(deps.get_current_active_user),
+):
+    """Start a background full-market recommendation scan.
+
+    Returns immediately; results appear incrementally as the scan progresses.
+    The frontend polls ``GET /recommendations`` every few seconds to pick them up.
+    """
+    from titan_x.services.recommendation_scan_service import (
+        run_background_scan,
+        run_universe_load,
+    )
+
+    async def _background() -> None:
+        try:
+            await run_universe_load(session_factory)
+            await run_background_scan(session_factory, max_age_minutes=max_age_minutes, limit=limit)
+        except Exception as exc:  # noqa: BLE001
+            import structlog
+
+            structlog.get_logger("recommendation.scan").error("background_scan_failed", error=str(exc))
+
+    background_tasks.add_task(_background)
+
+    return {"started": True, "max_age_minutes": max_age_minutes, "limit": limit}
 
 
 @router.get("/recommendations/history")
@@ -157,6 +199,7 @@ def _rec_dict(r) -> dict:
         "risk_level": r.risk_level,
         "predicted_return_pct": r.predicted_return_pct,
         "source": r.source,
+        "metadata_json": r.metadata_json,
         "inputs_json": r.inputs_json,
         "model_version_id": r.model_version_id,
         "model_version_label": r.model_version_label,

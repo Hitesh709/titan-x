@@ -41,6 +41,14 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
         await seed_all(session_factory)
         logger.info("demo_seeded_on_startup")
 
+    try:
+        from titan_x.services.recommendation_scan_service import run_universe_load
+
+        result = await run_universe_load(session_factory)
+        logger.info("nse_universe_startup", **result)
+    except Exception:  # noqa: BLE001
+        logger.exception("nse_universe_startup_failed")
+
     redis: Redis | None = None
     try:
         redis = Redis.from_url(str(settings.redis_url), encoding="utf-8", decode_responses=True)

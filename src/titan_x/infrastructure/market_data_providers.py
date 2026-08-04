@@ -161,7 +161,8 @@ class YahooFinanceProvider(MarketDataProvider):
             await self._client.aclose()
 
     async def get_historical_prices(
-        self, symbol: str, interval: str = "1d", start: date | None = None, end: date | None = None
+        self, symbol: str, interval: str = "1d", start: date | None = None, end: date | None = None,
+        synthetic_ok: bool = True,
     ) -> list[MarketDataPoint]:
         try:
             data = await self._chart(symbol, range_="1y", interval="1d")
@@ -194,6 +195,8 @@ class YahooFinanceProvider(MarketDataProvider):
                 raise RuntimeError(f"No historical rows for {symbol}")
             return points
         except Exception:
+            if not synthetic_ok:
+                raise
             return await MockMarketDataProvider().get_historical_prices(symbol, start=start, end=end)
 
     async def get_quote(self, symbol: str) -> dict:

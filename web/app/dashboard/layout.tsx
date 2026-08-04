@@ -18,6 +18,7 @@ const sidebarItems = [
   { icon: Briefcase, label: "Portfolio", href: "/dashboard/portfolio" },
   { icon: BarChart3, label: "Analysis", href: "/dashboard/analysis" },
   { icon: BookOpen, label: "Research", href: "/dashboard/research" },
+  { icon: Brain, label: "Recommendations", href: "/dashboard/recommendations" },
   { icon: Newspaper, label: "News & Insights", href: "/dashboard/news" },
   { icon: Activity, label: "Trading", href: "/dashboard/trading" },
   { icon: TestTube, label: "Backtesting", href: "/dashboard/backtest" },
