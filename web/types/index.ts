@@ -309,6 +309,26 @@ export interface IndicesListResponse {
   items: IndexSnapshot[]
 }
 
+export interface MarketQuote {
+  symbol: string
+  name: string
+  last_price: number | null
+  change: number | null
+  change_percent: number | null
+  volume: number
+  market_cap?: number | null
+  exchange: string
+  market_state?: string
+  currency: string
+  timestamp: string
+  source?: string
+}
+
+export interface BatchQuotesResponse {
+  quotes: MarketQuote[]
+  count: number
+}
+
 export interface IndexHistoryPoint {
   trade_date: string
   open: number

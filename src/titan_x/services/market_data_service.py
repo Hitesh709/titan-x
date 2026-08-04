@@ -1,3 +1,5 @@
+import asyncio
+import time
 from datetime import date, datetime
 
 from sqlalchemy import select
@@ -10,6 +12,9 @@ from titan_x.infrastructure.market_data_providers import (
 )
 from titan_x.models.company import Company
 from titan_x.models.price import DailyPrice
+
+_quote_cache: dict[str, tuple[float, dict]] = {}
+_QUOTE_CACHE_TTL_SECONDS = 4.0
 
 
 class MarketDataService:
@@ -89,6 +94,49 @@ class MarketDataService:
         provider_name = self._resolve_provider(provider_name)
         provider = get_market_data_provider(provider_name, api_key)
         return await provider.get_quote(symbol.upper())
+
+    async def get_quotes(self, symbols: list[str]) -> dict:
+        """Live quotes for many symbols in parallel, deduplicated by a short cache."""
+        symbols = [s.upper() for s in symbols]
+        provider = get_market_data_provider(self._resolve_provider(None))
+        now = time.monotonic()
+        out: list[dict] = []
+        to_fetch: list[str] = []
+        for s in symbols:
+            hit = _quote_cache.get(s)
+            if hit and now - hit[0] < _QUOTE_CACHE_TTL_SECONDS:
+                out.append(hit[1])
+            else:
+                to_fetch.append(s)
+                out.append(None)
+        if to_fetch:
+            try:
+                results = await asyncio.gather(
+                    *[provider.get_quote(s) for s in to_fetch],
+                    return_exceptions=True,
+                )
+            finally:
+                if hasattr(provider, "close"):
+                    await provider.close()
+            fi = 0
+            for i, s in enumerate(symbols):
+                if out[i] is None:
+                    res = results[fi]
+                    fi += 1
+                    q = res if not isinstance(res, Exception) else {
+                        "symbol": s,
+                        "name": s,
+                        "last_price": None,
+                        "change": None,
+                        "change_percent": None,
+                        "volume": 0,
+                        "exchange": "NSE",
+                        "currency": "INR",
+                        "source": "error",
+                    }
+                    _quote_cache[s] = (now, q)
+                    out[i] = q
+        return {"quotes": out, "count": len(out)}
 
     async def get_company_profile(
         self,

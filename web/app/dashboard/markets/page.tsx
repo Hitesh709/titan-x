@@ -6,6 +6,7 @@ import api from "@/lib/api"
 import type { IndexSnapshot } from "@/types"
 import { formatCurrency, formatPercent, getChangeColor, formatDate } from "@/lib/utils"
 import { WidgetLoading, WidgetError, RefreshButton } from "@/components/dashboard/widget"
+import LiveQuotes from "@/components/dashboard/LiveQuotes"
 
 const HERO_INDICES = ["NIFTY", "SENSEX", "BANKNIFTY"]
 
@@ -72,6 +73,9 @@ export default function MarketsPage() {
         <WidgetError message={error} onRetry={handleRefresh} />
       ) : (
         <>
+          {/* Live stock quotes (auto-refresh every 5s) */}
+          <LiveQuotes />
+
           {/* Hero index cards */}
           <div className="grid gap-4 md:grid-cols-3">
             {hero.map((idx) => {

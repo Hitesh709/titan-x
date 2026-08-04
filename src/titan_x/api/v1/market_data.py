@@ -47,6 +47,21 @@ async def fetch_historical(
     return result
 
 
+@router.get("/quotes")
+async def get_batch_quotes(
+    symbols: str,
+    user: Annotated[User, Depends(get_current_active_user)],
+    svc: Annotated[MarketDataService, Depends(get_market_data_service)],
+):
+    syms = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+    if not syms or len(syms) > 100:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Provide 1-100 comma-separated symbols",
+        )
+    return await svc.get_quotes(syms)
+
+
 @router.get("/quote/{symbol}")
 async def get_quote(
     symbol: str,
