@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import Link from "next/link"
 import { TrendingUp, TrendingDown, Radio } from "lucide-react"
 import api from "@/lib/api"
 import type { BatchQuotesResponse, MarketQuote } from "@/types"
@@ -94,10 +95,12 @@ export default function LiveQuotes() {
                 const state = q.last_price == null ? "text-gray-500" : getChangeColor(q.change ?? 0)
                 return (
                   <tr key={q.symbol} className="border-b border-titan-800/20 hover:bg-white/5 transition-colors">
-                    <td className="py-3 px-5">
-                      <span className="text-white font-semibold">{q.symbol}</span>
-                      <span className="ml-2 text-[10px] text-emerald-500/80">{q.exchange}</span>
-                    </td>
+<td className="py-3 px-5">
+  <Link href={`/dashboard/stocks/${q.symbol}`} className="text-white font-semibold hover:text-titan-400 transition-colors">
+    {q.symbol}
+  </Link>
+  <span className="ml-2 text-[10px] text-emerald-500/80">{q.exchange}</span>
+</td>
                     <td className="py-3 px-4 text-gray-400 hidden md:table-cell">{q.name}</td>
                     <td className={`py-3 px-4 text-right font-medium ${state}`}>{num(q.last_price)}</td>
                     <td className={`py-3 px-4 text-right font-medium ${state}`}>

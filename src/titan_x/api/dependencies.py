@@ -70,11 +70,25 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 async def require_api_key(
     supplied_key: Annotated[str | None, Security(api_key_header)],
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Security(bearer_scheme)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> None:
-    expected_key = settings.api_key.get_secret_value()
-    if supplied_key is None or not secrets.compare_digest(supplied_key, expected_key):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
+    if supplied_key is not None and secrets.compare_digest(
+        supplied_key, settings.api_key.get_secret_value()
+    ):
+        return
+    if credentials is not None:
+        try:
+            payload = decode_token(
+                credentials.credentials,
+                settings.jwt_secret_key.get_secret_value(),
+                settings.jwt_algorithm,
+            )
+        except ValueError:
+            payload = None
+        if payload and payload.get("type") == "access":
+            return
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
 
 
 async def request_session(request: Request) -> AsyncIterator[AsyncSession]:

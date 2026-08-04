@@ -1,6 +1,7 @@
 "use client"
 
 import { Star, Plus, MoreHorizontal, ExternalLink, TrendingUp, TrendingDown } from "lucide-react"
+import Link from "next/link"
 import { getChangeColor } from "@/lib/utils"
 
 const watchlists = [
@@ -59,7 +60,7 @@ export default function WatchlistsPage() {
               {list.symbols.map((s) => (
                 <div key={s.symbol} className="flex items-center justify-between py-2 px-3 bg-white/5 rounded-lg">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-white">{s.symbol}</span>
+                    <Link href={`/dashboard/stocks/${s.symbol}`} className="text-sm font-medium text-white hover:text-titan-400 transition-colors">{s.symbol}</Link>
                   </div>
                   <div className="flex items-center gap-4">
                     <span className="text-sm text-white">₹{s.price.toFixed(2)}</span>

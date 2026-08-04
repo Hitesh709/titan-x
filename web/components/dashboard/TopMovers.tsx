@@ -1,6 +1,7 @@
 "use client"
 
 import { TrendingUp, TrendingDown } from "lucide-react"
+import Link from "next/link"
 import type { HeatmapMover } from "@/types"
 import { formatCurrency } from "@/lib/utils"
 import { WidgetCard, WidgetLoading, WidgetEmpty, WidgetError, ChangePill } from "./widget"
@@ -39,7 +40,12 @@ export function TopMoversWidget({
           {data.map((m) => (
             <div key={m.symbol} className="flex items-center justify-between py-2 border-b border-titan-800/20 last:border-0">
               <div className="flex items-center gap-3">
-                <span className="text-sm font-semibold text-white">{m.symbol}</span>
+                <Link
+  href={`/dashboard/stocks/${m.symbol}`}
+  className="text-sm font-semibold text-white hover:text-titan-400 transition-colors"
+>
+  {m.symbol}
+</Link>
                 <span className="text-xs text-gray-600">
                   {m.close !== null && m.close !== undefined ? formatCurrency(m.close) : "—"}
                 </span>

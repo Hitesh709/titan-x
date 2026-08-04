@@ -1,6 +1,7 @@
 "use client"
 
 import { Newspaper, ExternalLink, TrendingUp, TrendingDown, Minus } from "lucide-react"
+import Link from "next/link"
 
 const newsItems = [
   { title: "Reliance Jio Adds 8.2M Subscribers, RIL Shares Rise 3% on Telecom Growth", source: "Economic Times", sentiment: "positive" as const, time: "2h ago", summary: "Reliance's telecom arm reported strong subscriber additions in the June quarter, boosting the conglomerate's digital services revenue and lifting shares of the Nifty heavyweight.", symbols: ["RELIANCE"] },
@@ -46,12 +47,12 @@ export default function NewsPage() {
                 <p className="text-sm text-gray-400 leading-relaxed">{item.summary}</p>
                 <div className="flex items-center gap-2 mt-3">
                   <div className="flex gap-1.5">
-                    {item.symbols.map((sym) => (
-                      <span key={sym} className={`badge text-[10px] ${
-                        item.sentiment === "positive" ? "badge-green" :
-                        item.sentiment === "negative" ? "badge-red" : "badge-blue"
-                      }`}>{sym}</span>
-                    ))}
+{item.symbols.map((sym) => (
+  <Link key={sym} href={`/dashboard/stocks/${sym}`} className={`badge text-[10px] hover:opacity-80 ${
+    item.sentiment === "positive" ? "badge-green" :
+    item.sentiment === "negative" ? "badge-red" : "badge-blue"
+  }`}>{sym}</Link>
+))}
                   </div>
                   <button className="ml-auto text-gray-500 hover:text-titan-400 transition-colors">
                     <ExternalLink size={14} />

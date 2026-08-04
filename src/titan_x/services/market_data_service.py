@@ -167,5 +167,33 @@ class MarketDataService:
 
         return profile
 
+    async def get_history(
+        self,
+        symbol: str,
+        provider_name: str | None = None,
+        api_key: str | None = None,
+    ) -> dict:
+        provider_name = self._resolve_provider(provider_name)
+        provider = get_market_data_provider(provider_name, api_key)
+        try:
+            points = await provider.get_historical_prices(symbol.upper())
+        finally:
+            if hasattr(provider, "close"):
+                await provider.close()
+        return {
+            "symbol": symbol.upper(),
+            "points": [
+                {
+                    "trade_date": p.trade_date.isoformat(),
+                    "open": p.open,
+                    "high": p.high,
+                    "low": p.low,
+                    "close": p.close,
+                    "volume": p.volume,
+                }
+                for p in points
+            ],
+        }
+
     def get_available_providers(self) -> list[str]:
         return ["mock", "alphavantage", "yahoo", "nse"]

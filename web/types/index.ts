@@ -329,6 +329,22 @@ export interface BatchQuotesResponse {
   count: number
 }
 
+export interface CompanyProfile {
+  symbol: string
+  name: string
+  sector: string | null
+  industry: string | null
+  market_cap?: number | null
+  exchange: string
+  currency: string
+  source?: string
+}
+
+export interface StockHistoryResponse {
+  symbol: string
+  points: IndexHistoryPoint[]
+}
+
 export interface IndexHistoryPoint {
   trade_date: string
   open: number

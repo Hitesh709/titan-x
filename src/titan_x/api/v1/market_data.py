@@ -76,6 +76,20 @@ async def get_quote(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
+@router.get("/history/{symbol}")
+async def get_stock_history(
+    symbol: str,
+    user: Annotated[User, Depends(get_current_active_user)],
+    svc: Annotated[MarketDataService, Depends(get_market_data_service)],
+    provider: str = Query(None),
+    api_key: str | None = Query(None),
+):
+    try:
+        return await svc.get_history(symbol, provider_name=provider, api_key=api_key)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
 @router.get("/profile/{symbol}")
 async def get_company_profile(
     symbol: str,

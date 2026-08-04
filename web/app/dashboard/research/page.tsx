@@ -1,6 +1,7 @@
 "use client"
 
 import { BookOpen, Building2, Globe, FileText, TrendingUp, ExternalLink } from "lucide-react"
+import Link from "next/link"
 
 const companies = [
   { symbol: "RELIANCE", name: "Reliance Industries Ltd", sector: "Energy · Oil & Gas", price: 1300.00, rating: "Strong Buy", target: 1550, employees: "330,000", founded: "1966" },
@@ -36,8 +37,8 @@ export default function ResearchPage() {
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h3 className="text-lg font-semibold text-white">{c.name}</h3>
-                    <span className="badge-blue">{c.symbol}</span>
+<h3 className="text-lg font-semibold text-white">{c.name}</h3>
+<Link href={`/dashboard/stocks/${c.symbol}`} className="badge-blue hover:bg-titan-600/30 transition-colors">{c.symbol}</Link>
                   </div>
                   <p className="text-sm text-gray-500 mt-0.5">{c.sector} · Founded {c.founded} · {c.employees} employees</p>
                 </div>

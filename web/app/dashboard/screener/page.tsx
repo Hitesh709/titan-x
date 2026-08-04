@@ -1,6 +1,7 @@
 "use client"
 
 import { Target, Filter, Search, Save, TrendingUp, TrendingDown } from "lucide-react"
+import Link from "next/link"
 import { getChangeColor } from "@/lib/utils"
 
 const screeners = [
@@ -93,9 +94,9 @@ export default function ScreenerPage() {
             <tbody>
               {screenerResults.map((s) => (
                 <tr key={s.symbol} className="border-b border-titan-800/20 hover:bg-white/5">
-                  <td className="py-3 px-4">
-                    <span className="text-white font-medium">{s.symbol}</span>
-                  </td>
+<td className="py-3 px-4">
+  <Link href={`/dashboard/stocks/${s.symbol}`} className="text-white font-medium hover:text-titan-400 transition-colors">{s.symbol}</Link>
+</td>
                   <td className="py-3 px-4 text-right text-white">₹{s.price.toFixed(2)}</td>
                   <td className={`py-3 px-4 text-right font-medium ${getChangeColor(s.change)}`}>
                     <div className="flex items-center justify-end gap-1">
