@@ -136,11 +136,7 @@ async def list_research_companies(
     else:
         def _key(i):
             v = i.get(sort_by)
-            if v is None:
-                return ("__none__",)
-            if isinstance(v, (int, float)):
-                return (0, float(v))
-            return (1, str(v).lower())
+            return (v is not None, v)
         items.sort(key=_key, reverse=reverse)
 
     total = len(items)
