@@ -78,6 +78,7 @@ async def scan_status(
 
 @router.post("/recommendations/scan")
 async def trigger_scan(
+    background_tasks: BackgroundTasks,
     max_age_minutes: int | None = Query(default=60, ge=0),
     limit: int | None = Query(default=None, ge=1, le=2000),
     session_factory=Depends(get_app_session_factory),
@@ -108,7 +109,6 @@ async def trigger_scan(
             except Exception:  # noqa: BLE001
                 pass
 
-    background_tasks = BackgroundTasks()
     background_tasks.add_task(_background)
 
     return {"started": True, "max_age_minutes": max_age_minutes, "limit": limit}
