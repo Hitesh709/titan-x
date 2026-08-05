@@ -1,8 +1,26 @@
 from collections.abc import AsyncIterator
 
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 from titan_x.core.config import Settings
+
+
+def _set_sqlite_pragmas(dbapi_connection, _connection_record) -> None:
+    """Enable WAL + busy timeout on every SQLite connection.
+
+    The default rollback-journal mode blocks writers during long scans/ingestion
+    and fails immediately on lock contention, surfacing as intermittent 500s on
+    write endpoints (e.g. login). WAL allows concurrent readers + a single
+    writer, and busy_timeout makes writers wait instead of erroring.
+    """
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.execute("PRAGMA busy_timeout=30000")
+    finally:
+        cursor.close()
 
 
 def create_engine(settings: Settings) -> AsyncEngine:
@@ -12,6 +30,7 @@ def create_engine(settings: Settings) -> AsyncEngine:
         connect_args["server_settings"] = {"application_name": settings.app_name}
     elif url.startswith("sqlite"):
         connect_args["check_same_thread"] = False
+        connect_args["timeout"] = 30
 
     kwargs: dict = dict(echo=settings.sql_echo, connect_args=connect_args or {})
     if not url.startswith("sqlite"):
@@ -19,7 +38,10 @@ def create_engine(settings: Settings) -> AsyncEngine:
         kwargs["pool_size"] = settings.db_pool_size
         kwargs["max_overflow"] = settings.db_max_overflow
 
-    return create_async_engine(url, **kwargs)
+    engine = create_async_engine(url, **kwargs)
+    if url.startswith("sqlite"):
+        event.listen(engine.sync_engine, "connect", _set_sqlite_pragmas)
+    return engine
 
 
 def create_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
