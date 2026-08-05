@@ -71,7 +71,7 @@ def _rec_fields(r: Recommendation) -> dict:
 
 async def _price_days(session: AsyncSession) -> dict[str, int]:
     rows = (await session.execute(
-        text("SELECT symbol, COUNT(*) FROM daily_price GROUP BY symbol")
+        text("SELECT symbol, COUNT(*) FROM daily_prices GROUP BY symbol")
     )).all()
     return {r[0]: int(r[1]) for r in rows}
 
