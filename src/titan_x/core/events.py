@@ -71,8 +71,15 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
     try:
         from titan_x.services.recommendation_scan_service import run_universe_load
 
-        result = await run_universe_load(session_factory)
-        logger.info("nse_universe_startup", **result)
+        async def _universe_load_later() -> None:
+            try:
+                result = await run_universe_load(session_factory)
+                logger.info("nse_universe_startup", **result)
+            except Exception:  # noqa: BLE001
+                logger.exception("nse_universe_startup_failed")
+
+        # Do not block readiness on the NSE CSV fetch (can be slow from US DCs).
+        asyncio.create_task(_universe_load_later())
     except Exception:  # noqa: BLE001
         logger.exception("nse_universe_startup_failed")
 
