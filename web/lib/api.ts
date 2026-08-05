@@ -8,6 +8,7 @@ interface RequestOptions {
   method?: string
   body?: unknown
   headers?: Record<string, string>
+  params?: Record<string, string | number | boolean | null | undefined>
   skipAuth?: boolean
   _retried?: boolean
 }
@@ -142,7 +143,7 @@ class ApiClient {
   }
 
   async request<T = unknown>(endpoint: string, options: RequestOptions = {}): Promise<T> {
-    const { method = "GET", body, headers = {}, skipAuth = false } = options
+    const { method = "GET", body, headers = {}, params, skipAuth = false } = options
     const h: Record<string, string> = {
       "Content-Type": "application/json",
       ...headers,
@@ -151,8 +152,17 @@ class ApiClient {
     if (this.accessToken) h["Authorization"] = `Bearer ${this.accessToken}`
     if (this.apiKey) h["X-API-Key"] = this.apiKey
 
+    const query = params
+      ? "?" +
+        new URLSearchParams(
+          Object.entries(params)
+            .filter(([, v]) => v !== undefined && v !== null && v !== "")
+            .map(([k, v]) => [k, String(v)])
+        ).toString()
+      : ""
+
     const doFetch = () =>
-      fetch(`${API_BASE}${endpoint}`, {
+      fetch(`${API_BASE}${endpoint}${query}`, {
         method,
         headers: h,
         body: body ? JSON.stringify(body) : undefined,

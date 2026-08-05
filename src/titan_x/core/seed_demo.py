@@ -1,8 +1,9 @@
 """Demo seed logic for the TITAN X database.
 
 Idempotent: re-running replaces the seeded rows (companies, prices, sector
-performance, market breadth) and resets the demo user's paper account,
-watchlists, AI scores, news and monitor events.
+performance, market breadth) and resets the demo user's watchlists, AI scores,
+news and monitor events. The demo user's paper account is created once and is
+never reset, so paper-trading history placed via the Trading tab survives.
 """
 import random
 from datetime import date, datetime, timedelta, timezone
@@ -15,13 +16,7 @@ from titan_x.models.company import Company
 from titan_x.models.dynamic_ai_score import DynamicAIScore
 from titan_x.models.market_breadth import MarketBreadth
 from titan_x.models.news import NewsArticle, NewsArticleCategory, NewsCategory
-from titan_x.models.paper_trading import (
-    PaperAccount,
-    PaperOrder,
-    PaperPosition,
-    PaperTrade,
-    SimulatedOrder,
-)
+from titan_x.models.paper_trading import PaperAccount
 from titan_x.models.price import DailyPrice
 from titan_x.models.sector import SectorPerformance
 from titan_x.models.user import User
@@ -219,87 +214,20 @@ async def seed_demo_user(session_factory: async_sessionmaker) -> User:
                 ))
             )
             await session.execute(delete(Watchlist).where(Watchlist.user_id == user.id))
-            await session.execute(delete(PaperOrder).where(PaperOrder.user_id == user.id))
-            await session.execute(delete(PaperTrade).where(PaperTrade.user_id == user.id))
-            await session.execute(delete(SimulatedOrder).where(SimulatedOrder.user_id == user.id))
-            await session.execute(delete(PaperPosition).where(PaperPosition.user_id == user.id))
-            await session.execute(delete(PaperAccount).where(PaperAccount.user_id == user.id))
             await session.flush()
 
-            # Paper account + positions
-            account = PaperAccount(
-                user_id=user.id, initial_capital=10_000_000.00,
-                cash_balance=4_125_000.00, currency="INR", is_active=True,
-            )
-            session.add(account)
-            await session.flush()
-
-            latest = {c[0]: None for c in COMPANIES}
-            for symbol, _n, _s, _i, _e, base, _d, _v in COMPANIES:
-                row = (await session.execute(
-                    select(DailyPrice.close).where(DailyPrice.symbol == symbol)
-                    .order_by(DailyPrice.trade_date.desc()).limit(1)
-                )).scalar_one_or_none()
-                latest[symbol] = row if row is not None else base
-
-            positions = [
-                ("RELIANCE", 100), ("TCS", 80), ("HDFCBANK", 120), ("INFY", 150),
-                ("ICICIBANK", 200), ("BHARTIARTL", 90), ("SBIN", 250), ("ITC", 300),
-                ("LT", 40), ("HINDUNILVR", 60), ("KOTAKBANK", 70), ("MARUTI", 20),
-            ]
-            for symbol, qty in positions:
-                px = latest[symbol]
-                session.add(PaperPosition(
-                    account_id=account.id, user_id=user.id, symbol=symbol, quantity=qty,
-                    average_price=round(px * 0.93, 2), cost_basis=round(px * qty * 0.93, 2),
-                    realized_pnl=round(qty * px * random.uniform(0.01, 0.06), 2),
-                    current_price=round(px, 2),
-                ))
-
-            # Trade history (buy+sell pairs that produced the positions)
-            now = datetime.now(timezone.utc)
-            for idx, (symbol, qty) in enumerate(positions):
-                px = latest[symbol]
-                entry = round(px * 0.93, 2)
-                exit_px = round(px * random.uniform(0.94, 0.99), 2)
-                for side, price, days_ago in (("buy", entry, 120 + idx * 3), ("sell", exit_px, 60 + idx * 3)):
-                    order = PaperOrder(
-                        account_id=account.id, user_id=user.id, symbol=symbol, side=side,
-                        order_type="market", quantity=qty, filled_quantity=qty, price=price,
-                        status="filled", time_in_force="day", filled_at=now - timedelta(days=days_ago),
-                    )
-                    session.add(order)
-                    await session.flush()
-                    session.add(PaperTrade(
-                        order_id=order.id, account_id=account.id, user_id=user.id, symbol=symbol,
-                        side=side, quantity=qty, price=price,
-                        commission=round(price * qty * 0.001, 2),
-                        realized_pnl=round((exit_px - entry) * qty, 2) if side == "sell" else None,
-                        trade_time=now - timedelta(days=days_ago),
-                    ))
-
-            # Simulated orders (closed win/loss) to power analytics + equity curve
-            sim_symbols = [s for s, _ in positions]
-            for idx, symbol in enumerate(sim_symbols):
-                px = latest[symbol]
-                entry = round(px * 0.9, 2)
-                win = random.random() > 0.35
-                exit_px = round(px * random.uniform(0.92, 1.08), 2) if win else round(px * random.uniform(0.8, 0.9), 2)
-                qty = 500 + (idx * 50)
-                entry_fee = round(entry * qty * 0.001, 2)
-                exit_fee = round(exit_px * qty * 0.001, 2)
-                gross = (exit_px - entry) * qty
-                net = gross - entry_fee - exit_fee
-                session.add(SimulatedOrder(
-                    account_id=account.id, user_id=user.id, symbol=symbol, direction="long",
-                    entry_price=entry, exit_price=exit_px, quantity=qty,
-                    entry_fee=entry_fee, exit_fee=exit_fee, total_fees=round(entry_fee + exit_fee, 2),
-                    slippage=round(random.uniform(-0.5, 0.5), 2),
-                    gross_pnl=round(gross, 2), net_pnl=round(net, 2),
-                    outcome="win" if win else "loss",
-                    entry_date=now - timedelta(days=200 - idx * 8), exit_date=now - timedelta(days=40 - idx * 3),
-                    status="closed",
-                ))
+            # Paper account — created only if missing, never wiped on restart so
+            # real paper-trading history (Trading tab orders) is preserved.
+            account = (await session.execute(
+                select(PaperAccount).where(PaperAccount.user_id == user.id)
+            )).scalar_one_or_none()
+            if account is None:
+                account = PaperAccount(
+                    user_id=user.id, initial_capital=10_000_000.00,
+                    cash_balance=10_000_000.00, currency="INR", is_active=True,
+                )
+                session.add(account)
+                await session.flush()
 
             # Watchlists
             wl1 = Watchlist(user_id=user.id, name="Tech & AI", description="Core growth names", is_default=True)
