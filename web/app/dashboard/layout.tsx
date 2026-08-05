@@ -1,16 +1,25 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/AuthContext"
 import { startLiveTicker } from "@/lib/live"
+import api from "@/lib/api"
+import type { PaginatedResponse } from "@/types"
 import {
   LayoutDashboard, BarChart3, Briefcase, TrendingUp, Newspaper,
   Bell, Star, Settings, LogOut, ChevronLeft, ChevronRight,
   Search, Wallet, LineChart, Target, Brain, PieChart,
-  Activity, Shield, Menu, X, BookOpen, TestTube,
+  Activity, Shield, Menu, X, BookOpen, TestTube, Loader2,
 } from "lucide-react"
+
+interface CompanySearchResult {
+  symbol: string
+  company_name: string
+  sector: string | null
+  exchange: string
+}
 
 const sidebarItems = [
   { icon: LayoutDashboard, label: "Overview", href: "/dashboard" },
@@ -32,6 +41,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [sendingVerification, setSendingVerification] = useState(false)
+  const [search, setSearch] = useState("")
+  const [searchResults, setSearchResults] = useState<CompanySearchResult[]>([])
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searching, setSearching] = useState(false)
+  const searchBoxRef = useRef<HTMLDivElement>(null)
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pathname = usePathname()
   const router = useRouter()
   const { user, logout, loading, sendVerification } = useAuth()
@@ -43,6 +58,63 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [loading, user, router])
 
   useEffect(() => startLiveTicker(), [])
+
+  // Close the search dropdown when clicking outside.
+  useEffect(() => {
+    if (!searchOpen) return
+    const onDocMouseDown = (e: MouseEvent) => {
+      if (searchBoxRef.current && !searchBoxRef.current.contains(e.target as Node)) {
+        setSearchOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", onDocMouseDown)
+    return () => document.removeEventListener("mousedown", onDocMouseDown)
+  }, [searchOpen])
+
+  const runSearch = useCallback(async (q: string) => {
+    const term = q.trim()
+    if (!term) {
+      setSearchResults([])
+      setSearching(false)
+      return
+    }
+    setSearching(true)
+    try {
+      const res = await api.get<PaginatedResponse<CompanySearchResult>>(
+        `/companies?search=${encodeURIComponent(term)}&exchange=NSE&limit=8&order_by=symbol`
+      )
+      setSearchResults(res.items ?? [])
+    } catch {
+      setSearchResults([])
+    } finally {
+      setSearching(false)
+    }
+  }, [])
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    setSearch(value)
+    setSearchOpen(value.trim().length > 0)
+    if (searchTimer.current) clearTimeout(searchTimer.current)
+    searchTimer.current = setTimeout(() => runSearch(value), 250)
+  }
+
+  const goToSymbol = (symbol: string) => {
+    setSearch("")
+    setSearchResults([])
+    setSearchOpen(false)
+    setMobileOpen(false)
+    router.push(`/dashboard/stocks/${symbol.toUpperCase()}`)
+  }
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== "Enter") return
+    if (searchResults.length > 0) {
+      goToSymbol(searchResults[0].symbol)
+    } else if (search.trim()) {
+      goToSymbol(search.trim())
+    }
+  }
 
   const handleVerifyClick = async () => {
     if (!user || sendingVerification) return
@@ -146,13 +218,47 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             >
               {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
             </button>
-            <div className="relative hidden sm:block">
+            <div className="relative hidden sm:block" ref={searchBoxRef}>
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
               <input
                 type="text"
-                placeholder="Search symbols, news, tools..."
-                className="pl-9 pr-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-gray-300 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-titan-500 w-64"
+                value={search}
+                onChange={handleSearchChange}
+                onKeyDown={handleSearchKeyDown}
+                onFocus={() => setSearchOpen(search.trim().length > 0)}
+                placeholder="Search NSE scripts (e.g. RELIANCE)…"
+                className="pl-9 pr-9 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-gray-300 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-titan-500 w-64"
               />
+              {searching || (search && searchResults.length > 0) ? (
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500">
+                  {searching ? <Loader2 size={14} className="animate-spin" /> : <span className="text-[10px]">{searchResults.length}</span>}
+                </span>
+              ) : null}
+              {searchOpen && (
+                <div className="absolute left-0 right-0 top-full mt-2 z-50 rounded-lg bg-titan-900/95 border border-titan-800/40 shadow-2xl backdrop-blur-xl overflow-hidden max-h-80 overflow-y-auto">
+                  {searching ? (
+                    <div className="px-4 py-3 text-xs text-gray-500 flex items-center gap-2">
+                      <Loader2 size={13} className="animate-spin" /> Searching…
+                    </div>
+                  ) : searchResults.length === 0 ? (
+                    <div className="px-4 py-3 text-xs text-gray-500">No NSE scripts match &ldquo;{search}&rdquo;.</div>
+                  ) : (
+                    searchResults.map((r) => (
+                      <button
+                        key={r.symbol}
+                        onClick={() => goToSymbol(r.symbol)}
+                        className="w-full flex items-center justify-between gap-2 px-4 py-2.5 text-left hover:bg-titan-800/60 transition-colors"
+                      >
+                        <div className="min-w-0">
+                          <div className="text-sm text-white font-medium">{r.symbol}</div>
+                          <div className="text-[11px] text-gray-500 truncate">{r.company_name}</div>
+                        </div>
+                        <span className="text-[10px] uppercase text-titan-400 shrink-0">{r.sector ?? "—"}</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-3">
