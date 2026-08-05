@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import {
-  Brain, RefreshCw, Search, Play, Zap, Clock, TrendingUp, TrendingDown, Minus,
+  Brain, RefreshCw, Search, Play, Zap, Clock, TrendingUp, TrendingDown, Minus, ArrowUp, ArrowDown,
 } from "lucide-react"
 import api from "@/lib/api"
 import { useLiveRefresh } from "@/lib/live"
@@ -11,6 +11,16 @@ import type { StockRecommendation, RecommendationsPage, ScanStatus } from "@/typ
 import { formatPercent, formatDate } from "@/lib/utils"
 
 const LIMIT = 200
+
+const SORT_OPTIONS: { label: string; sortBy: string; desc: boolean }[] = [
+  { label: "Score (high → low)", sortBy: "score", desc: true },
+  { label: "Confidence (high → low)", sortBy: "confidence", desc: true },
+  { label: "Expected return (high → low)", sortBy: "predicted_return_pct", desc: true },
+  { label: "Technical signal (strongest → weakest)", sortBy: "signal", desc: false },
+  { label: "Risk (high → low)", sortBy: "risk_level", desc: true },
+  { label: "Price (high → low)", sortBy: "current_price", desc: true },
+  { label: "Symbol (A → Z)", sortBy: "symbol", desc: false },
+]
 
 interface ParsedMeta {
   signal?: string
@@ -36,6 +46,8 @@ export default function RecommendationsPage() {
   const [error, setError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [query, setQuery] = useState("")
+  const [sortBy, setSortBy] = useState("score")
+  const [sortDesc, setSortDesc] = useState(true)
   const [scan, setScan] = useState<ScanStatus | null>(null)
   const [scanning, setScanning] = useState(false)
   const mounted = useRef(true)
@@ -45,7 +57,7 @@ export default function RecommendationsPage() {
     if (silent) setRefreshing(true)
     try {
       const res = await api.get<RecommendationsPage>(
-        `/recommendations?status=active&sort_by=score&sort_desc=true&limit=${LIMIT}`
+        `/recommendations?status=active&sort_by=${sortBy}&sort_desc=${sortDesc}&limit=${LIMIT}`
       )
       if (!mounted.current) return
       setItems(res.items ?? [])
@@ -60,7 +72,7 @@ export default function RecommendationsPage() {
         setRefreshing(false)
       }
     }
-  }, [])
+  }, [sortBy, sortDesc])
 
   const loadStatus = useCallback(async () => {
     try {
@@ -117,6 +129,20 @@ export default function RecommendationsPage() {
     }
   }
 
+  const handleSortChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const key = e.target.value
+    const opt = SORT_OPTIONS.find((o) => o.sortBy === key)
+    setSortBy(key)
+    setSortDesc(opt ? opt.desc : true)
+  }
+
+  const toggleSortDesc = () => setSortDesc((d) => !d)
+
+  // Reload whenever the sort key/direction changes.
+  useEffect(() => {
+    void load(true)
+  }, [load])
+
   const filtered = useMemo(() => {
     const q = query.trim().toUpperCase()
     if (!q) return items
@@ -172,15 +198,35 @@ export default function RecommendationsPage() {
         </div>
       )}
 
-      {/* Search */}
-      <div className="relative">
-        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search by symbol (e.g. RELIANCE, TCS)…"
-          className="w-full pl-9 pr-3 py-2 rounded-lg bg-white/5 border border-titan-800/30 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-titan-500/50"
-        />
+      {/* Search + sort */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by symbol (e.g. RELIANCE, TCS)…"
+            className="w-full pl-9 pr-3 py-2 rounded-lg bg-white/5 border border-titan-800/30 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-titan-500/50"
+          />
+        </div>
+        <select
+          value={sortBy}
+          onChange={handleSortChange}
+          className="px-3 py-2 rounded-lg bg-white/5 border border-titan-800/30 text-white text-sm focus:outline-none focus:border-titan-500/50"
+        >
+          {SORT_OPTIONS.map((o) => (
+            <option key={o.sortBy} value={o.sortBy} className="bg-gray-900">
+              {o.label}
+            </option>
+          ))}
+        </select>
+        <button
+          onClick={toggleSortDesc}
+          title={sortDesc ? "Sorting descending — click for ascending" : "Sorting ascending — click for descending"}
+          className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-white/5 border border-titan-800/30 text-gray-300 hover:bg-white/10 transition-colors"
+        >
+          {sortDesc ? <ArrowDown size={15} /> : <ArrowUp size={15} />}
+        </button>
       </div>
 
       {loading ? (
@@ -268,7 +314,10 @@ function RecommendationCard({ rec }: { rec: StockRecommendation }) {
             </div>
           </div>
         </Link>
-        <span className={`badge ${dirCls}`}>{rec.direction}</span>
+        <span className={`badge ${dirCls}`}>
+          {rec.direction}
+          {rec.signal ? ` · ${rec.signal.replaceAll("_", " ")}` : ""}
+        </span>
       </div>
 
       {/* Confidence + return */}

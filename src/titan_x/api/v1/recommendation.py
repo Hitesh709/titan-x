@@ -9,6 +9,19 @@ from titan_x.services.recommendation_service import RecommendationService
 
 router = APIRouter(tags=["recommendations"])
 
+SORTABLE_COLUMNS = {
+    "symbol",
+    "direction",
+    "signal",
+    "confidence",
+    "current_price",
+    "price_target",
+    "score",
+    "risk_level",
+    "predicted_return_pct",
+    "generated_at",
+}
+
 
 @router.get("/recommendations")
 async def list_recommendations(
@@ -30,6 +43,8 @@ async def list_recommendations(
     session=Depends(deps.get_session),
     _: User = Depends(deps.get_current_active_user),
 ):
+    if sort_by not in SORTABLE_COLUMNS:
+        raise HTTPException(422, f"Unsupported sort_by '{sort_by}'")
     svc = RecommendationService(session)
     items = await svc.list_recommendations(
         symbol=symbol, direction=direction, status=status,
@@ -195,6 +210,7 @@ def _rec_dict(r) -> dict:
         "id": r.id,
         "symbol": r.symbol,
         "direction": r.direction,
+        "signal": r.signal,
         "confidence": r.confidence,
         "price_target": r.price_target,
         "current_price": r.current_price,

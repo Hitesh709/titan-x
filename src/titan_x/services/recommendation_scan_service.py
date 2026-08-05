@@ -264,6 +264,7 @@ class RecommendationScanService:
         await svc.create_recommendation(
             symbol=rec["symbol"],
             direction=direction,
+            signal=signal,
             confidence=rec["confidence"],
             price_target=rec["price_target"],
             current_price=rec["current_price"],

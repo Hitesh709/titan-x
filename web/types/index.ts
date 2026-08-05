@@ -532,6 +532,7 @@ export interface StockRecommendation {
   id: number
   symbol: string
   direction: "BUY" | "SELL" | "HOLD"
+  signal?: string | null
   confidence: number | null
   price_target: number | null
   current_price: number | null

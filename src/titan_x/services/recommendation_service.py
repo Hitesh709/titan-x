@@ -1,10 +1,35 @@
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import desc, select
+from sqlalchemy import asc, case, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from titan_x.models.recommendation import Recommendation
+
+SIGNAL_ORDER = {"strong_buy": 1, "buy": 2, "hold": 3, "sell": 4, "strong_sell": 5}
+RISK_ORDER = {"Low": 1, "Medium": 2, "High": 3}
+
+
+def _order_expression(sort_by: str, sort_desc: bool):
+    """Build the ORDER BY expression for the given sort key.
+
+    Supports plain columns plus a few custom, semantically-ordered keys:
+    ``signal`` (strong_buy -> strong_sell) and ``risk_level`` (Low -> High).
+    """
+    if sort_by == "signal":
+        # Fall back to the coarse direction when the granular signal is missing.
+        signal_expr = func.coalesce(
+            Recommendation.signal,
+            case({"BUY": "buy", "SELL": "sell", "HOLD": "hold"}, value=Recommendation.direction, else_="hold"),
+        )
+        expr = case(SIGNAL_ORDER, value=signal_expr, else_=6)
+    elif sort_by == "risk_level":
+        expr = case(RISK_ORDER, value=Recommendation.risk_level, else_=4)
+    else:
+        col = getattr(Recommendation, sort_by, Recommendation.generated_at)
+        return desc(col) if sort_desc else asc(col)
+
+    return (desc(expr) if sort_desc else asc(expr)).nulls_last()
 
 
 class RecommendationService:
@@ -15,6 +40,7 @@ class RecommendationService:
         self,
         symbol: str,
         direction: str,
+        signal: str | None = None,
         confidence: float | None = None,
         price_target: float | None = None,
         current_price: float | None = None,
@@ -35,6 +61,7 @@ class RecommendationService:
         rec = Recommendation(
             symbol=symbol.upper(),
             direction=direction,
+            signal=signal,
             confidence=confidence,
             price_target=price_target,
             current_price=current_price,
@@ -103,8 +130,7 @@ class RecommendationService:
         if outcome is not None:
             q = q.where(Recommendation.outcome == outcome)
 
-        order_col = getattr(Recommendation, sort_by, Recommendation.generated_at)
-        q = q.order_by(desc(order_col) if sort_desc else order_col)
+        q = q.order_by(_order_expression(sort_by, sort_desc))
         q = q.offset(offset).limit(limit)
         r = await self.session.execute(q)
         return list(r.scalars().all())
