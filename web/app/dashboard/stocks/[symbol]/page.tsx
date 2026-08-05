@@ -6,11 +6,15 @@ import Link from "next/link"
 import {
   Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts"
-import { ArrowLeft, Building2, TrendingUp, TrendingDown, Activity } from "lucide-react"
+import {
+  AlertTriangle, ArrowLeft, BookOpen, Building2, CalendarRange, CheckCircle2, Sparkles, TrendingUp, TrendingDown, Activity,
+} from "lucide-react"
 import api from "@/lib/api"
 import { useLiveRefresh } from "@/lib/live"
-import type { BatchQuotesResponse, CompanyProfile, IndexHistoryPoint, StockHistoryResponse } from "@/types"
-import { formatCompactNumber, formatCurrency, getChangeColor } from "@/lib/utils"
+import type {
+  BatchQuotesResponse, CompanyProfile, IndexHistoryPoint, ResearchDetail, StockHistoryResponse,
+} from "@/types"
+import { formatCompactNumber, formatCurrency, formatPercent, getChangeColor } from "@/lib/utils"
 import { WidgetLoading, WidgetError } from "@/components/dashboard/widget"
 
 const RANGES = ["1M", "3M", "6M", "1Y"] as const
@@ -27,6 +31,8 @@ export default function StockDetailPage() {
   const [profile, setProfile] = useState<CompanyProfile | null>(null)
   const [points, setPoints] = useState<IndexHistoryPoint[]>([])
   const [range, setRange] = useState<Range>("3M")
+  const [research, setResearch] = useState<ResearchDetail | null>(null)
+  const [researchLoaded, setResearchLoaded] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const mounted = useRef(true)
@@ -55,6 +61,28 @@ export default function StockDetailPage() {
     [symbol],
   )
 
+  const loadResearch = useCallback(async () => {
+    if (!mounted.current) return
+    setResearchLoaded(false)
+    try {
+      const res = await api.get<ResearchDetail>(`/research/${symbol}`)
+      if (!mounted.current) return
+      setResearch(res)
+    } catch {
+      if (!mounted.current) return
+      setResearch(null)
+    } finally {
+      if (mounted.current) setResearchLoaded(true)
+    }
+  }, [symbol])
+
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
+
   useEffect(() => {
     mounted.current = true
     return () => {
@@ -63,6 +91,10 @@ export default function StockDetailPage() {
   }, [])
 
   useLiveRefresh(() => void load(true), [load])
+
+  useEffect(() => {
+    void loadResearch()
+  }, [loadResearch])
 
   const chartData = useMemo(() => {
     const cutoff = Date.now() - DAYS[range] * 86_400_000
@@ -211,6 +243,13 @@ export default function StockDetailPage() {
             )}
           </div>
 
+          <ResearchBlock
+            symbol={symbol}
+            research={research}
+            loaded={researchLoaded}
+            onRefresh={() => void loadResearch()}
+          />
+
           <div className="flex justify-center">
             <Link href={`/dashboard/trading`} className="btn-primary text-sm px-6">
               Trade {symbol}
@@ -239,6 +278,139 @@ function Stat({
       <p className="mt-1 text-sm font-semibold text-white">
         {text ?? (value == null ? "—" : compact ? formatCompactNumber(Number(value)) : formatCurrency(Number(value), "INR").replace("₹", ""))}
       </p>
+    </div>
+  )
+}
+
+function ResearchBlock({
+  symbol,
+  research,
+  loaded,
+  onRefresh,
+}: {
+  symbol: string
+  research: ResearchDetail | null
+  loaded: boolean
+  onRefresh: () => void
+}) {
+  return (
+    <div className="glass-card p-5">
+      <div className="flex items-center justify-between gap-3 mb-4">
+        <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+          <BookOpen size={16} className="text-titan-400" /> Titan Research
+        </h3>
+        {research && (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-titan-600/10 border border-titan-600/25 text-titan-300 text-xs font-medium">
+            <CalendarRange size={12} />
+            {research.days > 0 ? `${research.days.toLocaleString("en-IN")} data days` : "no price data"}
+          </span>
+        )}
+      </div>
+
+      {!loaded ? (
+        <div className="h-16 animate-pulse bg-white/5 rounded-lg" />
+      ) : !research ? (
+        <p className="text-sm text-gray-500 py-4 text-center">
+          No research yet for {symbol}. Run a market scan to generate an AI recommendation.
+        </p>
+      ) : !research.has_research ? (
+        <p className="text-sm text-gray-500 py-4 text-center">
+          {research.company_name} is in the coverage universe but doesn't have a live recommendation yet.
+        </p>
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            {(() => {
+              const cls =
+                research.direction === "BUY"
+                  ? "badge-green"
+                  : research.direction === "SELL"
+                    ? "badge-red"
+                    : "badge-blue"
+              return (
+                <span className={`inline-flex items-center gap-1 ${cls}`}>
+                  {research.direction === "BUY" ? (
+                    <TrendingUp size={13} />
+                  ) : research.direction === "SELL" ? (
+                    <TrendingDown size={13} />
+                  ) : (
+                    <Activity size={13} />
+                  )}
+                  {research.direction}
+                  {research.signal ? ` · ${research.signal.replaceAll("_", " ")}` : ""}
+                </span>
+              )
+            })()}
+            {research.risk_level && (
+              <span
+                className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${
+                  research.risk_level === "High"
+                    ? "bg-red-500/10 text-red-400"
+                    : research.risk_level === "Medium"
+                      ? "bg-amber-500/10 text-amber-400"
+                      : "bg-emerald-500/10 text-emerald-400"
+                }`}
+              >
+                {research.risk_level} risk
+              </span>
+            )}
+            {research.timeframe && <span className="text-xs text-gray-500">{research.timeframe}</span>}
+            {research.generated_at && (
+              <span className="ml-auto text-[11px] text-gray-500">
+                Generated {new Date(research.generated_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+              </span>
+            )}
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Stat label="Score" value={research.score != null ? research.score.toFixed(1) : undefined} text={research.score != null ? research.score.toFixed(1) : "—"} />
+            <Stat label="Confidence" value={undefined} text={research.confidence != null ? `${Math.round(research.confidence)}%` : "—"} />
+            <Stat label="Expected Return" value={undefined} text={research.predicted_return_pct != null ? formatPercent(research.predicted_return_pct) : "—"} />
+            <Stat label="Current · Target" value={undefined} text={`${research.current_price != null ? formatCurrency(research.current_price, "INR") : "—"}${research.price_target ? ` → ${formatCurrency(research.price_target, "INR")}` : ""}`} />
+          </div>
+
+          {research.reasoning && (
+            <div className="mt-4 flex items-start gap-2 text-sm text-gray-300 bg-white/5 rounded-lg p-4">
+              <Sparkles size={15} className="text-titan-400 shrink-0 mt-0.5" />
+              <p>{research.reasoning}</p>
+            </div>
+          )}
+
+          {(research.evidence?.length ?? 0) > 0 && (
+            <div className="mt-3">
+              <p className="text-xs text-gray-500 mb-2">Evidence</p>
+              <ul className="space-y-1.5">
+                {research.evidence!.slice(0, 8).map((e, i) => (
+                  <li key={i} className="text-xs text-gray-400 flex items-start gap-2">
+                    <CheckCircle2 size={13} className="text-emerald-500 shrink-0 mt-0.5" />
+                    {e}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {(research.caution?.length ?? 0) > 0 && (
+            <div className="mt-3">
+              <p className="text-xs text-gray-500 mb-2">Caution</p>
+              <ul className="space-y-1.5">
+                {research.caution!.slice(0, 5).map((c, i) => (
+                  <li key={i} className="text-xs text-amber-400/90 flex items-start gap-2">
+                    <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+                    {c}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div className="mt-4 flex justify-end">
+            <button onClick={onRefresh} className="text-xs text-titan-400 hover:text-titan-300 inline-flex items-center gap-1">
+              <Activity size={12} /> Refresh research
+            </button>
+          </div>
+        </>
+      )}
     </div>
   )
 }

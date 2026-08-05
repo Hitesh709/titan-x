@@ -579,3 +579,38 @@ export interface ScanStatus {
     finished_at?: string
   } | null
 }
+
+export interface ResearchCompany {
+  symbol: string
+  company_name: string
+  sector: string | null
+  industry: string | null
+  market_cap: number | null
+  listing_date: string | null
+  days: number
+  has_research: boolean
+  direction?: string | null
+  signal?: string | null
+  score?: number | null
+  confidence?: number | null
+  predicted_return_pct?: number | null
+  price_target?: number | null
+  current_price?: number | null
+  risk_level?: string | null
+  timeframe?: string | null
+  generated_at?: string | null
+}
+
+export interface ResearchCompanyPage {
+  items: ResearchCompany[]
+  total: number
+  skip: number
+  limit: number
+}
+
+export interface ResearchDetail extends ResearchCompany {
+  reasoning?: string | null
+  evidence?: string[]
+  caution?: string[]
+  returns?: Record<string, number | null>
+}

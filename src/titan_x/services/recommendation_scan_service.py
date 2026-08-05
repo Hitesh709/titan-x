@@ -200,6 +200,7 @@ class RecommendationScanService:
                         sector_ctx=sector_ctx.get(sector_by_symbol.get(symbol) or ""),
                         breadth_ctx=breadth_ctx,
                     )
+                    rec["data_points"] = len(points)
                     if rec.get("insufficient_data"):
                         insufficient += 1
                         continue
@@ -255,6 +256,7 @@ class RecommendationScanService:
         metadata = {
             "signal": signal,
             "as_of_date": rec["as_of_date"],
+            "data_points": rec.get("data_points", 0),
             "evidence": evidence,
             "caution": caution,
             "returns": rec["returns"],

@@ -90,6 +90,7 @@ from titan_x.api.v1.paper_trading import router as paper_trading_router
 from titan_x.api.v1.dashboard import router as dashboard_router
 from titan_x.api.v1.search import router as search_router
 from titan_x.api.v1.export import router as export_router
+from titan_x.api.v1.research import router as research_router
 
 v1_router = APIRouter(prefix="/api/v1")
 
@@ -194,5 +195,6 @@ v1_router.include_router(paper_trading_router)
 v1_router.include_router(dashboard_router)
 v1_router.include_router(search_router)
 v1_router.include_router(export_router)
+v1_router.include_router(research_router)
 
 __all__ = ["v1_router"]
