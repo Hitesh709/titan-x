@@ -531,3 +531,52 @@ class TestSimulatedOrders:
         await svc.create_account(user.id)
         order = await svc.place_order(user.id, "AAPL", "buy", "market", 10)
         assert order.slippage is None
+
+
+# ── Live Quote Fallback (no stored price) ──
+
+class FakeProvider:
+    def __init__(self, quote: dict):
+        self._quote = quote
+        self.closed = False
+
+    async def get_quote(self, symbol: str) -> dict:
+        return {**self._quote, "symbol": symbol}
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+@pytest.mark.asyncio
+class TestLiveQuoteFallback:
+    async def test_market_order_fills_with_genuine_live_quote(
+        self, session, user, monkeypatch,
+    ):
+        svc = PaperTradingService(session)
+        await svc.create_account(user.id)
+        provider = FakeProvider({"last_price": 1500.0, "source": "yahoo"})
+        monkeypatch.setattr(
+            "titan_x.services.paper_trading_service.get_market_data_provider",
+            lambda name: provider,
+        )
+        order = await svc.place_order(user.id, "RELIANCE", "buy", "market", 10)
+        assert order.status == "filled"
+        assert order.filled_quantity == 10
+        assert provider.closed
+        portfolio = await svc.get_portfolio(user.id)
+        assert any(p["symbol"] == "RELIANCE" and p["quantity"] == 10 and p["average_price"] == 1500.0 for p in portfolio)
+
+    async def test_market_order_rejects_fabricated_fallback_quote(
+        self, session, user, monkeypatch,
+    ):
+        svc = PaperTradingService(session)
+        await svc.create_account(user.id)
+        provider = FakeProvider({"last_price": 150.0, "source": "yahoo-fallback"})
+        monkeypatch.setattr(
+            "titan_x.services.paper_trading_service.get_market_data_provider",
+            lambda name: provider,
+        )
+        order = await svc.place_order(user.id, "RELIANCE", "buy", "market", 10)
+        assert order.status != "filled"
+        assert order.filled_quantity == 0
+        assert provider.closed

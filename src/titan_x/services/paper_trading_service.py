@@ -7,7 +7,9 @@ import structlog
 from sqlalchemy import desc, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from titan_x.core.config import get_settings
 from titan_x.db.repository import BaseRepository
+from titan_x.infrastructure.market_data_providers import get_market_data_provider
 from titan_x.models.company import Company
 from titan_x.models.paper_trading import PaperAccount, PaperOrder, PaperPosition, PaperTrade, SimulatedOrder
 from titan_x.models.price import DailyPrice
@@ -126,6 +128,12 @@ class PaperTradingService:
         latest = await self._price_service.get_latest_price(symbol)
         current_price = Decimal(str(latest.close)) if latest else None
 
+        # A market order with no stored price (e.g. after a fresh deploy before
+        # the scan backfills daily prices) could never fill. Try a live quote so
+        # it executes immediately at the real market price.
+        if current_price is None and order_type == "market":
+            current_price = await self._try_fetch_market_price(symbol)
+
         if order_type == "market" and current_price:
             await self._fill_order(order, account, current_price)
         elif order_type == "limit" and price and current_price:
@@ -146,6 +154,38 @@ class PaperTradingService:
 
         await self._session.refresh(order)
         return order
+
+    async def _try_fetch_market_price(self, symbol: str) -> Decimal | None:
+        """Fetch a real market quote for ``symbol`` so a market order can fill
+        when no daily price is stored yet. Returns ``None`` (never a fabricated
+        mock value) when a genuine price is unavailable."""
+        provider = None
+        try:
+            settings = get_settings()
+            if settings.market_data_provider.lower() == "mock":
+                return None
+            provider = get_market_data_provider(settings.market_data_provider)
+            quote = await provider.get_quote(symbol)
+            source = str(quote.get("source") or "").lower()
+            if source in ("mock", "yahoo-fallback", "alphavantage-fallback"):
+                return None
+            last_price = quote.get("last_price")
+            if last_price is None:
+                return None
+            price = Decimal(str(last_price))
+            if price <= 0:
+                return None
+            return price
+        except Exception:  # noqa: BLE001
+            logger.warning("market_quote_unavailable", symbol=symbol)
+            return None
+        finally:
+            try:
+                close = getattr(provider, "close", None)
+                if callable(close):
+                    await close()
+            except Exception:  # noqa: BLE001
+                pass
 
     async def cancel_order(self, order_id: int, user_id: int) -> bool:
         order = await self._order_repo.get(order_id)
