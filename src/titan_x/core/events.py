@@ -1,11 +1,13 @@
 import asyncio
+
 import structlog
 from fastapi import FastAPI
 from redis.asyncio import Redis
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from titan_x.core.config import Settings
+from titan_x.db.base import Base
 from titan_x.db.session import create_engine, create_session_factory
 from titan_x.infrastructure.cache import RedisCache
 from titan_x.infrastructure.scheduler import Scheduler
@@ -20,7 +22,6 @@ from titan_x.jobs import (
     process_delayed_trades,
     prune_old_executions,
 )
-from titan_x.db.base import Base
 from titan_x.models import *  # noqa: F401, F403 - register all models
 
 logger = structlog.get_logger(__name__)
@@ -38,7 +39,9 @@ async def _sync_missing_columns(engine: AsyncEngine) -> None:
     async with engine.begin() as conn:
         for table in Base.metadata.sorted_tables:
             existing = await conn.run_sync(
-                lambda sync_conn: {c["name"] for c in sa_inspect(sync_conn).get_columns(table.name)}
+                lambda sync_conn, t=table: {
+                    c["name"] for c in sa_inspect(sync_conn).get_columns(t.name)
+                }
             )
             for col in table.columns:
                 if col.name in existing or col.primary_key:
@@ -71,12 +74,46 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
     try:
         from titan_x.services.recommendation_scan_service import run_universe_load
 
+        async def _ingest_market_data_later(sf) -> None:
+            if not settings.market_data_ingest_on_startup:
+                logger.info("market_data_ingest_skipped")
+                return
+            try:
+                from titan_x.services.market_data_service import run_market_data_ingestion
+
+                result = await run_market_data_ingestion(
+                    sf, max_symbols=settings.market_data_ingest_max_symbols
+                )
+                logger.info(
+                    "market_data_ingest_startup",
+                    ok=result.get("symbols_ok"),
+                    failed=result.get("symbols_failed"),
+                    inserted=result.get("inserted_total"),
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception("market_data_ingest_startup_failed")
+
         async def _universe_load_later() -> None:
             try:
                 result = await run_universe_load(session_factory)
                 logger.info("nse_universe_startup", **result)
             except Exception:  # noqa: BLE001
                 logger.exception("nse_universe_startup_failed")
+            await _ingest_market_data_later(session_factory)
+            await _ingest_news_later(session_factory)
+
+        async def _ingest_news_later(sf) -> None:
+            try:
+                from titan_x.services.news_feed import run_news_ingestion
+
+                result = await run_news_ingestion(sf)
+                logger.info(
+                    "news_ingest_startup",
+                    fetched=result.get("fetched"),
+                    created=result.get("created"),
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception("news_ingest_startup_failed")
 
         # Do not block readiness on the NSE CSV fetch (can be slow from US DCs).
         asyncio.create_task(_universe_load_later())

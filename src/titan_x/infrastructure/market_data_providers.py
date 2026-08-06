@@ -1,6 +1,8 @@
-import httpx
 from abc import ABC, abstractmethod
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
+from typing import Any
+
+import httpx
 
 from titan_x.core.time import utcnow
 
@@ -28,22 +30,38 @@ class MarketDataPoint:
 class MarketDataProvider(ABC):
     @abstractmethod
     async def get_historical_prices(
-        self, symbol: str, interval: str = "1d", start: date | None = None, end: date | None = None
-    ) -> list[MarketDataPoint]:
-        ...
+        self,
+        symbol: str,
+        interval: str = "1d",
+        start: date | None = None,
+        end: date | None = None,
+        synthetic_ok: bool = True,
+    ) -> list[MarketDataPoint]: ...
 
     @abstractmethod
-    async def get_quote(self, symbol: str) -> dict:
-        ...
+    async def get_quote(self, symbol: str, synthetic_ok: bool = True) -> dict: ...
 
     @abstractmethod
-    async def get_company_profile(self, symbol: str) -> dict:
-        ...
+    async def get_company_profile(self, symbol: str, synthetic_ok: bool = True) -> dict: ...
+
+    async def search_symbols(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
+        """Search for tradable symbols/companies by name or ticker.
+
+        Default implementation queries the locally stored companies so the
+        behaviour degrades gracefully for providers without a search API.
+        Real providers may override with a network-backed search.
+        """
+        return []
 
 
 class MockMarketDataProvider(MarketDataProvider):
     async def get_historical_prices(
-        self, symbol: str, interval: str = "1d", start: date | None = None, end: date | None = None
+        self,
+        symbol: str,
+        interval: str = "1d",
+        start: date | None = None,
+        end: date | None = None,
+        synthetic_ok: bool = True,
     ) -> list[MarketDataPoint]:
         start_date = start or date.today() - timedelta(days=365)
         end_date = end or date.today()
@@ -54,20 +72,22 @@ class MockMarketDataProvider(MarketDataProvider):
         while current <= end_date:
             if current.weekday() < 5:
                 price = base_price + i * 0.5 + (hash(f"{symbol}_{i}") % 20 - 10)
-                points.append(MarketDataPoint(
-                    symbol=symbol,
-                    trade_date=current,
-                    open=price,
-                    high=price + 2,
-                    low=price - 2,
-                    close=price + 0.5,
-                    volume=1_000_000 + (hash(f"{symbol}_v{i}") % 500_000),
-                ))
+                points.append(
+                    MarketDataPoint(
+                        symbol=symbol,
+                        trade_date=current,
+                        open=price,
+                        high=price + 2,
+                        low=price - 2,
+                        close=price + 0.5,
+                        volume=1_000_000 + (hash(f"{symbol}_v{i}") % 500_000),
+                    )
+                )
                 i += 1
             current += timedelta(days=1)
         return points
 
-    async def get_quote(self, symbol: str) -> dict:
+    async def get_quote(self, symbol: str, synthetic_ok: bool = True) -> dict:
         return {
             "symbol": symbol,
             "last_price": 150.0,
@@ -77,7 +97,7 @@ class MockMarketDataProvider(MarketDataProvider):
             "timestamp": utcnow().isoformat(),
         }
 
-    async def get_company_profile(self, symbol: str) -> dict:
+    async def get_company_profile(self, symbol: str, synthetic_ok: bool = True) -> dict:
         return {
             "symbol": symbol,
             "name": f"{symbol} Corp",
@@ -93,14 +113,19 @@ class AlphaVantageProvider(MarketDataProvider):
         self.api_key = api_key
 
     async def get_historical_prices(
-        self, symbol: str, interval: str = "1d", start: date | None = None, end: date | None = None
+        self,
+        symbol: str,
+        interval: str = "1d",
+        start: date | None = None,
+        end: date | None = None,
+        synthetic_ok: bool = True,
     ) -> list[MarketDataPoint]:
         raise NotImplementedError("Alpha Vantage not configured")
 
-    async def get_quote(self, symbol: str) -> dict:
+    async def get_quote(self, symbol: str, synthetic_ok: bool = True) -> dict:
         raise NotImplementedError("Alpha Vantage not configured")
 
-    async def get_company_profile(self, symbol: str) -> dict:
+    async def get_company_profile(self, symbol: str, synthetic_ok: bool = True) -> dict:
         raise NotImplementedError("Alpha Vantage not configured")
 
 
@@ -163,7 +188,11 @@ class YahooFinanceProvider(MarketDataProvider):
             await self._client.aclose()
 
     async def get_historical_prices(
-        self, symbol: str, interval: str = "1d", start: date | None = None, end: date | None = None,
+        self,
+        symbol: str,
+        interval: str = "1d",
+        start: date | None = None,
+        end: date | None = None,
         synthetic_ok: bool = True,
     ) -> list[MarketDataPoint]:
         try:
@@ -171,8 +200,11 @@ class YahooFinanceProvider(MarketDataProvider):
             timestamps = data.get("timestamp") or []
             quote = ((data.get("indicators") or {}).get("quote") or [{}])[0] or {}
             opens, highs, lows, closes, volumes = (
-                quote.get("open") or [], quote.get("high") or [], quote.get("low") or [],
-                quote.get("close") or [], quote.get("volume") or [],
+                quote.get("open") or [],
+                quote.get("high") or [],
+                quote.get("low") or [],
+                quote.get("close") or [],
+                quote.get("volume") or [],
             )
             points: list[MarketDataPoint] = []
             for i, ts in enumerate(timestamps):
@@ -184,24 +216,30 @@ class YahooFinanceProvider(MarketDataProvider):
                     continue
                 if end and trade_date > end:
                     continue
-                points.append(MarketDataPoint(
-                    symbol=symbol.upper(),
-                    trade_date=trade_date,
-                    open=opens[i] if i < len(opens) else close,
-                    high=highs[i] if i < len(highs) else close,
-                    low=lows[i] if i < len(lows) else close,
-                    close=close,
-                    volume=int(volumes[i]) if i < len(volumes) and volumes[i] is not None else 0,
-                ))
+                points.append(
+                    MarketDataPoint(
+                        symbol=symbol.upper(),
+                        trade_date=trade_date,
+                        open=opens[i] if i < len(opens) else close,
+                        high=highs[i] if i < len(highs) else close,
+                        low=lows[i] if i < len(lows) else close,
+                        close=close,
+                        volume=int(volumes[i])
+                        if i < len(volumes) and volumes[i] is not None
+                        else 0,
+                    )
+                )
             if not points:
                 raise RuntimeError(f"No historical rows for {symbol}")
             return points
         except Exception:
             if not synthetic_ok:
                 raise
-            return await MockMarketDataProvider().get_historical_prices(symbol, start=start, end=end)
+            return await MockMarketDataProvider().get_historical_prices(
+                symbol, start=start, end=end
+            )
 
-    async def get_quote(self, symbol: str) -> dict:
+    async def get_quote(self, symbol: str, synthetic_ok: bool = True) -> dict:
         try:
             data = await self._chart(symbol, range_="1d", interval="1m")
             meta = data.get("meta") or {}
@@ -224,9 +262,11 @@ class YahooFinanceProvider(MarketDataProvider):
                 "source": "yahoo",
             }
         except Exception:
+            if not synthetic_ok:
+                raise
             return {**MockMarketDataProvider().get_quote(symbol), "source": "yahoo-fallback"}
 
-    async def get_company_profile(self, symbol: str) -> dict:
+    async def get_company_profile(self, symbol: str, synthetic_ok: bool = True) -> dict:
         try:
             data = await self._chart(symbol, range_="5d", interval="1d")
             meta = data.get("meta") or {}
@@ -241,19 +281,64 @@ class YahooFinanceProvider(MarketDataProvider):
                 "source": "yahoo",
             }
         except Exception:
+            if not synthetic_ok:
+                raise
             return MockMarketDataProvider().get_company_profile(symbol)
+
+    async def search_symbols(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
+        try:
+            if self._client is None or self._client.is_closed:
+                self._client = httpx.AsyncClient(headers=self._HEADERS, timeout=20.0)
+            resp = await self._client.get(
+                "https://query1.finance.yahoo.com/v1/finance/search",
+                params={
+                    "q": query,
+                    "quotesCount": limit,
+                    "newsCount": 0,
+                    "region": "IN",
+                    "lang": "en-IN",
+                },
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+            quotes = payload.get("quotes") or []
+            out: list[dict[str, Any]] = []
+            for item in quotes:
+                symbol = str(item.get("symbol") or "").upper().strip()
+                exchange = str(item.get("exchange") or "").upper().strip()
+                if not symbol:
+                    continue
+                out.append(
+                    {
+                        "symbol": symbol,
+                        "company_name": item.get("longname") or item.get("shortname") or symbol,
+                        "exchange": self._exchange_name(item.get("exchDisp") or exchange),
+                        "sector": item.get("sector"),
+                        "industry": item.get("industry"),
+                        "market_cap": item.get("marketCap"),
+                        "source": "yahoo",
+                    }
+                )
+            return out[:limit]
+        except Exception:
+            return []
 
 
 class NSEProvider(MarketDataProvider):
     async def get_historical_prices(
-        self, symbol: str, interval: str = "1d", start: date | None = None, end: date | None = None
+        self,
+        symbol: str,
+        interval: str = "1d",
+        start: date | None = None,
+        end: date | None = None,
+        synthetic_ok: bool = True,
     ) -> list[MarketDataPoint]:
         raise NotImplementedError("NSE provider not configured")
 
-    async def get_quote(self, symbol: str) -> dict:
+    async def get_quote(self, symbol: str, synthetic_ok: bool = True) -> dict:
         raise NotImplementedError("NSE provider not configured")
 
-    async def get_company_profile(self, symbol: str) -> dict:
+    async def get_company_profile(self, symbol: str, synthetic_ok: bool = True) -> dict:
         raise NotImplementedError("NSE provider not configured")
 
 

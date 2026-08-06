@@ -2,9 +2,11 @@ import asyncio
 from typing import Any
 
 import structlog
-from sqlalchemy import or_, select, union
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from titan_x.core.config import get_settings
+from titan_x.infrastructure.market_data_providers import get_market_data_provider
 from titan_x.models.company import Company
 from titan_x.models.news import NewsArticle
 from titan_x.models.professional_report import ProfessionalReport
@@ -18,9 +20,13 @@ class GlobalSearchService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def search(self, query: str, user_id: int, limit: int = 10) -> dict[str, list[dict[str, Any]]]:
+    async def search(
+        self, query: str, user_id: int, limit: int = 10
+    ) -> dict[str, list[dict[str, Any]]]:
         if not query or not query.strip():
-            empty = {k: [] for k in ("companies", "symbols", "sectors", "reports", "strategies", "news")}
+            empty = {
+                k: [] for k in ("companies", "symbols", "sectors", "reports", "strategies", "news")
+            }
             empty["total_results"] = 0
             return empty
         q = query.strip()
@@ -33,8 +39,12 @@ class GlobalSearchService:
         news_task = self._search_news(q, limit)
 
         companies, symbols, sectors, reports, strategies, news = await asyncio.gather(
-            companies_task, symbols_task, sectors_task,
-            reports_task, strategies_task, news_task,
+            companies_task,
+            symbols_task,
+            sectors_task,
+            reports_task,
+            strategies_task,
+            news_task,
         )
 
         return {
@@ -44,7 +54,14 @@ class GlobalSearchService:
             "reports": reports,
             "strategies": strategies,
             "news": news,
-            "total_results": len(companies) + len(symbols) + len(sectors) + len(reports) + len(strategies) + len(news),
+            "total_results": (
+                len(companies)
+                + len(symbols)
+                + len(sectors)
+                + len(reports)
+                + len(strategies)
+                + len(news)
+            ),
         }
 
     async def _search_companies(self, q: str, limit: int) -> list[dict[str, Any]]:
@@ -76,21 +93,49 @@ class GlobalSearchService:
         ]
 
     async def _search_symbols(self, q: str, limit: int) -> list[dict[str, Any]]:
-        stmt = (
-            select(Company)
-            .where(Company.symbol.ilike(f"%{q}%"))
-            .limit(limit)
-        )
+        stmt = select(Company).where(Company.symbol.ilike(f"%{q}%")).limit(limit)
         rows = (await self._session.execute(stmt)).scalars().all()
+        if rows:
+            return [
+                {
+                    "id": c.id,
+                    "symbol": c.symbol,
+                    "company_name": c.company_name,
+                    "exchange": c.exchange,
+                    "sector": c.sector,
+                }
+                for c in rows
+            ]
+        if not await self._companies_table_empty():
+            return []
+        return await self._search_symbols_remote(q, limit)
+
+    async def _companies_table_empty(self) -> bool:
+        result = await self._session.execute(select(func.count(Company.id)))
+        return (result.scalar() or 0) == 0
+
+    async def _search_symbols_remote(self, q: str, limit: int) -> list[dict[str, Any]]:
+        """Fallback to a live provider search when the local companies table
+        yields no Symbol match (e.g. a fresh database before the universe has
+        been seeded). Never blocks on provider failure."""
+        try:
+            provider = get_market_data_provider(get_settings().market_data_provider)
+        except Exception:  # noqa: BLE001
+            return []
+        try:
+            results = await provider.search_symbols(q, limit=limit)
+        except Exception:  # noqa: BLE001
+            return []
         return [
             {
-                "id": c.id,
-                "symbol": c.symbol,
-                "company_name": c.company_name,
-                "exchange": c.exchange,
-                "sector": c.sector,
+                "id": None,
+                "symbol": r["symbol"],
+                "company_name": r.get("company_name") or r["symbol"],
+                "exchange": r.get("exchange") or "NSE",
+                "sector": r.get("sector"),
+                "source": r.get("source", "yahoo"),
             }
-            for c in rows
+            for r in results
         ]
 
     async def _search_sectors(self, q: str, limit: int) -> list[dict[str, Any]]:
@@ -111,12 +156,16 @@ class GlobalSearchService:
                     .limit(1)
                 )
             ).scalar_one_or_none()
-            enriched.append({
-                "sector": sector_name,
-                "latest_return_pct": latest.return_pct if latest else None,
-                "latest_momentum_score": latest.momentum_score if latest else None,
-                "as_of_date": latest.as_of_date.isoformat() if latest and latest.as_of_date else None,
-            })
+            enriched.append(
+                {
+                    "sector": sector_name,
+                    "latest_return_pct": latest.return_pct if latest else None,
+                    "latest_momentum_score": latest.momentum_score if latest else None,
+                    "as_of_date": (
+                        latest.as_of_date.isoformat() if latest and latest.as_of_date else None
+                    ),
+                }
+            )
         return enriched
 
     async def _search_reports(self, q: str, limit: int) -> list[dict[str, Any]]:
