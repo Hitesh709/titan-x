@@ -66,11 +66,31 @@ class NSEUniverseService:
         return rows
 
     async def load_universe(self) -> dict:
-        companies = await self._fetch_csv()
-        universe = self._parse(companies)
-        return await self._upsert(universe)
+        source = "nse"
+        try:
+            universe = self._parse(await self._fetch_csv())
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("nse_universe_unreachable_falling_back", error=str(exc))
+            universe = self._fallback_universe()
+            source = "fallback"
+        return await self._upsert(universe, source=source)
 
-    async def _upsert(self, universe: list[tuple[str, str, str]]) -> dict:
+    @staticmethod
+    def _fallback_universe() -> list[tuple[str, str, str]]:
+        """Curated NSE universe used when the official CSV is unreachable so
+        the companies table is never empty and search keeps working."""
+        from titan_x.core.seed_demo import COMPANIES
+
+        rows: list[tuple[str, str, str]] = []
+        for entry in COMPANIES:
+            symbol, name, _sector, _industry, exchange, *_ = entry
+            if exchange == "NSE" and symbol:
+                rows.append((symbol, name, f"IN{symbol}001"))
+        if not rows:
+            raise RuntimeError("NSE equity list unreachable and no fallback universe available")
+        return rows
+
+    async def _upsert(self, universe: list[tuple[str, str, str]], source: str = "nse") -> dict:
         existing = await self.session.execute(
             select(Company.symbol).where(Company.exchange == "NSE")
         )
@@ -99,9 +119,9 @@ class NSEUniverseService:
             added += 1
 
         await self.session.flush()
-        logger.info("nse_universe_loaded", total=len(universe), added=added, kept=kept)
+        logger.info("nse_universe_loaded", source=source, total=len(universe), added=added, kept=kept)
         return {
-            "source": "nse",
+            "source": source,
             "parsed": len(universe),
             "added": added,
             "kept": kept,
