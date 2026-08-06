@@ -13,7 +13,7 @@ router = APIRouter(prefix="/market-heatmap", tags=["market-heatmap"])
 @router.get("")
 async def get_market_heatmap(
     as_of_date: date | None = Query(None),
-    period: str = Query("1M", regex=r"^(1W|1M|3M|6M|YTD|1Y|3Y|5Y)$"),
+    period: str = Query("1M", pattern=r"^(1W|1M|3M|6M|YTD|1Y|3Y|5Y)$"),
     session: AsyncSession = Depends(deps.get_session),
     current_user: User = Depends(deps.get_current_active_user),
 ):

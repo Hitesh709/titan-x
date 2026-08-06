@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from titan_x.api.router import api_router
 from titan_x.core.config import Settings, get_settings
 from titan_x.core.events import on_shutdown, on_startup
+from titan_x.core.exceptions import register_exception_handlers
 from titan_x.core.logging import configure_logging
 from titan_x.core.middleware import HTTPSRedirectMiddleware, SecurityHeadersMiddleware, TrustedHostMiddleware
 from titan_x.core.security import decode_token
@@ -90,6 +91,7 @@ def create_app() -> FastAPI:
     _app.add_middleware(SecurityHeadersMiddleware)
     _app.add_middleware(TrustedHostMiddleware, settings=settings)
     _app.add_middleware(HTTPSRedirectMiddleware, settings=settings)
+    register_exception_handlers(_app)
 
     @_app.middleware("http")
     async def request_logging(request: Request, call_next: object) -> object:

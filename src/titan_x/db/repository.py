@@ -1,12 +1,27 @@
 from collections.abc import Sequence
 from typing import Any, Generic, TypeVar
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import ColumnElement, Select, delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from titan_x.db.base import Base
 
 ModelT = TypeVar("ModelT", bound=Base)
+
+
+def _apply_filters(stmt: Select[tuple[ModelT]], model: type[ModelT], filters: dict[str, Any]) -> Select[tuple[ModelT]]:
+    """Fold ``filters`` into ``stmt``. Values that are not model columns are ignored."""
+    for column, value in filters.items():
+        column_attr = getattr(model, column, None)
+        if column_attr is None:
+            continue
+        if isinstance(value, list):
+            stmt = stmt.where(column_attr.in_(value))
+        elif value is None:
+            stmt = stmt.where(column_attr.is_(None))
+        else:
+            stmt = stmt.where(column_attr == value)
+    return stmt
 
 
 class BaseRepository(Generic[ModelT]):
@@ -34,19 +49,10 @@ class BaseRepository(Generic[ModelT]):
         **filters: Any,
     ) -> Sequence[ModelT]:
         stmt = select(self._model)
-
-        for column, value in filters.items():
-            column_attr = getattr(self._model, column, None)
-            if column_attr is not None:
-                if isinstance(value, list):
-                    stmt = stmt.where(column_attr.in_(value))
-                elif value is None:
-                    stmt = stmt.where(column_attr.is_(None))
-                else:
-                    stmt = stmt.where(column_attr == value)
+        stmt = _apply_filters(stmt, self._model, filters)
 
         if order_by:
-            order_column = getattr(self._model, order_by, None)
+            order_column: ColumnElement | None = getattr(self._model, order_by, None)
             if order_column is not None:
                 stmt = stmt.order_by(order_column.desc() if descending else order_column.asc())
 
@@ -73,14 +79,6 @@ class BaseRepository(Generic[ModelT]):
 
     async def count(self, **filters: Any) -> int:
         stmt = select(self._model)
-        for column, value in filters.items():
-            column_attr = getattr(self._model, column, None)
-            if column_attr is not None:
-                if isinstance(value, list):
-                    stmt = stmt.where(column_attr.in_(value))
-                elif value is None:
-                    stmt = stmt.where(column_attr.is_(None))
-                else:
-                    stmt = stmt.where(column_attr == value)
+        stmt = _apply_filters(stmt, self._model, filters)
         result = await self._session.execute(stmt)
         return len(result.scalars().all())

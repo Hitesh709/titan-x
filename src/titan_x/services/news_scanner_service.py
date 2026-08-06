@@ -8,6 +8,8 @@ from __future__ import annotations
 import json
 from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta
+
+from titan_x.core.time import utcnow
 from typing import Any
 
 import structlog
@@ -29,7 +31,7 @@ class NewsScannerService:
     async def scan(
         self, days: int = 7, min_confidence: float = 0.0,
     ) -> dict[str, Any]:
-        cutoff = datetime.now() - timedelta(days=days)
+        cutoff = utcnow() - timedelta(days=days)
         articles = await self._load_articles(cutoff)
         results: dict[str, Any] = {
             "scan_date": date.today().isoformat(),
@@ -51,7 +53,7 @@ class NewsScannerService:
     async def scan_category(
         self, category: str, days: int = 7, min_confidence: float = 0.0,
     ) -> dict[str, Any]:
-        cutoff = datetime.now() - timedelta(days=days)
+        cutoff = utcnow() - timedelta(days=days)
         articles = await self._load_articles(cutoff)
         by_category = self._categorize(articles)
         cat_articles = by_category.get(category, [])

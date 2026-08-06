@@ -1,21 +1,26 @@
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import bcrypt as _bcrypt
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 
 from titan_x.core.config import Settings
 
-_pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 
 def hash_password(password: str) -> str:
-    return _pwd_context.hash(password)
+    """Hash a password with bcrypt (``$2b$``) — compatible with passlib hashes."""
+    return _bcrypt.hashpw(password.encode("utf-8"), _bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return _pwd_context.verify(plain_password, hashed_password)
+    try:
+        return _bcrypt.checkpw(
+            plain_password.encode("utf-8"),
+            hashed_password.encode("utf-8"),
+        )
+    except ValueError:
+        return False
 
 
 def generate_jti() -> str:
@@ -29,7 +34,7 @@ def _create_token(
     expires_delta: timedelta,
 ) -> str:
     to_encode = payload.copy()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     to_encode.update({"iat": now, "exp": now + expires_delta})
     return jwt.encode(to_encode, secret_key, algorithm=algorithm)
 
@@ -55,7 +60,7 @@ def create_refresh_token(
 ) -> tuple[str, str, datetime]:
     jti = generate_jti()
     expire = expires_delta or timedelta(days=settings.refresh_token_expire_days)
-    expires_at = datetime.now(timezone.utc) + expire
+    expires_at = datetime.now(UTC) + expire
     token = _create_token(
         payload={"sub": str(user_id), "type": "refresh", "jti": jti},
         secret_key=settings.jwt_secret_key.get_secret_value(),

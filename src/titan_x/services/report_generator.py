@@ -1,5 +1,7 @@
 from datetime import date, datetime
 
+from titan_x.core.time import utcnow
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -46,7 +48,7 @@ tr:nth-child(even) {{ background-color: #f2f2f2; }}
 </style></head>
 <body>
 <h1>Portfolio Report: {portfolio.name}</h1>
-<p>Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}</p>
+<p>Generated: {utcnow().strftime('%Y-%m-%d %H:%M')}</p>
 <div class="summary">
 <p><strong>Total Value:</strong> ${total_value:,.2f}</p>
 <p><strong>Total P&L:</strong> ${total_pnl:,.2f}</p>
@@ -103,7 +105,7 @@ th {{ background-color: #2196F3; color: white; }}
 </style></head>
 <body>
 <h1>P&L Statement</h1>
-<p>User ID: {user_id} | Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}</p>
+<p>User ID: {user_id} | Generated: {utcnow().strftime('%Y-%m-%d %H:%M')}</p>
 <p><strong>Total Realized P&L:</strong> <span class="{'positive' if total_realized >= 0 else 'negative'}">${total_realized:,.2f}</span></p>
 
 <h2>Open Positions</h2>
@@ -139,7 +141,7 @@ th {{ background-color: #FF9800; color: white; }}
 </style></head>
 <body>
 <h1>Tax Report - Fiscal Year {fiscal_year}</h1>
-<p>Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}</p>
+<p>Generated: {utcnow().strftime('%Y-%m-%d %H:%M')}</p>
 <p><strong>Total Realized Gains:</strong> ${total_gain:,.2f}</p>
 <p><strong>Total Realized Losses:</strong> ${total_loss:,.2f}</p>
 <p><strong>Net P&L:</strong> ${total_gain + total_loss:,.2f}</p>

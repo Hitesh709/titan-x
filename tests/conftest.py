@@ -2,17 +2,26 @@ import os
 from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock
 
-import os
-
 import pytest
 import pytest_asyncio
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from redis.asyncio import Redis
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 # Allow any host during tests (TrustedHostMiddleware)
 os.environ.setdefault("TRUSTED_HOSTS", "*")
+# Required settings for modules that instantiate Settings()/get_settings() at
+# import time (e.g. titan_x.main) before fixtures can inject test values.
+os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
+os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
+os.environ.setdefault("API_KEY", "a" * 32)
+os.environ.setdefault("JWT_SECRET_KEY", "b" * 32)
 
 import titan_x.models  # noqa: F401 — register all models with Base.metadata
 from titan_x.api.dependencies import require_api_key
@@ -64,7 +73,6 @@ async def db_session(in_memory_engine: AsyncEngine) -> AsyncIterator[AsyncSessio
 
 @pytest.fixture
 def mock_redis() -> AsyncMock:
-    import asyncio
 
     async def _true(*args, **kwargs):
         return True
@@ -92,8 +100,8 @@ def mock_redis() -> AsyncMock:
 
 @pytest_asyncio.fixture
 async def app(in_memory_engine: AsyncEngine, mock_redis: AsyncMock) -> AsyncIterator[FastAPI]:
+    from titan_x.api.dependencies import get_brute_force_protector, get_rate_limiter
     from titan_x.main import app as _app
-    from titan_x.api.dependencies import get_brute_force_protector
 
     _app.state.session_factory = async_sessionmaker(in_memory_engine, expire_on_commit=False)
     _app.state.redis = mock_redis
@@ -113,6 +121,9 @@ async def app(in_memory_engine: AsyncEngine, mock_redis: AsyncMock) -> AsyncIter
             pass
 
     _app.dependency_overrides[get_brute_force_protector] = lambda: _NoOpProtector()
+    # Disable Redis-backed rate limiting in tests; the AsyncMock redis cannot
+    # emulate a transactional pipeline used by RateLimiter.check().
+    _app.dependency_overrides[get_rate_limiter] = lambda: None
     _app.dependency_overrides[get_settings] = lambda: Settings(
         database_url="sqlite+aiosqlite:///",
         redis_url="redis://localhost:6379/0",

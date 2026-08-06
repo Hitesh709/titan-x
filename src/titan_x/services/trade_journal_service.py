@@ -5,6 +5,7 @@ from typing import Any
 from sqlalchemy import and_, desc, func as sa_func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from titan_x.core.time import utcnow
 from titan_x.models.order import Position
 from titan_x.models.trade_journal import TradeJournal
 
@@ -120,7 +121,7 @@ class TradeJournalService:
         if symbol:
             q = q.where(TradeJournal.symbol == symbol.upper())
         if days:
-            cutoff = datetime.now() - timedelta(days=days)
+            cutoff = utcnow() - timedelta(days=days)
             q = q.where(TradeJournal.exit_date >= cutoff)
 
         r = await self.session.execute(q)

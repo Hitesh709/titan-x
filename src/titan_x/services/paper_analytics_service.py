@@ -1,18 +1,20 @@
 from collections.abc import Sequence
-from datetime import datetime
 from decimal import Decimal
 from math import sqrt
 from statistics import stdev
 from typing import Any
 
 import structlog
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from titan_x.core.time import ensure_aware, utcnow
 from titan_x.db.repository import BaseRepository
 from titan_x.models.paper_trading import PaperAccount, PaperPosition, SimulatedOrder
 
 logger = structlog.get_logger(__name__)
+
+MIN_ANNUALIZATION_YEARS = 1 / 365.25
 
 
 class PaperAnalyticsService:
@@ -186,10 +188,12 @@ class PaperAnalyticsService:
         first_exit = closed_sims[0].exit_date
         if first_exit is None:
             return None
-        end_date = datetime.now()
-        years = (end_date - first_exit).total_seconds() / (365.25 * 86400)
+        end_date = utcnow()
+        years = (end_date - ensure_aware(first_exit)).total_seconds() / (365.25 * 86400)
         if years <= 0:
             return None
+        if years < MIN_ANNUALIZATION_YEARS:
+            years = MIN_ANNUALIZATION_YEARS
         ratio = float(current_portfolio_value / initial_capital)
         if ratio <= 0:
             return None

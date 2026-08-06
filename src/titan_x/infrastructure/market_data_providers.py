@@ -1,6 +1,8 @@
-﻿import httpx
+import httpx
 from abc import ABC, abstractmethod
 from datetime import date, datetime, timedelta
+
+from titan_x.core.time import utcnow
 
 
 class MarketDataPoint:
@@ -72,7 +74,7 @@ class MockMarketDataProvider(MarketDataProvider):
             "change": 2.5,
             "change_percent": 1.67,
             "volume": 2_500_000,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": utcnow().isoformat(),
         }
 
     async def get_company_profile(self, symbol: str) -> dict:
@@ -218,7 +220,7 @@ class YahooFinanceProvider(MarketDataProvider):
                 "exchange": self._exchange_name(meta.get("exchangeName") or "NSE"),
                 "market_state": meta.get("marketState") or "REGULAR",
                 "currency": meta.get("currency") or "INR",
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": utcnow().isoformat(),
                 "source": "yahoo",
             }
         except Exception:

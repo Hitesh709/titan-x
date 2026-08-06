@@ -1,14 +1,14 @@
+import math
 from collections.abc import Sequence
 from datetime import date, datetime, timedelta
 from typing import Any
-
-import math
 
 import structlog
 from sqlalchemy import and_, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from titan_x.core.time import utcnow
 from titan_x.models.company import Company
 from titan_x.models.price import DailyPrice
 from titan_x.models.watchlist import (
@@ -99,7 +99,7 @@ class AlertEvaluationService:
             triggered = await self._evaluate_portfolio_alert(watchlist.id, alert_type, op, threshold)
 
         if triggered:
-            alert.last_triggered_at = datetime.now()
+            alert.last_triggered_at = utcnow()
             await self._create_and_deliver_notification(alert, watchlist)
 
         return triggered

@@ -85,6 +85,7 @@ class TestSectorEngine:
 
     @pytest.mark.asyncio
     async def test_ranking(self, sector_engine: SectorEngine, seed_data: None) -> None:
+        await sector_engine.compute_all_sectors(date(2024, 12, 31), store=True)
         ranking = await sector_engine.get_ranking(date(2024, 12, 31))
         assert len(ranking) == 3
         for r in ranking:
@@ -96,6 +97,7 @@ class TestSectorEngine:
 
     @pytest.mark.asyncio
     async def test_rotation(self, sector_engine: SectorEngine, seed_data: None) -> None:
+        await sector_engine.compute_all_sectors(date(2024, 12, 31), store=True)
         rotation = await sector_engine.get_rotation(date(2024, 12, 31))
         assert "leading" in rotation
         assert "lagging" in rotation

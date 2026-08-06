@@ -8,6 +8,7 @@ never reset, so paper-trading history placed via the Trading tab survives.
 import random
 from datetime import date, datetime, timedelta, timezone
 
+import structlog
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -20,6 +21,8 @@ from titan_x.models.paper_trading import PaperAccount
 from titan_x.models.price import DailyPrice
 from titan_x.models.sector import SectorPerformance
 from titan_x.models.user import User
+
+logger = structlog.get_logger(__name__)
 from titan_x.models.watchlist import Watchlist, WatchlistItem, WatchlistMonitorEvent
 
 DEMO_EMAIL = "demo@titanx.app"
@@ -188,7 +191,7 @@ async def seed_market_data(session_factory: async_sessionmaker) -> None:
                 advance_decline_ratio=1.35, breadth_oscillator=14.5, index_strength_score=62.0,
             ))
 
-    print(f"Seeded {len(COMPANIES)} companies, {len(days)} trading days, sector performance, market breadth")
+    logger.info("demo_seed_market_data", companies=len(COMPANIES), trading_days=len(days))
 
 
 async def seed_demo_user(session_factory: async_sessionmaker) -> User:
@@ -199,7 +202,7 @@ async def seed_demo_user(session_factory: async_sessionmaker) -> User:
                 user = User(email=DEMO_EMAIL, hashed_password=hash_password(DEMO_PASSWORD))
                 session.add(user)
                 await session.flush()
-                print(f"Created demo user {DEMO_EMAIL} / {DEMO_PASSWORD}")
+                logger.info("demo_user_created", email=DEMO_EMAIL)
 
             # Reset user-scoped data so the script is idempotent
             await session.execute(delete(WatchlistMonitorEvent).where(WatchlistMonitorEvent.user_id == user.id))
@@ -303,7 +306,7 @@ async def seed_demo_user(session_factory: async_sessionmaker) -> User:
                     is_read=(idx >= 4), triggered_at=now - timedelta(minutes=idx * 7),
                 ))
 
-            print(f"Seeded demo user (id={user.id}), paper account, watchlists, AI scores, news, alerts")
+            logger.info("demo_user_seeded", user_id=user.id)
             return user
 
 
@@ -315,6 +318,6 @@ async def seed_all(session_factory: async_sessionmaker) -> None:
     async with session_factory() as session:
         async with session.begin():
             result = await IndexService(session).seed()
-        print(f"Seeded indices: {result}")
+        logger.info("demo_indices_seeded", indices=result)
     await seed_demo_user(session_factory)
-    print("Seed complete.")
+    logger.info("demo_seed_complete")

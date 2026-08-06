@@ -41,6 +41,9 @@ prepend_sys_path = "src"
 asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = ["smoke: smoke tests that verify a deployed instance"]
+# Always import titan_x from this repository's src/, regardless of any
+# editable install that may also be present on sys.path.
+pythonpath = ["src"]
 
 [tool.ruff]
 target-version = "py313"
