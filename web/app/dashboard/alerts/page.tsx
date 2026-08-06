@@ -52,6 +52,7 @@ export default function AlertsPage() {
   const [showCreate, setShowCreate] = useState(false)
   const [creating, setCreating] = useState(false)
   const [watchlists, setWatchlists] = useState<Watchlist[]>([])
+  const [itemIndex, setItemIndex] = useState<Map<number, { symbol: string; watchlist_id: number }>>(new Map())
   const [form, setForm] = useState({
     watchlist_id: "",
     item_symbol: "",
@@ -70,11 +71,13 @@ export default function AlertsPage() {
       const lists = wlRes.items ?? []
       setWatchlists(lists)
       const allAlerts: Alert[] = []
+      const idx = new Map<number, { symbol: string; watchlist_id: number }>()
       for (const wl of lists) {
         try {
           const alRes = await api.get<{ items: WatchlistItem[] }>(`/watchlists/${wl.id}/items?limit=200`)
           const items = alRes.items ?? []
           const itemSymbols = new Map(items.map(i => [i.id, i.symbol]))
+          for (const it of items) idx.set(it.id, { symbol: it.symbol, watchlist_id: wl.id })
           const alertRes = await api.get<Alert[]>(`/watchlists/${wl.id}/alerts`)
           for (const a of (alertRes ?? [])) {
             allAlerts.push({ ...a, symbol: itemSymbols.get(a.watchlist_item_id) ?? undefined } as Alert)
@@ -83,6 +86,7 @@ export default function AlertsPage() {
           // no alerts on this watchlist, skip
         }
       }
+      setItemIndex(idx)
       if (mounted.current) {
         setAlerts(allAlerts.sort((a, b) => {
           const ta = a.created_at ? new Date(a.created_at).getTime() : 0
@@ -119,14 +123,12 @@ export default function AlertsPage() {
     setCreating(true)
     try {
       const wlId = parseInt(form.watchlist_id)
-      let item_id: number | undefined
-      const wl = watchlists.find(w => w.id === wlId)
-      if (wl?.items) {
-        const item = wl.items.find(i => i.symbol === form.item_symbol.trim().toUpperCase())
-        if (item) item_id = item.id
-      }
+      const item = Array.from(itemIndex.entries()).find(
+        ([, v]) => v.watchlist_id === wlId && v.symbol === form.item_symbol.trim().toUpperCase()
+      )
+      const item_id = item ? item[0] : undefined
       await api.post(`/watchlists/${wlId}/alerts`, {
-        item_id: item_id,
+        item_id,
         alert_type: form.alert_type,
         operator: form.operator,
         threshold_value: parseFloat(form.threshold_value),
@@ -141,10 +143,8 @@ export default function AlertsPage() {
   }
 
   const handleToggleActive = async (alert: Alert) => {
-    const wlId = watchlists.find(w =>
-      w.items?.some(i => i.id === alert.watchlist_item_id)
-    )
-    const watchlistId = wlId?.id
+    const entry = itemIndex.get(alert.watchlist_item_id)
+    const watchlistId = entry?.watchlist_id
     if (!watchlistId) return
     try {
       await api.put(`/watchlists/${watchlistId}/alerts/${alert.id}`, {
@@ -158,10 +158,8 @@ export default function AlertsPage() {
 
   const handleDelete = async (alert: Alert) => {
     if (!confirm("Delete this alert?")) return
-    const wlId = watchlists.find(w =>
-      w.items?.some(i => i.id === alert.watchlist_item_id)
-    )
-    const watchlistId = wlId?.id
+    const entry = itemIndex.get(alert.watchlist_item_id)
+    const watchlistId = entry?.watchlist_id
     if (!watchlistId) return
     try {
       await api.delete(`/watchlists/${watchlistId}/alerts/${alert.id}`)
