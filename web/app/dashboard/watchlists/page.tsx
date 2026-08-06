@@ -85,7 +85,7 @@ export default function WatchlistsPage() {
       // Fetch quotes for all symbols across all watchlists
       const allSymbols = [...new Set(res.items?.flatMap(w => w.items?.map(i => i.symbol) ?? []) ?? [])]
       if (allSymbols.length > 0) {
-        const qRes = await api.get<BatchQuotesResponse>(`/market-data/quotes?symbols=${allSymbols.join(",")}`)
+        const qRes = await api.get<BatchQuotesResponse>(`/market-data/quotes?symbols=${allSymbols.join(",")}`, { cacheTTL: 15_000 })
         if (mounted.current) {
           const quoteMap: Record<string, MarketQuote> = {}
           qRes.quotes.forEach(q => { if (q.symbol) quoteMap[q.symbol] = q })

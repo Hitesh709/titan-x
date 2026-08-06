@@ -11,7 +11,11 @@ interface RequestOptions {
   params?: Record<string, string | number | boolean | null | undefined>
   skipAuth?: boolean
   _retried?: boolean
+  cacheTTL?: number
 }
+
+const DEFAULT_CACHE_TTL = 30_000
+const cache = new Map<string, { data: unknown; expires: number }>()
 
 function decodeTokenPayload(token: string): Record<string, unknown> | null {
   try {
@@ -143,7 +147,7 @@ class ApiClient {
   }
 
   async request<T = unknown>(endpoint: string, options: RequestOptions = {}): Promise<T> {
-    const { method = "GET", body, headers = {}, params, skipAuth = false } = options
+    const { method = "GET", body, headers = {}, params, skipAuth = false, cacheTTL } = options
     const h: Record<string, string> = {
       "Content-Type": "application/json",
       ...headers,
@@ -160,6 +164,14 @@ class ApiClient {
             .map(([k, v]) => [k, String(v)])
         ).toString()
       : ""
+
+    const cacheKey = method === "GET" && cacheTTL ? `${endpoint}${query}` : ""
+    if (cacheKey) {
+      const cached = cache.get(cacheKey)
+      if (cached && cached.expires > Date.now()) {
+        return cached.data as T
+      }
+    }
 
     const doFetch = () =>
       fetch(`${API_BASE}${endpoint}${query}`, {
@@ -189,7 +201,13 @@ class ApiClient {
       throw new Error(detail || "API Error")
     }
 
-    return res.json()
+    const data = (await res.json()) as T
+    if (cacheKey) {
+      cache.set(cacheKey, { data, expires: Date.now() + (cacheTTL ?? DEFAULT_CACHE_TTL) })
+      setTimeout(() => cache.delete(cacheKey), cacheTTL ?? DEFAULT_CACHE_TTL).unref?.()
+    }
+
+    return data
   }
 
   get<T = unknown>(endpoint: string, options?: RequestOptions) {
@@ -197,15 +215,22 @@ class ApiClient {
   }
 
   post<T = unknown>(endpoint: string, body: unknown = undefined, options?: RequestOptions) {
+    this.clearCache()
     return this.request<T>(endpoint, { method: "POST", body, ...options })
   }
 
   put<T = unknown>(endpoint: string, body: unknown, options?: RequestOptions) {
+    this.clearCache()
     return this.request<T>(endpoint, { method: "PUT", body, ...options })
   }
 
   delete<T = unknown>(endpoint: string, options?: RequestOptions) {
+    this.clearCache()
     return this.request<T>(endpoint, { method: "DELETE", ...options })
+  }
+
+  clearCache() {
+    cache.clear()
   }
 }
 

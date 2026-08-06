@@ -72,20 +72,19 @@ export default function AlertsPage() {
       setWatchlists(lists)
       const allAlerts: Alert[] = []
       const idx = new Map<number, { symbol: string; watchlist_id: number }>()
-      for (const wl of lists) {
-        try {
-          const alRes = await api.get<{ items: WatchlistItem[] }>(`/watchlists/${wl.id}/items?limit=200`)
-          const items = alRes.items ?? []
-          const itemSymbols = new Map(items.map(i => [i.id, i.symbol]))
-          for (const it of items) idx.set(it.id, { symbol: it.symbol, watchlist_id: wl.id })
-          const alertRes = await api.get<Alert[]>(`/watchlists/${wl.id}/alerts`)
-          for (const a of (alertRes ?? [])) {
-            allAlerts.push({ ...a, symbol: itemSymbols.get(a.watchlist_item_id) ?? undefined } as Alert)
-          }
-        } catch {
-          // no alerts on this watchlist, skip
+      const fetchWatchlistData = async (wl: Watchlist) => {
+        const [alRes, alertRes] = await Promise.all([
+          api.get<{ items: WatchlistItem[] }>(`/watchlists/${wl.id}/items?limit=200`).catch(() => ({ items: [] })),
+          api.get<Alert[]>(`/watchlists/${wl.id}/alerts`).catch(() => [] as Alert[]),
+        ])
+        const items = alRes.items ?? []
+        const itemSymbols = new Map(items.map(i => [i.id, i.symbol]))
+        for (const it of items) idx.set(it.id, { symbol: it.symbol, watchlist_id: wl.id })
+        for (const a of (alertRes ?? [])) {
+          allAlerts.push({ ...a, symbol: itemSymbols.get(a.watchlist_item_id) ?? undefined } as Alert)
         }
       }
+      await Promise.all(lists.map(fetchWatchlistData))
       setItemIndex(idx)
       if (mounted.current) {
         setAlerts(allAlerts.sort((a, b) => {

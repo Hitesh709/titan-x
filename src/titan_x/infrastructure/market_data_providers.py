@@ -149,6 +149,7 @@ class YahooFinanceProvider(MarketDataProvider):
     def __init__(self, api_key: str | None = None):
         self.api_key = api_key
         self._client: httpx.AsyncClient | None = None
+        self._timeout = httpx.Timeout(10.0, connect=5.0)
 
     @staticmethod
     def _yahoo_symbol(symbol: str) -> str:
@@ -168,11 +169,21 @@ class YahooFinanceProvider(MarketDataProvider):
             return "BSE"
         return code or "NSE"
 
-    async def _chart(self, symbol: str, range_: str = "1d", interval: str = "1m") -> dict:
+    async def _ensure_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(headers=self._HEADERS, timeout=20.0)
+            self._client = httpx.AsyncClient(
+                headers=self._HEADERS,
+                timeout=self._timeout,
+                limits=httpx.Limits(
+                    max_connections=20, max_keepalive_connections=10, keepalive_expiry=30
+                ),
+            )
+        return self._client
+
+    async def _chart(self, symbol: str, range_: str = "1d", interval: str = "1m") -> dict:
+        client = await self._ensure_client()
         url = f"{self._BASE}/{self._yahoo_symbol(symbol)}"
-        resp = await self._client.get(
+        resp = await client.get(
             url,
             params={"range": range_, "interval": interval, "region": "IN", "lang": "en-IN"},
         )
@@ -287,9 +298,8 @@ class YahooFinanceProvider(MarketDataProvider):
 
     async def search_symbols(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
         try:
-            if self._client is None or self._client.is_closed:
-                self._client = httpx.AsyncClient(headers=self._HEADERS, timeout=20.0)
-            resp = await self._client.get(
+            client = await self._ensure_client()
+            resp = await client.get(
                 "https://query1.finance.yahoo.com/v1/finance/search",
                 params={
                     "q": query,

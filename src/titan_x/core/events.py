@@ -81,15 +81,18 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
             try:
                 from titan_x.services.market_data_service import run_market_data_ingestion
 
-                result = await run_market_data_ingestion(
-                    sf, max_symbols=settings.market_data_ingest_max_symbols
-                )
-                logger.info(
-                    "market_data_ingest_startup",
-                    ok=result.get("symbols_ok"),
-                    failed=result.get("symbols_failed"),
-                    inserted=result.get("inserted_total"),
-                )
+                async def _run() -> None:
+                    result = await run_market_data_ingestion(
+                        sf, max_symbols=settings.market_data_ingest_max_symbols
+                    )
+                    logger.info(
+                        "market_data_ingest_startup",
+                        ok=result.get("symbols_ok"),
+                        failed=result.get("symbols_failed"),
+                        inserted=result.get("inserted_total"),
+                    )
+
+                asyncio.create_task(_run())
             except Exception:  # noqa: BLE001
                 logger.exception("market_data_ingest_startup_failed")
 

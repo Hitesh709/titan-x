@@ -104,22 +104,28 @@ class MarketDataService:
         """
         provider_name = self._resolve_provider(provider_name)
 
-        results: list[dict] = []
-        for symbol in symbols:
-            try:
-                results.append(
-                    await self.fetch_and_store_historical(
+        results: list[dict] = [None] * len(symbols)
+        sem = asyncio.Semaphore(max_concurrency)
+
+        async def _fetch_one(idx: int, symbol: str) -> None:
+            async with sem:
+                try:
+                    results[idx] = await self.fetch_and_store_historical(
                         symbol,
                         provider_name=provider_name,
                         api_key=api_key,
                         start=start,
                         end=end,
                     )
-                )
-            except Exception as exc:  # noqa: BLE001
-                results.append(
-                    {"symbol": symbol.upper(), "provider": provider_name, "error": str(exc)}
-                )
+                except Exception as exc:  # noqa: BLE001
+                    results[idx] = {
+                        "symbol": symbol.upper(),
+                        "provider": provider_name,
+                        "error": str(exc),
+                    }
+
+        await asyncio.gather(*[_fetch_one(i, s) for i, s in enumerate(symbols)])
+        results = [r for r in results if r is not None]
 
         errors = [r for r in results if "error" in r]
         return {
