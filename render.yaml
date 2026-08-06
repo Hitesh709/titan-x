@@ -8,5 +8,7 @@ services:
     envVars:
       - key: NEXT_PUBLIC_API_URL
         value: https://titan-x.onrender.com/api/v1
+      - key: NEXT_PUBLIC_API_KEY
+        sync: false
       - key: NODE_ENV
         value: production
