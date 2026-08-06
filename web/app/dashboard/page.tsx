@@ -42,7 +42,7 @@ function normalizeNews(
     title: n.title,
     source: n.source,
     published_at: n.published_at ?? null,
-    sentiment: n.sentiment,
+    sentiment: n.sentiment as "positive" | "negative" | "neutral",
     sentiment_confidence: n.sentiment_confidence ?? null,
     url: null,
   }))

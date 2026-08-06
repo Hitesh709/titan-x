@@ -196,7 +196,7 @@ class ApiClient {
     return this.request<T>(endpoint, options)
   }
 
-  post<T = unknown>(endpoint: string, body: unknown, options?: RequestOptions) {
+  post<T = unknown>(endpoint: string, body: unknown = undefined, options?: RequestOptions) {
     return this.request<T>(endpoint, { method: "POST", body, ...options })
   }
 
