@@ -156,11 +156,16 @@ the git repo with `pythonpath`/`PYTHONPATH` pointing at the correct `src`.
 
 ## 8. Known technical debt (pre-existing)
 
-- **Oversized service modules** (split candidates): `market_data_collector_service.py`
-  (1104L), `feature_engineering_service.py` (1103L), `datalake_service.py`
-  (1045L), `explainability_engine.py` (923L), `professional_report_service.py`
-  (907L), `pattern_recognition_engine.py` (845L); API router
-  `api/v1/datalake.py` (936L).
+- **Oversized service modules** (remaining split candidates):
+  `explainability_engine.py` (923L), `professional_report_service.py` (907L),
+  `pattern_recognition_engine.py` (845L). The big four have been split while
+  keeping historical import paths working via re-export facades:
+  `api/v1/datalake.py` → `api/v1/datalake/` (schemas, serializers, router);
+  `market_data_collector_service.py` → `services/market_data_collection/`;
+  `feature_engineering_service.py` → `services/feature_engineering/computers/`
+  (category mixins); `datalake_service.py` → `services/datalake/`
+  (catalog/schema/version, pipeline/lineage/metadata, archive/storage/move,
+  source/ingestion, snapshot/diff/checksum mixins).
 - **python-jose** is pinned but deprecated and emits `datetime.utcnow()`
   warnings; long-term replace with `PyJWT`.
 - `passlib` is still a pinned dependency (`passlib[bcrypt]==1.7.4`) but is no
