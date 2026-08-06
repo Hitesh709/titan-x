@@ -1,11 +1,13 @@
+import asyncio
 from datetime import date
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
-from titan_x.api.dependencies import get_news_engine, require_api_key
+from titan_x.api.dependencies import get_cache, get_news_engine, require_api_key
 from titan_x.api.schemas import MessageResponse, PaginatedResponse
+from titan_x.infrastructure.cache import RedisCache
 from titan_x.services.news_engine import NewsEngine
 
 news_router = APIRouter(
@@ -99,12 +101,19 @@ async def get_article(
 @news_router.get("", response_model=PaginatedResponse[NewsArticleResponse])
 async def list_news(
     engine: Annotated[NewsEngine, Depends(get_news_engine)],
+    cache: Annotated[RedisCache, Depends(get_cache)],
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
 ) -> PaginatedResponse[NewsArticleResponse]:
+    cache_key = f"news:list:{skip}:{limit}"
+    cached = await cache.get(cache_key)
+    if cached is not None:
+        return PaginatedResponse[NewsArticleResponse](**cached)
     articles, total = await engine.search(skip=skip, limit=limit)
     items = [_article_response(a) for a in articles]
-    return PaginatedResponse(items=items, total=total, skip=skip, limit=limit)
+    response = PaginatedResponse(items=items, total=total, skip=skip, limit=limit)
+    asyncio.ensure_future(cache.set(cache_key, response.model_dump(), ttl=30))
+    return response
 
 
 @news_router.get("/meta/sources", response_model=list[str])

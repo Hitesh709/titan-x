@@ -65,7 +65,7 @@ export default function DashboardPage() {
       const [dashRes, heatRes, newsRes] = await Promise.allSettled([
         api.get<DashboardData>("/dashboard"),
         api.get<MarketHeatmapData>(`/market-heatmap?period=${period}`),
-        api.get<{ items: NewsArticle[] }>("/news?limit=6&skip=0"),
+        api.get<{ items: NewsArticle[] }>("/news?limit=6&skip=0", { cacheTTL: 30_000 }),
       ])
       if (!mounted.current) return
 

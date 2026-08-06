@@ -155,13 +155,13 @@ class DashboardService:
 
     async def _get_watchlists(self, user_id: int) -> list[dict[str, Any]]:
         wls = (await self._session.execute(
-            select(Watchlist).where(Watchlist.user_id == user_id)
-        )).scalars().all()
+            select(Watchlist)
+            .where(Watchlist.user_id == user_id)
+            .options(joinedload(Watchlist.items))
+        )).scalars().unique().all()
         results = []
         for wl in wls:
-            items = (await self._session.execute(
-                select(WatchlistItem).where(WatchlistItem.watchlist_id == wl.id)
-            )).scalars().all()
+            items = wl.items or []
             results.append({
                 "id": wl.id,
                 "name": wl.name,
@@ -183,14 +183,18 @@ class DashboardService:
         )).scalars().all()
         if not watchlisted_symbols:
             return []
+        scores = (await self._session.execute(
+            select(DynamicAIScore)
+            .where(DynamicAIScore.symbol.in_(watchlisted_symbols))
+            .order_by(DynamicAIScore.symbol, DynamicAIScore.as_of_date.desc())
+        )).scalars().all()
+        latest: dict[str, DynamicAIScore] = {}
+        for s in scores:
+            if s.symbol not in latest:
+                latest[s.symbol] = s
         picks = []
         for symbol in watchlisted_symbols:
-            score = (await self._session.execute(
-                select(DynamicAIScore)
-                .where(DynamicAIScore.symbol == symbol)
-                .order_by(DynamicAIScore.as_of_date.desc())
-                .limit(1)
-            )).scalar_one_or_none()
+            score = latest.get(symbol)
             if score and score.combined_signal in ("buy", "strong_buy"):
                 evidence, why_buy, why_not_buy = _build_pick_explanation(score)
                 picks.append({
@@ -225,11 +229,16 @@ class DashboardService:
             .order_by(desc(NewsArticle.published_at))
             .limit(20)
         )).scalars().all()
+        article_ids = [a.id for a in articles]
+        nlp_map = {}
+        if article_ids:
+            nlp_rows = (await self._session.execute(
+                select(NewsNLPAnalysis).where(NewsNLPAnalysis.article_id.in_(article_ids))
+            )).scalars().all()
+            nlp_map = {n.article_id: n for n in nlp_rows}
         results = []
         for article in articles:
-            nlp = (await self._session.execute(
-                select(NewsNLPAnalysis).where(NewsNLPAnalysis.article_id == article.id)
-            )).scalar_one_or_none()
+            nlp = nlp_map.get(article.id)
             sentiment = nlp.sentiment_label if nlp else "neutral"
             results.append({
                 "id": article.id,
