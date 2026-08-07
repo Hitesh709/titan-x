@@ -1,4 +1,4 @@
-"""Fundamental Scanner API.
+﻿"""Fundamental Scanner API.
 
 Scan all symbols for ROE, ROCE, Debt, Revenue Growth, EPS Growth,
 Cash Flow, and Valuation signals. View rankings and scan results.
@@ -69,12 +69,12 @@ async def scan_symbol(
 
 @router.get("/rankings", summary="Get ranked scan results")
 async def get_rankings(
-    scan_date: str | None = None,
+    scan_date: date | None = None,
     min_score: float = Query(0.0, ge=0, le=100),
     limit: int = Query(100, ge=1, le=500),
     service: FundamentalScannerService = Depends(_get_service),
 ) -> list[dict[str, Any]]:
-    d = date.fromisoformat(scan_date) if scan_date else None
+    d = scan_date
     results = await service.get_rankings(d, min_score, limit)
     return [_scan_dict(r) for r in results]
 
@@ -103,21 +103,21 @@ async def get_scan_history(
 @router.get("/top-by-dimension/{dimension}", summary="Get top by dimension")
 async def get_top_by_dimension(
     dimension: str,
-    scan_date: str | None = None,
+    scan_date: date | None = None,
     limit: int = Query(20, ge=1, le=100),
     service: FundamentalScannerService = Depends(_get_service),
 ) -> list[dict[str, Any]]:
-    d = date.fromisoformat(scan_date) if scan_date else None
+    d = scan_date
     results = await service.get_top_by_dimension(dimension, d, limit)
     return [_scan_dict(r) for r in results]
 
 
 @router.get("/summary", summary="Get scan summary")
 async def get_scan_summary(
-    scan_date: str | None = None,
+    scan_date: date | None = None,
     service: FundamentalScannerService = Depends(_get_service),
 ) -> dict[str, Any]:
-    d = date.fromisoformat(scan_date) if scan_date else None
+    d = scan_date
     return await service.get_scan_summary(d)
 
 

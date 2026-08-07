@@ -1,5 +1,6 @@
+import json
 from datetime import date
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
@@ -19,6 +20,15 @@ backtest_router = APIRouter(
     tags=["backtests"],
     dependencies=[Depends(require_api_key)],
 )
+
+
+def _loads_json(value: str | None) -> Any:
+    if value is None:
+        return {}
+    try:
+        return json.loads(value)
+    except (json.JSONDecodeError, ValueError):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON in request")
 
 
 async def _require_backtest_owner(
@@ -46,9 +56,8 @@ async def create_backtest(
     config: str | None = Query(None),
     description: str | None = Query(None, max_length=1000),
 ) -> dict:
-    import json
-    strategy_params_dict = json.loads(strategy_params) if strategy_params else {}
-    config_dict = json.loads(config) if config else {}
+    strategy_params_dict = _loads_json(strategy_params) if strategy_params else {}
+    config_dict = _loads_json(config) if config else {}
     result = await engine.create_backtest(
         user_id=current_user.id,
         name=name,

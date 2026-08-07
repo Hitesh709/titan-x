@@ -31,12 +31,12 @@ async def get_metric_history(
     metric_name: str,
     svc: Annotated[MonitoringService, Depends(get_monitoring_service)],
     current_user: Annotated[User, Depends(get_current_active_user)],
-    since: str | None = Query(None),
-    until: str | None = Query(None),
+    since: datetime | None = Query(None),
+    until: datetime | None = Query(None),
     limit: int = Query(100, ge=1, le=1000),
 ) -> dict:
-    since_dt = datetime.fromisoformat(since) if since else None
-    until_dt = datetime.fromisoformat(until) if until else None
+    since_dt = since
+    until_dt = until
     metrics = await svc.get_metric_history(metric_name, since=since_dt, until=until_dt, limit=limit)
     return {
         "metric_name": metric_name,
@@ -59,11 +59,11 @@ async def get_metric_stats(
     metric_name: str,
     svc: Annotated[MonitoringService, Depends(get_monitoring_service)],
     current_user: Annotated[User, Depends(get_current_active_user)],
-    since: str | None = Query(None),
-    until: str | None = Query(None),
+    since: datetime | None = Query(None),
+    until: datetime | None = Query(None),
 ) -> dict:
-    since_dt = datetime.fromisoformat(since) if since else None
-    until_dt = datetime.fromisoformat(until) if until else None
+    since_dt = since
+    until_dt = until
     return await svc.get_metric_stats(metric_name, since=since_dt, until=until_dt)
 
 

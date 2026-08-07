@@ -26,6 +26,15 @@ strategy_router = APIRouter(
 )
 
 
+def _loads_json(value: str | None, default: Any) -> Any:
+    if value is None:
+        return default
+    try:
+        return json.loads(value)
+    except (json.JSONDecodeError, ValueError):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON in request")
+
+
 def _get_strategy_builder(
     engine: Annotated[BacktestEngine, Depends(get_backtest_engine)],
 ) -> StrategyBuilder:
@@ -84,11 +93,11 @@ async def create_strategy(
         user_id=current_user.id,
         name=name,
         description=description,
-        entry_criteria=json.loads(entry_criteria),
-        exit_criteria=json.loads(exit_criteria),
-        risk_rules=json.loads(risk_rules),
-        position_rules=json.loads(position_rules),
-        tags=json.loads(tags),
+        entry_criteria=_loads_json(entry_criteria, []),
+        exit_criteria=_loads_json(exit_criteria, []),
+        risk_rules=_loads_json(risk_rules, {}),
+        position_rules=_loads_json(position_rules, {}),
+        tags=_loads_json(tags, []),
     )
     return result
 
@@ -145,11 +154,11 @@ async def update_strategy(
         strategy_id=strategy_id,
         name=name,
         description=description,
-        entry_criteria=json.loads(entry_criteria) if entry_criteria else None,
-        exit_criteria=json.loads(exit_criteria) if exit_criteria else None,
-        risk_rules=json.loads(risk_rules) if risk_rules else None,
-        position_rules=json.loads(position_rules) if position_rules else None,
-        tags=json.loads(tags) if tags else None,
+        entry_criteria=_loads_json(entry_criteria, None) if entry_criteria else None,
+        exit_criteria=_loads_json(exit_criteria, None) if exit_criteria else None,
+        risk_rules=_loads_json(risk_rules, None) if risk_rules else None,
+        position_rules=_loads_json(position_rules, None) if position_rules else None,
+        tags=_loads_json(tags, None) if tags else None,
         is_active=is_active,
     )
     if result is None:
@@ -222,7 +231,7 @@ async def optimize_strategy(
             symbol=symbol,
             start_date=start_date,
             end_date=end_date,
-            parameter_ranges=json.loads(parameter_ranges),
+            parameter_ranges=_loads_json(parameter_ranges, {}),
             metric=metric,
             direction=direction,
             initial_capital=initial_capital,

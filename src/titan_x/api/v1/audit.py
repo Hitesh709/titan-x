@@ -1,4 +1,4 @@
-import json
+﻿import json
 from datetime import datetime, timedelta
 from typing import Annotated
 
@@ -56,11 +56,11 @@ async def list_logs(
     severity: str | None = Query(None, pattern="^(info|warning|critical)$"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    since: str | None = Query(None, description="ISO datetime filter (inclusive)"),
-    until: str | None = Query(None, description="ISO datetime filter (inclusive)"),
+    since: datetime | None = Query(None, description="ISO datetime filter (inclusive)"),
+    until: datetime | None = Query(None, description="ISO datetime filter (inclusive)"),
 ):
-    since_dt = datetime.fromisoformat(since) if since else None
-    until_dt = datetime.fromisoformat(until) if until else None
+    since_dt = since
+    until_dt = until
     logs, total = await svc.list_logs(
         user_id=user.id,
         action=action,
@@ -84,12 +84,12 @@ async def list_all_logs(
     severity: str | None = Query(None, pattern="^(info|warning|critical)$"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    since: str | None = Query(None, description="ISO datetime filter (inclusive)"),
-    until: str | None = Query(None, description="ISO datetime filter (inclusive)"),
+    since: datetime | None = Query(None, description="ISO datetime filter (inclusive)"),
+    until: datetime | None = Query(None, description="ISO datetime filter (inclusive)"),
     current_user: Annotated[User, Depends(get_current_active_user)] = None,
 ):
-    since_dt = datetime.fromisoformat(since) if since else None
-    until_dt = datetime.fromisoformat(until) if until else None
+    since_dt = since
+    until_dt = until
     logs, total = await svc.list_logs(
         action=action,
         entity_type=entity_type,
@@ -108,12 +108,12 @@ async def audit_stats(
     user: Annotated[User, Depends(get_current_active_user)],
     svc: Annotated[AuditService, Depends(get_audit_service)],
     category: str | None = Query(None, pattern="^(api_call|user_action|ai_decision|config_change|security_event)$"),
-    since: str | None = Query(None, description="ISO datetime filter"),
-    until: str | None = Query(None, description="ISO datetime filter"),
+    since: datetime | None = Query(None, description="ISO datetime filter"),
+    until: datetime | None = Query(None, description="ISO datetime filter"),
     scope: str = Query("user", pattern="^(user|global)$"),
 ):
-    since_dt = datetime.fromisoformat(since) if since else None
-    until_dt = datetime.fromisoformat(until) if until else None
+    since_dt = since
+    until_dt = until
     stats = await svc.get_stats(
         user_id=user.id if scope == "user" else None,
         category=category,
@@ -127,12 +127,12 @@ async def audit_stats(
 @router.get("/stats/global")
 async def global_audit_stats(
     svc: Annotated[AuditService, Depends(get_audit_service)],
-    since: str | None = Query(None, description="ISO datetime filter"),
-    until: str | None = Query(None, description="ISO datetime filter"),
+    since: datetime | None = Query(None, description="ISO datetime filter"),
+    until: datetime | None = Query(None, description="ISO datetime filter"),
     current_user: Annotated[User, Depends(get_current_active_user)] = None,
 ):
-    since_dt = datetime.fromisoformat(since) if since else None
-    until_dt = datetime.fromisoformat(until) if until else None
+    since_dt = since
+    until_dt = until
     stats = await svc.get_stats(since=since_dt, until=until_dt)
     stats["scope"] = "global"
     return stats

@@ -1,4 +1,4 @@
-from datetime import datetime
+﻿from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -249,13 +249,13 @@ async def set_offline_batch(
     feature_id: int = Query(...),
     batch_id: str = Query(...),
     values: str = Query(...),
-    as_of_date: str | None = None,
+    as_of_date: datetime | None = None,
     session=Depends(deps.get_session),
     _: User = Depends(deps.get_current_active_superuser),
 ):
     svc = FeatureStoreService(session)
     parsed = _parse_json(values)
-    as_of = datetime.fromisoformat(as_of_date) if as_of_date else None
+    as_of = as_of_date
     rows = await svc.set_offline_batch(
         feature_id, parsed, batch_id, as_of_date=as_of,
     )
@@ -265,7 +265,7 @@ async def set_offline_batch(
 @router.get("/offline/{feature_id}")
 async def get_offline_values(
     feature_id: int,
-    as_of_date: str | None = None,
+    as_of_date: datetime | None = None,
     batch_id: str | None = None,
     entity_key: str | None = None,
     limit: int = 1000, offset: int = 0,
@@ -273,7 +273,7 @@ async def get_offline_values(
     _: User = Depends(deps.get_current_active_superuser),
 ):
     svc = FeatureStoreService(session)
-    as_of = datetime.fromisoformat(as_of_date) if as_of_date else None
+    as_of = as_of_date
     items = await svc.get_offline_values(
         feature_id, as_of_date=as_of, batch_id=batch_id,
         entity_key=entity_key, limit=limit, offset=offset,
@@ -291,7 +291,7 @@ async def get_offline_values(
 @router.post("/offline/dataset")
 async def get_offline_dataset(
     feature_ids: str = Query(...),
-    as_of_date: str | None = None,
+    as_of_date: datetime | None = None,
     batch_id: str | None = None,
     entity_keys: str | None = None,
     session=Depends(deps.get_session),
@@ -299,7 +299,7 @@ async def get_offline_dataset(
 ):
     svc = FeatureStoreService(session)
     fids = [int(x) for x in feature_ids.split(",")]
-    as_of = datetime.fromisoformat(as_of_date) if as_of_date else None
+    as_of = as_of_date
     keys = entity_keys.split(",") if entity_keys else None
     data = await svc.get_offline_dataset(fids, as_of_date=as_of, batch_id=batch_id, entity_keys=keys)
     return {"rows": data, "count": len(data)}

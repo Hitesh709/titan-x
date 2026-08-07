@@ -252,8 +252,12 @@ async def enqueue_sync(
     current_user: User = Depends(get_current_active_user),
 ):
     svc = _svc(db)
-    import json
-    payload_dict = json.loads(payload) if payload else None
+    payload_dict = None
+    if payload:
+        try:
+            payload_dict = json.loads(payload)
+        except (json.JSONDecodeError, ValueError):
+            raise HTTPException(status_code=400, detail="Invalid JSON in request")
     item = await svc.enqueue_sync(source_id, task_type, symbol.upper(), payload_dict, priority)
     return {"item_id": item.id, "status": item.status, "task_type": item.task_type, "symbol": item.symbol}
 

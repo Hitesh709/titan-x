@@ -1,6 +1,7 @@
-﻿from typing import Any
+﻿import json
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from titan_x.api import deps
 from titan_x.models.user import User
@@ -8,6 +9,15 @@ from titan_x.api.schemas import PaginatedResponse
 from titan_x.services.automated_training_service import AutomatedTrainingService
 
 router = APIRouter(tags=["automated-training"])
+
+
+def _loads_json(value: str | None) -> Any | None:
+    if value is None:
+        return None
+    try:
+        return json.loads(value)
+    except (json.JSONDecodeError, ValueError):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON in request")
 
 
 # ── Dataset Versioning ──
@@ -30,7 +40,7 @@ async def create_dataset(
         name=name, version=version, description=description,
         source=source, row_count=row_count, size_bytes=size_bytes,
         checksum=checksum,
-        metadata=__import__("json").loads(metadata) if metadata else None,
+        metadata=_loads_json(metadata),
     )
     return {"id": ds.id, "name": ds.name, "version": ds.version}
 
@@ -75,9 +85,9 @@ async def create_feature_set(
     svc = AutomatedTrainingService(session)
     fs = await svc.create_feature_set(
         name=name, description=description,
-        features=__import__("json").loads(features) if features else None,
+        features=_loads_json(features),
         target_column=target_column,
-        metadata=__import__("json").loads(metadata) if metadata else None,
+        metadata=_loads_json(metadata),
     )
     return {"id": fs.id, "name": fs.name, "feature_count": fs.feature_count}
 
@@ -120,8 +130,8 @@ async def create_hyperparameter_config(
     svc = AutomatedTrainingService(session)
     hp = await svc.create_hyperparameter_config(
         name=name, description=description,
-        parameters=__import__("json").loads(parameters) if parameters else None,
-        metadata=__import__("json").loads(metadata) if metadata else None,
+        parameters=_loads_json(parameters),
+        metadata=_loads_json(metadata),
     )
     return {"id": hp.id, "name": hp.name}
 
@@ -319,7 +329,7 @@ async def create_checkpoint(
         job_id=job_id, epoch=epoch, step=step,
         metric_value=metric_value, loss_value=loss_value,
         artifact_path=artifact_path, file_size_bytes=file_size_bytes,
-        metadata=__import__("json").loads(metadata) if metadata else None,
+        metadata=_loads_json(metadata),
     )
     return {"id": cp.id, "epoch": cp.epoch, "metric_value": cp.metric_value}
 

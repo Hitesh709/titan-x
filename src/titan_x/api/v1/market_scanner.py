@@ -1,4 +1,4 @@
-"""Market Scanner API.
+﻿"""Market Scanner API.
 
 Scan all symbols for breakouts, breakdowns, EMA crossovers,
 RSI, MACD, ADX, ATR, and volume signals. View rankings and
@@ -53,12 +53,12 @@ async def scan_symbol(
 
 @router.get("/rankings", summary="Get ranked scan results")
 async def get_rankings(
-    scan_date: str | None = None,
+    scan_date: date | None = None,
     min_score: float = Query(0.0, ge=0, le=100),
     limit: int = Query(100, ge=1, le=500),
     service: MarketScannerService = Depends(_get_service),
 ) -> list[dict[str, Any]]:
-    sd = date.fromisoformat(scan_date) if scan_date else None
+    sd = scan_date
     results = await service.get_rankings(sd, min_score, limit)
     return [_scan_dict(r) for r in results]
 
@@ -66,7 +66,7 @@ async def get_rankings(
 @router.get("/rankings/by-signal/{signal}", summary="Get top by signal type")
 async def get_top_by_signal(
     signal: str,
-    scan_date: str | None = None,
+    scan_date: date | None = None,
     limit: int = Query(20, ge=1, le=100),
     service: MarketScannerService = Depends(_get_service),
 ) -> list[dict[str, Any]]:
@@ -76,7 +76,7 @@ async def get_top_by_signal(
             status_code=400,
             detail=f"Invalid signal '{signal}'. Valid: {', '.join(sorted(valid))}",
         )
-    sd = date.fromisoformat(scan_date) if scan_date else None
+    sd = scan_date
     results = await service.get_top_by_signal(signal, sd, limit)
     return [_scan_dict(r) for r in results]
 
@@ -110,10 +110,10 @@ async def get_scan_history(
 
 @router.get("/summary", summary="Get scan summary statistics")
 async def get_summary(
-    scan_date: str | None = None,
+    scan_date: date | None = None,
     service: MarketScannerService = Depends(_get_service),
 ) -> dict[str, Any]:
-    sd = date.fromisoformat(scan_date) if scan_date else None
+    sd = scan_date
     return await service.get_scan_summary(sd)
 
 

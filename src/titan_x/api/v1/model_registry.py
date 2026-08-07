@@ -1,7 +1,8 @@
+﻿import json
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from titan_x.api import deps
@@ -9,6 +10,15 @@ from titan_x.models.user import User
 from titan_x.services.model_registry_service import ModelRegistryService
 
 router = APIRouter(prefix="/model-registry", tags=["model_registry"])
+
+
+def _loads_json(value: str | None) -> Any | None:
+    if value is None:
+        return None
+    try:
+        return json.loads(value)
+    except (json.JSONDecodeError, ValueError):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON in request")
 
 
 async def _get_service(
@@ -82,8 +92,8 @@ async def register_entry(
     entry = await service.register_entry(
         name=name, model_type=model_type,
         description=description, framework=framework,
-        tags=json.loads(tags) if tags else None,
-        metadata=json.loads(metadata) if metadata else None,
+        tags=_loads_json(tags),
+        metadata=_loads_json(metadata),
     )
     return {"entry": _entry_dict(entry)}
 
@@ -129,8 +139,8 @@ async def update_entry(
         entry_id=entry_id,
         description=description, framework=framework,
         status=status,
-        tags=json.loads(tags) if tags else None,
-        metadata=json.loads(metadata) if metadata else None,
+        tags=_loads_json(tags),
+        metadata=_loads_json(metadata),
     )
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
@@ -155,7 +165,7 @@ async def create_version(
         entry_id=entry_id, version=version,
         description=description, source=source,
         changelog=changelog,
-        metadata=json.loads(metadata) if metadata else None,
+        metadata=_loads_json(metadata),
     )
     return {"version": _version_dict(v)}
 
@@ -188,7 +198,7 @@ async def update_version(
         version_id=version_id,
         description=description, source=source,
         changelog=changelog, status=status,
-        metadata=json.loads(metadata) if metadata else None,
+        metadata=_loads_json(metadata),
     )
     if not v:
         raise HTTPException(status_code=404, detail="Version not found")
@@ -240,11 +250,11 @@ async def create_training_run(
     tr = await service.create_training_run(
         version_id=version_id,
         run_id=run_id,
-        dataset_info=json.loads(dataset_info) if dataset_info else None,
-        hyperparameters=json.loads(hyperparameters) if hyperparameters else None,
+        dataset_info=_loads_json(dataset_info),
+        hyperparameters=_loads_json(hyperparameters),
         training_duration_seconds=training_duration_seconds,
         status=status,
-        metrics=json.loads(metrics) if metrics else None,
+        metrics=_loads_json(metrics),
         artifact_path=artifact_path,
         started_at=started_at,
         completed_at=completed_at,
