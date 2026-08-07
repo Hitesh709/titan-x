@@ -370,6 +370,21 @@ class PatternLibraryService:
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
+    async def count_instances(
+        self, symbol: str | None = None, category: str | None = None,
+        definition_id: int | None = None, active_only: bool = True,
+    ) -> int:
+        stmt = select(func.count()).select_from(PatternInstance)
+        if symbol:
+            stmt = stmt.where(PatternInstance.symbol == symbol.upper())
+        if category:
+            stmt = stmt.where(PatternInstance.category == category)
+        if definition_id:
+            stmt = stmt.where(PatternInstance.definition_id == definition_id)
+        if active_only:
+            stmt = stmt.where(PatternInstance.is_active == True)
+        return (await self.session.execute(stmt)).scalar() or 0
+
     async def get_instance_stats(
         self, definition_id: int, since: date | None = None,
     ) -> dict[str, Any]:

@@ -121,7 +121,7 @@ async def list_instances(
     service: PatternLibraryService = Depends(_get_service),
 ) -> dict[str, Any]:
     instances = await service.get_instances(symbol, category, definition_id, active_only, limit, offset)
-    return {"total": len(instances), "instances": [_inst_dict(i) for i in instances]}
+    return {"total": await service.count_instances(symbol, category, definition_id, active_only), "instances": [_inst_dict(i) for i in instances]}
 
 
 @router.get("/stats/{definition_id}", summary="Instance stats for a definition")
