@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from titan_x.api import deps
+from titan_x.models.user import User
 from titan_x.services.news_scanner_service import NewsScannerService
 
 router = APIRouter(prefix="/news-scanner", tags=["news_scanner"])
@@ -22,6 +23,7 @@ async def _get_service(
 async def scan_all(
     days: int = Query(7, ge=1, le=365),
     min_confidence: float = Query(0.0, ge=0, le=1),
+    current_user: User = Depends(deps.get_current_active_superuser),
     service: NewsScannerService = Depends(_get_service),
 ) -> dict:
     return await service.scan(days, min_confidence)
@@ -32,6 +34,7 @@ async def scan_category(
     category: str,
     days: int = Query(7, ge=1, le=365),
     min_confidence: float = Query(0.0, ge=0, le=1),
+    current_user: User = Depends(deps.get_current_active_user),
     service: NewsScannerService = Depends(_get_service),
 ) -> dict:
     return await service.scan_category(category, days, min_confidence)
