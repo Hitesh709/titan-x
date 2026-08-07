@@ -13,6 +13,7 @@ from titan_x.infrastructure.market_data_providers import get_market_data_provide
 from titan_x.models.company import Company
 from titan_x.models.paper_trading import PaperAccount, PaperOrder, PaperPosition, PaperTrade, SimulatedOrder
 from titan_x.models.price import DailyPrice
+from titan_x.services.market_data_service import MarketDataService
 from titan_x.services.price_service import PriceService
 
 logger = structlog.get_logger(__name__)
@@ -156,20 +157,21 @@ class PaperTradingService:
         return order
 
     async def _try_fetch_market_price(self, symbol: str) -> Decimal | None:
-        """Fetch a real market quote for ``symbol`` so a market order can fill
-        when no daily price is stored yet. Returns ``None`` (never a fabricated
-        mock value) when a genuine price is unavailable."""
-        provider = None
+        """Fetch a real market quote for ``symbol`` using MarketDataService
+        (cached, pooled) so a market order can fill when no daily price stored."""
         try:
             settings = get_settings()
             if settings.market_data_provider.lower() == "mock":
                 return None
-            provider = get_market_data_provider(settings.market_data_provider)
-            quote = await provider.get_quote(symbol)
-            source = str(quote.get("source") or "").lower()
+            market_svc = MarketDataService(self._session)
+            quotes = await market_svc.get_quotes([symbol])
+            q = (quotes.get("quotes") or [None])[0]
+            if not q:
+                return None
+            source = str(q.get("source") or "").lower()
             if source in ("mock", "yahoo-fallback", "alphavantage-fallback"):
                 return None
-            last_price = quote.get("last_price")
+            last_price = q.get("last_price")
             if last_price is None:
                 return None
             price = Decimal(str(last_price))
@@ -179,13 +181,6 @@ class PaperTradingService:
         except Exception:  # noqa: BLE001
             logger.warning("market_quote_unavailable", symbol=symbol)
             return None
-        finally:
-            try:
-                close = getattr(provider, "close", None)
-                if callable(close):
-                    await close()
-            except Exception:  # noqa: BLE001
-                pass
 
     async def cancel_order(self, order_id: int, user_id: int) -> bool:
         order = await self._order_repo.get(order_id)

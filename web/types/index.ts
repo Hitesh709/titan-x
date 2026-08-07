@@ -351,6 +351,16 @@ export interface CompanyProfile {
   source?: string
 }
 
+export interface CompanySearchResult {
+  id: number
+  symbol: string
+  company_name: string
+  sector: string | null
+  industry: string | null
+  exchange: string | null
+  market_cap: number | null
+}
+
 export interface StockHistoryResponse {
   symbol: string
   points: IndexHistoryPoint[]

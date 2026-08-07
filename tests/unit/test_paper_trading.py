@@ -555,14 +555,16 @@ class TestLiveQuoteFallback:
         svc = PaperTradingService(session)
         await svc.create_account(user.id)
         provider = FakeProvider({"last_price": 1500.0, "source": "yahoo"})
+        async def fake_get_quotes(self, symbols):
+            return {"quotes": [{"symbol": "RELIANCE", "last_price": 1500.0, "source": "yahoo"}]}
+
         monkeypatch.setattr(
-            "titan_x.services.paper_trading_service.get_market_data_provider",
-            lambda name: provider,
+            "titan_x.services.paper_trading_service.MarketDataService.get_quotes",
+            fake_get_quotes,
         )
         order = await svc.place_order(user.id, "RELIANCE", "buy", "market", 10)
         assert order.status == "filled"
         assert order.filled_quantity == 10
-        assert provider.closed
         portfolio = await svc.get_portfolio(user.id)
         assert any(p["symbol"] == "RELIANCE" and p["quantity"] == 10 and p["average_price"] == 1500.0 for p in portfolio)
 
@@ -571,12 +573,13 @@ class TestLiveQuoteFallback:
     ):
         svc = PaperTradingService(session)
         await svc.create_account(user.id)
-        provider = FakeProvider({"last_price": 150.0, "source": "yahoo-fallback"})
+        async def fake_get_quotes(self, symbols):
+            return {"quotes": [{"symbol": "RELIANCE", "last_price": 150.0, "source": "yahoo-fallback"}]}
+
         monkeypatch.setattr(
-            "titan_x.services.paper_trading_service.get_market_data_provider",
-            lambda name: provider,
+            "titan_x.services.paper_trading_service.MarketDataService.get_quotes",
+            fake_get_quotes,
         )
         order = await svc.place_order(user.id, "RELIANCE", "buy", "market", 10)
         assert order.status != "filled"
         assert order.filled_quantity == 0
-        assert provider.closed

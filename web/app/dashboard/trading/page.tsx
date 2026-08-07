@@ -7,6 +7,7 @@ import { useLiveRefresh } from "@/lib/live"
 import type { PaperAccountSummary, PaperPosition } from "@/types"
 import { formatCurrency, formatPercent, getChangeColor } from "@/lib/utils"
 import { WidgetLoading, WidgetError, WidgetEmpty, RefreshButton } from "@/components/dashboard/widget"
+import { SymbolAutocomplete } from "@/components/dashboard/SymbolAutocomplete"
 
 interface OrderRow {
   id: number
@@ -234,14 +235,13 @@ export default function TradingPage() {
                 <Zap size={16} className="text-titan-400" /> Quick Trade
               </h3>
               <div className="flex flex-wrap gap-4 items-end">
-                <div>
+                <div className="min-w-[160px]">
                   <label className="block text-xs text-gray-500 mb-1">Symbol</label>
-                  <input
-                    type="text"
+                  <SymbolAutocomplete
                     value={symbol}
-                    onChange={(e) => setSymbol(e.target.value)}
-                    className="input-field w-28 text-sm"
+                    onChange={setSymbol}
                     placeholder="RELIANCE"
+                    className="w-full"
                   />
                 </div>
                 <div>
