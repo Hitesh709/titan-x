@@ -55,7 +55,7 @@ async def list_experiments(
 ):
     svc = ExperimentManagerService(session)
     items = await svc.list_experiments(status=status, limit=limit, offset=offset)
-    return PaginatedResponse(items=[_exp_dict(e) for e in items], total=len(items), limit=limit, offset=offset)
+    return PaginatedResponse(items=[_exp_dict(e) for e in items], total=await svc.count_experiments(status), limit=limit, offset=offset)
 
 
 @router.post("/experiments/{experiment_id}/status")

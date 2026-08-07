@@ -215,7 +215,9 @@ async def get_feature_values(
     )
     return FeatureValueList(
         items=[FeatureValueResponse.from_orm(fv) for fv in items],
-        total=len(items),
+        total=await svc.count_values(
+            symbol=symbol, feature_name=feature_name, category=category, as_of_date=as_of_date,
+        ),
     )
 
 

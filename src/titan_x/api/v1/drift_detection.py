@@ -116,7 +116,12 @@ async def list_runs(
     )
     return PaginatedResponse(
         items=[_run_dict(r) for r in items],
-        total=len(items), limit=limit, offset=offset,
+        total=await svc.count_runs(
+            model_registry_entry_id=model_registry_entry_id,
+            drift_detected=drift_detected,
+        ),
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -164,9 +169,13 @@ async def get_alerts(
         limit=limit, offset=offset,
     )
     return PaginatedResponse(
-        items=[_alert_dict(a) for a in items],
-        total=len(items), limit=limit, offset=offset,
-    )
+    items=[_alert_dict(a) for a in items],
+    total=await svc.count_alerts(
+        acknowledged=acknowledged, severity=severity,
+    ),
+    limit=limit,
+    offset=offset,
+)
 
 
 @router.post("/drift-alerts/{alert_id}/acknowledge")

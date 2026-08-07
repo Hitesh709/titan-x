@@ -9,7 +9,7 @@ from datetime import date, timedelta
 from typing import Any
 
 import structlog
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -174,6 +174,26 @@ class FeatureEngineeringService(
         stmt = stmt.order_by(FeatureValue.as_of_date.desc(), FeatureValue.symbol).offset(offset).limit(limit)
         r = await self.session.execute(stmt)
         return list(r.unique().scalars().all())
+
+    async def count_values(
+        self, symbol: str | None = None, feature_name: str | None = None,
+        category: str | None = None, as_of_date: date | None = None,
+    ) -> int:
+        stmt = (
+            select(func.count(FeatureValue.id))
+            .select_from(FeatureValue)
+            .join(FeatureDefinition)
+        )
+        if symbol:
+            stmt = stmt.where(FeatureValue.symbol == symbol)
+        if feature_name:
+            stmt = stmt.where(FeatureDefinition.name == feature_name)
+        if category:
+            stmt = stmt.where(FeatureDefinition.category == category)
+        if as_of_date:
+            stmt = stmt.where(FeatureValue.as_of_date == as_of_date)
+        r = await self.session.execute(stmt)
+        return r.scalar() or 0
 
     # ============================================================
     # UTILITY HELPERS

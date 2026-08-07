@@ -54,6 +54,12 @@ class FeatureStoreService:
         r = await self.session.execute(q)
         return list(r.scalars().all())
 
+    async def count_entities(self, status: str | None = None) -> int:
+        q = select(func.count()).select_from(FeatureStoreEntity)
+        if status:
+            q = q.where(FeatureStoreEntity.status == status)
+        return (await self.session.execute(q)).scalar() or 0
+
     # ── Feature Definitions ──
 
     async def create_feature(
@@ -136,6 +142,25 @@ class FeatureStoreService:
         r = await self.session.execute(q)
         return list(r.scalars().all())
 
+    async def count_features(
+        self, entity_id: int | None = None,
+        feature_type: str | None = None,
+        status: str | None = None,
+        online_only: bool | None = None,
+    ) -> int:
+        q = select(func.count()).select_from(FeatureStoreDef)
+        if entity_id is not None:
+            q = q.where(FeatureStoreDef.entity_id == entity_id)
+        if feature_type:
+            q = q.where(FeatureStoreDef.feature_type == feature_type)
+        if status:
+            q = q.where(FeatureStoreDef.status == status)
+        if online_only is True:
+            q = q.where(FeatureStoreDef.is_online == True)
+        elif online_only is False:
+            q = q.where(FeatureStoreDef.is_offline == True)
+        return (await self.session.execute(q)).scalar() or 0
+
     async def update_feature(
         self, feature_id: int,
         display_name: str | None = None,
@@ -196,6 +221,13 @@ class FeatureStoreService:
             .offset(offset).limit(limit)
         )
         return list(r.scalars().all())
+
+    async def count_versions(self, feature_id: int) -> int:
+        r = await self.session.execute(
+            select(func.count()).select_from(FeatureVersion)
+            .where(FeatureVersion.feature_id == feature_id)
+        )
+        return r.scalar() or 0
 
     # ── Online Store (FeatureStoreValue / cache) ──
 
@@ -327,6 +359,21 @@ class FeatureStoreService:
         r = await self.session.execute(q)
         return list(r.scalars().all())
 
+    async def count_offline_values(
+        self, feature_id: int,
+        as_of_date: datetime | None = None,
+        batch_id: str | None = None,
+        entity_key: str | None = None,
+    ) -> int:
+        q = select(func.count()).select_from(FeatureOfflineStore).where(FeatureOfflineStore.feature_id == feature_id)
+        if as_of_date:
+            q = q.where(FeatureOfflineStore.as_of_date <= as_of_date)
+        if batch_id:
+            q = q.where(FeatureOfflineStore.batch_id == batch_id)
+        if entity_key:
+            q = q.where(FeatureOfflineStore.entity_key == entity_key)
+        return (await self.session.execute(q)).scalar() or 0
+
     async def get_offline_dataset(
         self, feature_ids: list[int],
         as_of_date: datetime | None = None,
@@ -451,6 +498,22 @@ class FeatureStoreService:
         r = await self.session.execute(q)
         return list(r.scalars().all())
 
+    async def count_validation_rules(
+        self, feature_id: int | None = None,
+        rule_type: str | None = None,
+    ) -> int:
+        q = select(func.count()).select_from(FeatureValidationRule)
+        if feature_id is not None:
+            q = q.where(
+                or_(
+                    FeatureValidationRule.feature_id == feature_id,
+                    FeatureValidationRule.feature_id.is_(None),
+                )
+            )
+        if rule_type:
+            q = q.where(FeatureValidationRule.rule_type == rule_type)
+        return (await self.session.execute(q)).scalar() or 0
+
     # ── Validation ──
 
     async def validate_value(
@@ -540,6 +603,20 @@ class FeatureStoreService:
         q = q.order_by(desc(FeatureValidationResult.validated_at)).offset(offset).limit(limit)
         r = await self.session.execute(q)
         return list(r.scalars().all())
+
+    async def count_validation_results(
+        self, feature_id: int | None = None,
+        batch_id: str | None = None,
+        status: str | None = None,
+    ) -> int:
+        q = select(func.count()).select_from(FeatureValidationResult)
+        if feature_id is not None:
+            q = q.where(FeatureValidationResult.feature_id == feature_id)
+        if batch_id is not None:
+            q = q.where(FeatureValidationResult.batch_id == batch_id)
+        if status is not None:
+            q = q.where(FeatureValidationResult.status == status)
+        return (await self.session.execute(q)).scalar() or 0
 
     # ── Cache utilities ──
 

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from titan_x.models.model_evaluation import ModelEvaluation, ModelEvaluationMetric
@@ -215,6 +215,21 @@ class ModelEvaluationService:
         q = q.order_by(desc(ModelEvaluation.evaluated_at)).offset(offset).limit(limit)
         r = await self.session.execute(q)
         return list(r.scalars().all())
+
+    async def count_evaluations(
+        self,
+        model_registry_entry_id: int | None = None,
+        experiment_id: int | None = None,
+        status: str | None = None,
+    ) -> int:
+        q = select(func.count()).select_from(ModelEvaluation)
+        if model_registry_entry_id is not None:
+            q = q.where(ModelEvaluation.model_registry_entry_id == model_registry_entry_id)
+        if experiment_id is not None:
+            q = q.where(ModelEvaluation.experiment_id == experiment_id)
+        if status:
+            q = q.where(ModelEvaluation.status == status)
+        return (await self.session.execute(q)).scalar() or 0
 
     async def get_evaluation_metrics(self, evaluation_id: int) -> list[ModelEvaluationMetric]:
         r = await self.session.execute(

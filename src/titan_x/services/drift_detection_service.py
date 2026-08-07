@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from titan_x.models.drift_detection import (
@@ -422,6 +422,17 @@ class DriftDetectionService:
         r = await self.session.execute(q)
         return list(r.scalars().all())
 
+    async def count_runs(
+        self, model_registry_entry_id: int | None = None,
+        drift_detected: bool | None = None,
+    ) -> int:
+        q = select(func.count()).select_from(DriftDetectionRun)
+        if model_registry_entry_id is not None:
+            q = q.where(DriftDetectionRun.model_registry_entry_id == model_registry_entry_id)
+        if drift_detected is not None:
+            q = q.where(DriftDetectionRun.drift_detected == drift_detected)
+        return (await self.session.execute(q)).scalar() or 0
+
     async def get_feature_drift_results(self, run_id: int) -> list[FeatureDriftResult]:
         r = await self.session.execute(
             select(FeatureDriftResult)
@@ -451,6 +462,17 @@ class DriftDetectionService:
         q = q.order_by(desc(DriftAlert.created_at)).offset(offset).limit(limit)
         r = await self.session.execute(q)
         return list(r.scalars().all())
+
+    async def count_alerts(
+        self, acknowledged: bool | None = None,
+        severity: str | None = None,
+    ) -> int:
+        q = select(func.count()).select_from(DriftAlert)
+        if acknowledged is not None:
+            q = q.where(DriftAlert.acknowledged == acknowledged)
+        if severity is not None:
+            q = q.where(DriftAlert.severity == severity)
+        return (await self.session.execute(q)).scalar() or 0
 
     async def acknowledge_alert(self, alert_id: int) -> DriftAlert | None:
         alert = await self.session.get(DriftAlert, alert_id)

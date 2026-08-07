@@ -48,7 +48,7 @@ async def list_entities(
 ):
     svc = FeatureStoreService(session)
     items = await svc.list_entities(status=status, limit=limit, offset=offset)
-    return PaginatedResponse(items=[_entity_dict(e) for e in items], total=len(items), limit=limit, offset=offset)
+    return PaginatedResponse(items=[_entity_dict(e) for e in items], total=await svc.count_entities(status), limit=limit, offset=offset)
 
 
 # ── Feature Definitions ──
@@ -110,7 +110,15 @@ async def list_features(
         status=status, online_only=online_only,
         limit=limit, offset=offset,
     )
-    return PaginatedResponse(items=[_feature_dict(f) for f in items], total=len(items), limit=limit, offset=offset)
+    return PaginatedResponse(
+        items=[_feature_dict(f) for f in items],
+        total=await svc.count_features(
+            entity_id=entity_id, feature_type=feature_type,
+            status=status, online_only=online_only,
+        ),
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.patch("/features/{feature_id}")
@@ -162,7 +170,7 @@ async def list_versions(
 ):
     svc = FeatureStoreService(session)
     items = await svc.list_versions(feature_id, limit=limit, offset=offset)
-    return PaginatedResponse(items=[_ver_dict(v) for v in items], total=len(items), limit=limit, offset=offset)
+    return PaginatedResponse(items=[_ver_dict(v) for v in items], total=await svc.count_versions(feature_id), limit=limit, offset=offset)
 
 
 # ── Online Store ──
@@ -270,7 +278,14 @@ async def get_offline_values(
         feature_id, as_of_date=as_of, batch_id=batch_id,
         entity_key=entity_key, limit=limit, offset=offset,
     )
-    return PaginatedResponse(items=[_offline_dict(o) for o in items], total=len(items), limit=limit, offset=offset)
+    return PaginatedResponse(
+        items=[_offline_dict(o) for o in items],
+        total=await svc.count_offline_values(
+            feature_id, as_of_date=as_of, batch_id=batch_id, entity_key=entity_key,
+        ),
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.post("/offline/dataset")
@@ -369,7 +384,12 @@ async def list_validation_rules(
         feature_id=feature_id, rule_type=rule_type,
         limit=limit, offset=offset,
     )
-    return PaginatedResponse(items=[_rule_dict(r) for r in items], total=len(items), limit=limit, offset=offset)
+    return PaginatedResponse(
+        items=[_rule_dict(r) for r in items],
+        total=await svc.count_validation_rules(feature_id=feature_id, rule_type=rule_type),
+        limit=limit,
+        offset=offset,
+    )
 
 
 # ── Validation ──
@@ -402,7 +422,12 @@ async def get_validation_results(
         feature_id=feature_id, batch_id=batch_id,
         status=status, limit=limit, offset=offset,
     )
-    return PaginatedResponse(items=[_val_dict(v) for v in items], total=len(items), limit=limit, offset=offset)
+    return PaginatedResponse(
+        items=[_val_dict(v) for v in items],
+        total=await svc.count_validation_results(feature_id=feature_id, batch_id=batch_id, status=status),
+        limit=limit,
+        offset=offset,
+    )
 
 
 # ── Cache ──

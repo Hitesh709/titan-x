@@ -68,6 +68,12 @@ class ExperimentManagerService:
         r = await self.session.execute(q)
         return list(r.scalars().all())
 
+    async def count_experiments(self, status: str | None = None) -> int:
+        q = select(func.count()).select_from(Experiment)
+        if status:
+            q = q.where(Experiment.status == status)
+        return (await self.session.execute(q)).scalar() or 0
+
     async def update_experiment_status(
         self, experiment_id: int, status: str,
     ) -> Experiment | None:

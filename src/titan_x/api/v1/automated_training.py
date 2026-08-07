@@ -56,7 +56,7 @@ async def list_datasets(
 ):
     svc = AutomatedTrainingService(session)
     items = await svc.list_datasets(limit=limit, offset=offset)
-    total = len(items)
+    total = await svc.count_datasets()
     return PaginatedResponse(items=[_dataset_dict(d) for d in items], total=total, limit=limit, skip=offset)
 
 
@@ -103,7 +103,7 @@ async def list_feature_sets(
 ):
     svc = AutomatedTrainingService(session)
     items = await svc.list_feature_sets(limit=limit, offset=offset)
-    return PaginatedResponse(items=[_feat_dict(f) for f in items], total=len(items), limit=limit, skip=offset)
+    return PaginatedResponse(items=[_feat_dict(f) for f in items], total=await svc.count_feature_sets(), limit=limit, skip=offset)
 
 
 # ── Hyperparameter Configs ──
@@ -147,7 +147,7 @@ async def list_hyperparameter_configs(
 ):
     svc = AutomatedTrainingService(session)
     items = await svc.list_hyperparameter_configs(limit=limit, offset=offset)
-    return PaginatedResponse(items=[_hp_dict(h) for h in items], total=len(items), limit=limit, skip=offset)
+    return PaginatedResponse(items=[_hp_dict(h) for h in items], total=await svc.count_hyperparameter_configs(), limit=limit, skip=offset)
 
 
 # ── Training Jobs ──
@@ -205,7 +205,7 @@ async def list_jobs(
 ):
     svc = AutomatedTrainingService(session)
     items = await svc.list_jobs(status=status, limit=limit, offset=offset)
-    return PaginatedResponse(items=[_job_dict(j) for j in items], total=len(items), limit=limit, skip=offset)
+    return PaginatedResponse(items=[_job_dict(j) for j in items], total=await svc.count_jobs(status), limit=limit, skip=offset)
 
 
 @router.post("/jobs/{job_id}/start")
@@ -333,7 +333,7 @@ async def list_checkpoints(
 ):
     svc = AutomatedTrainingService(session)
     items = await svc.list_checkpoints(job_id, limit=limit, offset=offset)
-    return PaginatedResponse(items=[_cp_dict(c) for c in items], total=len(items), limit=limit, skip=offset)
+    return PaginatedResponse(items=[_cp_dict(c) for c in items], total=await svc.count_checkpoints(job_id), limit=limit, skip=offset)
 
 
 @router.get("/jobs/{job_id}/checkpoints/latest")
@@ -376,7 +376,7 @@ async def get_logs(
 ):
     svc = AutomatedTrainingService(session)
     items = await svc.get_logs(job_id, level=level, limit=limit, offset=offset)
-    return PaginatedResponse(items=[_log_dict(l) for l in items], total=len(items), limit=limit, skip=offset)
+    return PaginatedResponse(items=[_log_dict(l) for l in items], total=await svc.count_logs(job_id, level), limit=limit, skip=offset)
 
 
 # ── Scheduling ──

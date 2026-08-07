@@ -2,7 +2,7 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from titan_x.models.automated_training import (
@@ -55,6 +55,9 @@ class AutomatedTrainingService:
         )
         return list(r.scalars().all())
 
+    async def count_datasets(self) -> int:
+        return (await self.session.execute(select(func.count()).select_from(DatasetVersion))).scalar() or 0
+
     # ── Feature Sets ──
 
     async def create_feature_set(
@@ -87,6 +90,9 @@ class AutomatedTrainingService:
         )
         return list(r.scalars().all())
 
+    async def count_feature_sets(self) -> int:
+        return (await self.session.execute(select(func.count()).select_from(FeatureSet))).scalar() or 0
+
     # ── Hyperparameter Configs ──
 
     async def create_hyperparameter_config(
@@ -115,6 +121,9 @@ class AutomatedTrainingService:
             .offset(offset).limit(limit)
         )
         return list(r.scalars().all())
+
+    async def count_hyperparameter_configs(self) -> int:
+        return (await self.session.execute(select(func.count()).select_from(HyperparameterConfig))).scalar() or 0
 
     # ── Training Jobs ──
 
@@ -161,6 +170,12 @@ class AutomatedTrainingService:
         q = q.order_by(desc(TrainingJob.priority), desc(TrainingJob.created_at)).offset(offset).limit(limit)
         r = await self.session.execute(q)
         return list(r.scalars().all())
+
+    async def count_jobs(self, status: str | None = None) -> int:
+        q = select(func.count()).select_from(TrainingJob)
+        if status:
+            q = q.where(TrainingJob.status == status)
+        return (await self.session.execute(q)).scalar() or 0
 
     async def update_job_status(
         self, job_id: int, status: str,
@@ -253,6 +268,13 @@ class AutomatedTrainingService:
         )
         return list(r.scalars().all())
 
+    async def count_checkpoints(self, job_id: int) -> int:
+        r = await self.session.execute(
+            select(func.count()).select_from(TrainingJobCheckpoint)
+            .where(TrainingJobCheckpoint.job_id == job_id)
+        )
+        return r.scalar() or 0
+
     async def resume_job(self, job_id: int) -> TrainingJob | None:
         job = await self.get_job(job_id)
         if not job:
@@ -294,6 +316,12 @@ class AutomatedTrainingService:
         q = q.order_by(desc(TrainingJobLog.created_at)).offset(offset).limit(limit)
         r = await self.session.execute(q)
         return list(r.scalars().all())
+
+    async def count_logs(self, job_id: int, level: str | None = None) -> int:
+        q = select(func.count()).select_from(TrainingJobLog).where(TrainingJobLog.job_id == job_id)
+        if level:
+            q = q.where(TrainingJobLog.level == level)
+        return (await self.session.execute(q)).scalar() or 0
 
     # ── Scheduled Jobs ──
 

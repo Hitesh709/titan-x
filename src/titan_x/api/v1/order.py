@@ -17,7 +17,7 @@ async def get_order_service(
     return OrderService(session)
 
 
-@router.post("")
+@router.post("", status_code=status.HTTP_201_CREATED)
 async def create_order(
     user: Annotated[User, Depends(get_current_active_user)],
     svc: Annotated[OrderService, Depends(get_order_service)],

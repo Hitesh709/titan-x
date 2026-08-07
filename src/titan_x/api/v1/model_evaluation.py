@@ -86,7 +86,11 @@ async def list_evaluations(
     for ev in items:
         metrics = await svc.get_evaluation_metrics(ev.id)
         result.append(_eval_dict(ev, metrics))
-    return PaginatedResponse(items=result, total=len(result), limit=limit, skip=offset)
+    total = await svc.count_evaluations(
+        model_registry_entry_id=model_registry_entry_id,
+        experiment_id=experiment_id, status=status,
+    )
+    return PaginatedResponse(items=result, total=total, limit=limit, skip=offset)
 
 
 @router.get("/evaluations/{evaluation_id}/metrics")

@@ -16,7 +16,7 @@ async def get_ai_registry_service(
     return AIModelRegistryService(session)
 
 
-@router.post("")
+@router.post("", status_code=status.HTTP_201_CREATED)
 async def register_model(
     user: Annotated[User, Depends(get_current_active_user)],
     svc: Annotated[AIModelRegistryService, Depends(get_ai_registry_service)],
