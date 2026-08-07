@@ -160,7 +160,7 @@ async def list_entries(
         user_id=current_user.id, symbol=symbol,
         is_closed=is_closed, limit=limit, offset=offset,
     )
-    return {"total": len(entries), "entries": [_entry_dict(e) for e in entries]}
+    return {"total": await service.count_entries(user_id=current_user.id, symbol=symbol, is_closed=is_closed), "entries": [_entry_dict(e) for e in entries]}
 
 
 @router.get("/performance", summary="Get trade performance statistics")

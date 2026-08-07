@@ -105,6 +105,13 @@ class OpportunityRejectionService:
         )
         return list(r.scalars().all())
 
+    async def count_evaluations(self, symbol: str) -> int:
+        r = await self.session.execute(
+            select(func.count()).select_from(OpportunityRejection)
+            .where(OpportunityRejection.symbol == symbol.upper())
+        )
+        return r.scalar() or 0
+
     # ---- dimension evaluators ----
 
     async def _eval_liquidity(

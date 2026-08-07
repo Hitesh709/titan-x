@@ -3,7 +3,7 @@ import math
 from datetime import date, timedelta
 from typing import Any
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from titan_x.models.chart_pattern import SupportResistance
@@ -81,6 +81,13 @@ class ProfessionalReportService:
             .offset(offset).limit(limit)
         )
         return list(r.scalars().all())
+
+    async def count_reports(self, symbol: str) -> int:
+        r = await self.session.execute(
+            select(func.count()).select_from(ProfessionalReport)
+            .where(ProfessionalReport.symbol == symbol.upper())
+        )
+        return r.scalar() or 0
 
     # ---- section builders ----
 

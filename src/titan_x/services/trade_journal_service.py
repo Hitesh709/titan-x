@@ -1,4 +1,4 @@
-import math
+﻿import math
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -109,6 +109,17 @@ class TradeJournalService:
         q = q.order_by(desc(TradeJournal.entry_date)).offset(offset).limit(limit)
         r = await self.session.execute(q)
         return list(r.scalars().all())
+
+    async def count_entries(
+        self, user_id: int, symbol: str | None = None,
+        is_closed: bool | None = None,
+    ) -> int:
+        q = select(sa_func.count()).select_from(TradeJournal).where(TradeJournal.user_id == user_id)
+        if symbol:
+            q = q.where(TradeJournal.symbol == symbol.upper())
+        if is_closed is not None:
+            q = q.where(TradeJournal.is_closed == is_closed)
+        return (await self.session.execute(q)).scalar() or 0
 
     async def get_performance(
         self, user_id: int, symbol: str | None = None,

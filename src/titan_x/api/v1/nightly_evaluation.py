@@ -71,7 +71,7 @@ async def list_evaluations(
     service: NightlyEvaluationService = Depends(_get_service),
 ):
     evals = await service.get_evaluations(limit=limit, offset=offset)
-    return {"total": len(evals), "evaluations": [_eval_dict(e) for e in evals]}
+    return {"total": await service.count_evaluations(), "evaluations": [_eval_dict(e) for e in evals]}
 
 
 @router.get("/{evaluation_id:int}", summary="Get an evaluation by id")
@@ -97,7 +97,7 @@ async def get_errors(
         evaluation_id=evaluation_id, is_failure=is_failure,
         limit=limit, offset=offset,
     )
-    return {"total": len(errors), "errors": [_error_dict(e) for e in errors]}
+    return {"total": await service.count_errors(evaluation_id, is_failure), "errors": [_error_dict(e) for e in errors]}
 
 
 @router.get("/{evaluation_id:int}/failures", summary="Get failures for an evaluation")
@@ -110,7 +110,7 @@ async def get_failures(
     failures = await service.get_failures(
         evaluation_id=evaluation_id, limit=limit, offset=offset,
     )
-    return {"total": len(failures), "failures": [_error_dict(e) for e in failures]}
+    return {"total": await service.count_errors(evaluation_id, is_failure=True), "failures": [_error_dict(e) for e in failures]}
 
 
 @router.get("/trend", summary="Get evaluation trend")

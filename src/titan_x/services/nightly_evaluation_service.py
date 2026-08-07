@@ -4,7 +4,7 @@ from collections import defaultdict
 from datetime import date, timedelta
 from typing import Any
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from titan_x.models.ai_ranking_v2 import AIRankingV2, RankingModelWeight
@@ -187,6 +187,10 @@ class NightlyEvaluationService:
         )
         return list(r.scalars().all())
 
+    async def count_evaluations(self) -> int:
+        r = await self.session.execute(select(func.count()).select_from(NightlyEvaluation))
+        return r.scalar() or 0
+
     async def get_latest_evaluation(self) -> NightlyEvaluation | None:
         r = await self.session.execute(
             select(NightlyEvaluation)
@@ -207,6 +211,14 @@ class NightlyEvaluationService:
         q = q.order_by(desc(PredictionError.abs_error_pct)).offset(offset).limit(limit)
         r = await self.session.execute(q)
         return list(r.scalars().all())
+
+    async def count_errors(
+        self, evaluation_id: int, is_failure: bool | None = None,
+    ) -> int:
+        q = select(func.count()).select_from(PredictionError).where(PredictionError.evaluation_id == evaluation_id)
+        if is_failure is not None:
+            q = q.where(PredictionError.is_failure == is_failure)
+        return (await self.session.execute(q)).scalar() or 0
 
     async def get_failures(
         self, evaluation_id: int,

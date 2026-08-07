@@ -2,7 +2,7 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import and_, desc, select
+from sqlalchemy import and_, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from titan_x.models.model_registry import (
@@ -62,6 +62,14 @@ class ModelRegistryService:
         q = q.order_by(desc(ModelRegistryEntry.created_at)).offset(offset).limit(limit)
         r = await self.session.execute(q)
         return list(r.scalars().all())
+
+    async def count_entries(self, model_type: str | None = None, status: str | None = None) -> int:
+        q = select(func.count()).select_from(ModelRegistryEntry)
+        if model_type:
+            q = q.where(ModelRegistryEntry.model_type == model_type)
+        if status:
+            q = q.where(ModelRegistryEntry.status == status)
+        return (await self.session.execute(q)).scalar() or 0
 
     async def update_entry(
         self, entry_id: int,
@@ -123,6 +131,13 @@ class ModelRegistryService:
             .offset(offset).limit(limit)
         )
         return list(r.scalars().all())
+
+    async def count_versions(self, entry_id: int) -> int:
+        r = await self.session.execute(
+            select(func.count()).select_from(ModelRegistryVersion)
+            .where(ModelRegistryVersion.entry_id == entry_id)
+        )
+        return r.scalar() or 0
 
     async def update_version(
         self, version_id: int,
@@ -231,6 +246,13 @@ class ModelRegistryService:
             .offset(offset).limit(limit)
         )
         return list(r.scalars().all())
+
+    async def count_training_runs(self, version_id: int) -> int:
+        r = await self.session.execute(
+            select(func.count()).select_from(ModelTrainingRun)
+            .where(ModelTrainingRun.version_id == version_id)
+        )
+        return r.scalar() or 0
 
     # ── Metrics ──
 

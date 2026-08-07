@@ -2,7 +2,7 @@ import json
 from datetime import date, timedelta
 from typing import Any
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from titan_x.models.chart_pattern import SupportResistance
@@ -79,6 +79,13 @@ class CompanyResearchService:
             .offset(offset).limit(limit)
         )
         return list(r.scalars().all())
+
+    async def count_research(self, symbol: str) -> int:
+        r = await self.session.execute(
+            select(func.count()).select_from(CompanyResearch)
+            .where(CompanyResearch.symbol == symbol.upper())
+        )
+        return r.scalar() or 0
 
     # ---- section builders ----
 

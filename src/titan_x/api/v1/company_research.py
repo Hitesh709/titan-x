@@ -69,7 +69,7 @@ async def list_research(
 ):
     records = await service.list_research(symbol, limit=limit, offset=offset)
     return {
-        "total": len(records),
+        "total": await service.count_research(symbol),
         "records": [
             {
                 "id": r.id,

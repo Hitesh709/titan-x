@@ -121,6 +121,21 @@ class EventIntelligenceService:
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
+    async def count_events(
+        self, symbol: str | None = None, event_type: str | None = None,
+        start_date: date | None = None, end_date: date | None = None,
+    ) -> int:
+        stmt = select(func.count()).select_from(EventDetection)
+        if symbol:
+            stmt = stmt.where(EventDetection.symbol == symbol.upper())
+        if event_type:
+            stmt = stmt.where(EventDetection.event_type == event_type)
+        if start_date:
+            stmt = stmt.where(EventDetection.event_date >= start_date)
+        if end_date:
+            stmt = stmt.where(EventDetection.event_date <= end_date)
+        return (await self.session.execute(stmt)).scalar() or 0
+
     async def get_event_summary(
         self, symbol: str, days: int = 30,
     ) -> dict[str, Any]:

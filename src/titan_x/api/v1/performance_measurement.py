@@ -82,7 +82,7 @@ async def list_snapshots(
         user_id=current_user.id, symbol=symbol,
         period_label=period_label, limit=limit, offset=offset,
     )
-    return {"total": len(snapshots), "snapshots": [_snapshot_dict(s) for s in snapshots]}
+    return {"total": await service.count_snapshots(user_id=current_user.id, symbol=symbol, period_label=period_label), "snapshots": [_snapshot_dict(s) for s in snapshots]}
 
 
 @router.get("/snapshots/latest", summary="Get latest performance snapshot")

@@ -40,7 +40,7 @@ async def list_reports(
 ):
     reports = await service.get_reports(symbol, limit=limit, offset=offset)
     return {
-        "total": len(reports),
+        "total": await service.count_reports(symbol),
         "reports": [
             {
                 "id": r.id,

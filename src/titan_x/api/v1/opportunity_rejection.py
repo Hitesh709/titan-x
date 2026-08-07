@@ -63,7 +63,7 @@ async def get_evaluations(
     service: OpportunityRejectionService = Depends(_get_service),
 ) -> dict[str, Any]:
     evals = await service.get_evaluations(symbol, limit=limit, offset=offset)
-    return {"total": len(evals), "evaluations": [_orj_dict(e) for e in evals]}
+    return {"total": await service.count_evaluations(symbol), "evaluations": [_orj_dict(e) for e in evals]}
 
 
 @router.get("/{evaluation_id}", summary="Get a specific evaluation")

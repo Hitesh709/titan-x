@@ -66,7 +66,7 @@ async def list_events(
     service: EventIntelligenceService = Depends(_get_service),
 ) -> dict[str, Any]:
     events = await service.get_events(symbol, event_type, start_date, end_date, limit, offset)
-    return {"total": len(events), "events": [_evt_dict(e) for e in events]}
+    return {"total": await service.count_events(symbol, event_type, start_date, end_date), "events": [_evt_dict(e) for e in events]}
 
 
 @router.get("/summary/{symbol}", summary="Event summary for a symbol")

@@ -110,7 +110,7 @@ async def list_entries(
         model_type=model_type, status=status,
         limit=limit, offset=offset,
     )
-    return {"total": len(entries), "entries": [_entry_dict(e) for e in entries]}
+    return {"total": await service.count_entries(model_type=model_type, status=status), "entries": [_entry_dict(e) for e in entries]}
 
 
 @router.get("/entries/{entry_id}", summary="Get a model entry")
@@ -180,7 +180,7 @@ async def list_versions(
     versions = await service.get_versions(
         entry_id=entry_id, limit=limit, offset=offset,
     )
-    return {"total": len(versions), "versions": [_version_dict(v) for v in versions]}
+    return {"total": await service.count_versions(entry_id=entry_id), "versions": [_version_dict(v) for v in versions]}
 
 
 @router.put("/versions/{version_id}", summary="Update a version")
@@ -273,7 +273,7 @@ async def list_training_runs(
     runs = await service.list_training_runs(
         version_id=version_id, limit=limit, offset=offset,
     )
-    return {"total": len(runs), "training_runs": [_training_run_dict(r) for r in runs]}
+    return {"total": await service.count_training_runs(version_id=version_id), "training_runs": [_training_run_dict(r) for r in runs]}
 
 
 # ── Metrics Endpoints ──

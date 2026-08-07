@@ -70,7 +70,7 @@ async def get_targets(
     service: PriceTargetService = Depends(_get_service),
 ) -> dict[str, Any]:
     targets = await service.get_targets(symbol, limit=limit, offset=offset)
-    return {"total": len(targets), "targets": [_pt_dict(pt) for pt in targets]}
+    return {"total": await service.count_targets(symbol), "targets": [_pt_dict(pt) for pt in targets]}
 
 
 @router.get("/{target_id}", summary="Get a specific price target")

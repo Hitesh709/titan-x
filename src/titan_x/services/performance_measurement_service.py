@@ -1,7 +1,7 @@
 from datetime import date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from titan_x.models.performance_snapshot import PerformanceSnapshot
@@ -125,6 +125,14 @@ class PerformanceMeasurementService:
         q = q.order_by(desc(PerformanceSnapshot.snapshot_date)).offset(offset).limit(limit)
         r = await self.session.execute(q)
         return list(r.scalars().all())
+
+    async def count_snapshots(self, user_id: int, symbol: str | None = None, period_label: str | None = None) -> int:
+        q = select(func.count()).select_from(PerformanceSnapshot).where(PerformanceSnapshot.user_id == user_id)
+        if symbol:
+            q = q.where(PerformanceSnapshot.symbol == symbol.upper())
+        if period_label:
+            q = q.where(PerformanceSnapshot.period_label == period_label)
+        return (await self.session.execute(q)).scalar() or 0
 
     async def get_latest(
         self, user_id: int, symbol: str | None = None,
