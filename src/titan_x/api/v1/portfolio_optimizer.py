@@ -1,7 +1,7 @@
 from datetime import date
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from titan_x.api import deps
@@ -62,7 +62,7 @@ async def optimize(
             "report": opt.report_json,
         }
     except ValueError as e:
-        return {"error": str(e)}
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 @router.get("/optimizations/{optimization_id}", summary="Get optimization result")
@@ -72,7 +72,7 @@ async def get_optimization(
 ) -> dict[str, Any]:
     opt = await service.get_optimization(optimization_id)
     if not opt:
-        return {"error": "Optimization not found"}
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Optimization not found")
     allocations = await service.get_allocations(optimization_id)
     return {
         "optimization": _opt_dict(opt),

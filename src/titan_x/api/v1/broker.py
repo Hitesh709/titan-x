@@ -3,11 +3,26 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from titan_x.api.dependencies import get_current_active_user, request_session
+from titan_x.api.schemas import BrokerConnectionResponse
+from titan_x.models.broker import BrokerConnection
 from titan_x.models.user import User
 from titan_x.services.broker_service import BrokerIntegrationService
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/brokers", tags=["brokers"])
+
+
+def _conn_dict(conn: BrokerConnection) -> BrokerConnectionResponse:
+    return BrokerConnectionResponse(
+        id=conn.id,
+        broker_name=conn.broker_name,
+        label=conn.label,
+        is_active=conn.is_active,
+        has_api_key=bool(conn.api_key),
+        has_api_secret=bool(conn.api_secret),
+        token_expires_at=conn.token_expires_at,
+        created_at=conn.created_at,
+    )
 
 
 async def get_broker_service(
@@ -23,7 +38,7 @@ async def list_available_brokers(
     return {"brokers": svc.get_available_brokers()}
 
 
-@router.post("/connections")
+@router.post("/connections", response_model=BrokerConnectionResponse, status_code=status.HTTP_201_CREATED)
 async def create_connection(
     user: Annotated[User, Depends(get_current_active_user)],
     svc: Annotated[BrokerIntegrationService, Depends(get_broker_service)],
@@ -44,18 +59,19 @@ async def create_connection(
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    return conn
+    return _conn_dict(conn)
 
 
-@router.get("/connections")
+@router.get("/connections", response_model=list[BrokerConnectionResponse])
 async def list_connections(
     user: Annotated[User, Depends(get_current_active_user)],
     svc: Annotated[BrokerIntegrationService, Depends(get_broker_service)],
 ):
-    return await svc.list_connections(user.id)
+    conns = await svc.list_connections(user.id)
+    return [_conn_dict(c) for c in conns]
 
 
-@router.get("/connections/{connection_id}")
+@router.get("/connections/{connection_id}", response_model=BrokerConnectionResponse)
 async def get_connection(
     connection_id: int,
     user: Annotated[User, Depends(get_current_active_user)],
@@ -64,10 +80,10 @@ async def get_connection(
     conn = await svc.get_connection(connection_id)
     if conn is None or conn.user_id != user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Connection not found")
-    return conn
+    return _conn_dict(conn)
 
 
-@router.put("/connections/{connection_id}")
+@router.put("/connections/{connection_id}", response_model=BrokerConnectionResponse)
 async def update_connection(
     connection_id: int,
     user: Annotated[User, Depends(get_current_active_user)],
@@ -89,7 +105,7 @@ async def update_connection(
         metadata_json=metadata_json,
         is_active=is_active,
     )
-    return updated
+    return _conn_dict(updated)
 
 
 @router.delete("/connections/{connection_id}")

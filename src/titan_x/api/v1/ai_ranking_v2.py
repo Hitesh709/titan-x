@@ -1,7 +1,7 @@
 from datetime import date
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from titan_x.api import deps
@@ -64,7 +64,7 @@ async def get_ranking(
 ) -> dict[str, Any]:
     r = await service.get_ranking(symbol.upper(), as_of_date)
     if not r:
-        return {"error": "Ranking not found"}
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ranking not found")
     return _rank_dict(r)
 
 

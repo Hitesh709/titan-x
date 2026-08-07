@@ -1,6 +1,6 @@
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from titan_x.api import deps
@@ -73,5 +73,5 @@ async def get_evaluation(
 ) -> dict[str, Any]:
     ev = await service.get_evaluation(evaluation_id)
     if not ev:
-        return {"error": "Evaluation not found"}
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Evaluation not found")
     return {"evaluation": _orj_dict(ev)}

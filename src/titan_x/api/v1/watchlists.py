@@ -109,7 +109,7 @@ async def list_watchlists(
     return {"items": [engine._watchlist_to_dict(w) for w in rows], "total": total}
 
 
-@router.get("/{watchlist_id}")
+@router.get("/{watchlist_id:int}")
 async def get_watchlist(
     watchlist_id: int,
     current_user: User = Depends(get_current_active_user),
@@ -130,7 +130,7 @@ async def get_watchlist(
     }
 
 
-@router.put("/{watchlist_id}")
+@router.put("/{watchlist_id:int}")
 async def update_watchlist(
     watchlist_id: int,
     body: dict[str, Any],
@@ -143,7 +143,7 @@ async def update_watchlist(
     return wl
 
 
-@router.delete("/{watchlist_id}", status_code=204)
+@router.delete("/{watchlist_id:int}", status_code=204)
 async def delete_watchlist(
     watchlist_id: int,
     current_user: User = Depends(get_current_active_user),
@@ -154,7 +154,7 @@ async def delete_watchlist(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Watchlist not found")
 
 
-@router.post("/{watchlist_id}/items", status_code=201)
+@router.post("/{watchlist_id:int}/items", status_code=201)
 async def add_item(
     watchlist_id: int,
     body: dict[str, Any],
@@ -175,7 +175,7 @@ async def add_item(
     return item
 
 
-@router.get("/{watchlist_id}/items")
+@router.get("/{watchlist_id:int}/items")
 async def list_items(
     watchlist_id: int,
     skip: int = Query(0, ge=0),
@@ -189,7 +189,7 @@ async def list_items(
     return items
 
 
-@router.put("/{watchlist_id}/items/{item_id}")
+@router.put("/{watchlist_id:int}/items/{item_id:int}")
 async def update_item(
     watchlist_id: int,
     item_id: int,
@@ -203,7 +203,7 @@ async def update_item(
     return item
 
 
-@router.delete("/{watchlist_id}/items/{item_id}", status_code=204)
+@router.delete("/{watchlist_id:int}/items/{item_id:int}", status_code=204)
 async def remove_item(
     watchlist_id: int,
     item_id: int,
@@ -215,7 +215,7 @@ async def remove_item(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
 
 
-@router.put("/{watchlist_id}/items/reorder")
+@router.put("/{watchlist_id:int}/items/reorder")
 async def reorder_items(
     watchlist_id: int,
     body: dict[str, Any],
@@ -260,7 +260,7 @@ async def delete_tag(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tag not found")
 
 
-@router.post("/{watchlist_id}/items/{item_id}/tags/{tag_id}", status_code=201)
+@router.post("/{watchlist_id:int}/items/{item_id:int}/tags/{tag_id}", status_code=201)
 async def tag_item(
     watchlist_id: int,
     item_id: int,
@@ -274,7 +274,7 @@ async def tag_item(
     return {"status": "tagged"}
 
 
-@router.delete("/{watchlist_id}/items/{item_id}/tags/{tag_id}", status_code=204)
+@router.delete("/{watchlist_id:int}/items/{item_id:int}/tags/{tag_id}", status_code=204)
 async def untag_item(
     watchlist_id: int,
     item_id: int,
@@ -287,7 +287,7 @@ async def untag_item(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item, tag, or watchlist not found")
 
 
-@router.post("/{watchlist_id}/alerts", status_code=201)
+@router.post("/{watchlist_id:int}/alerts", status_code=201)
 async def create_alert(
     watchlist_id: int,
     body: dict[str, Any],
@@ -307,7 +307,7 @@ async def create_alert(
     return alert
 
 
-@router.get("/{watchlist_id}/alerts")
+@router.get("/{watchlist_id:int}/alerts")
 async def list_alerts(
     watchlist_id: int,
     current_user: User = Depends(get_current_active_user),
@@ -319,7 +319,7 @@ async def list_alerts(
     return alerts
 
 
-@router.put("/{watchlist_id}/alerts/{alert_id}")
+@router.put("/{watchlist_id:int}/alerts/{alert_id}")
 async def update_alert(
     watchlist_id: int,
     alert_id: int,
@@ -333,7 +333,7 @@ async def update_alert(
     return alert
 
 
-@router.delete("/{watchlist_id}/alerts/{alert_id}", status_code=204)
+@router.delete("/{watchlist_id:int}/alerts/{alert_id}", status_code=204)
 async def delete_alert(
     watchlist_id: int,
     alert_id: int,
@@ -345,7 +345,7 @@ async def delete_alert(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Alert not found")
 
 
-@router.post("/{watchlist_id}/ai/analyze")
+@router.post("/{watchlist_id:int}/ai/analyze")
 async def run_ai_analysis(
     watchlist_id: int,
     current_user: User = Depends(get_current_active_user),
@@ -354,7 +354,7 @@ async def run_ai_analysis(
     return await engine.run_ai_analysis(watchlist_id, current_user.id)
 
 
-@router.get("/{watchlist_id}/ai/insights")
+@router.get("/{watchlist_id:int}/ai/insights")
 async def get_insights(
     watchlist_id: int,
     insight_type: str | None = Query(None),
@@ -369,7 +369,7 @@ async def get_insights(
     return insights
 
 
-@router.delete("/{watchlist_id}/ai/insights/{insight_id}", status_code=204)
+@router.delete("/{watchlist_id:int}/ai/insights/{insight_id}", status_code=204)
 async def delete_insight(
     watchlist_id: int,
     insight_id: int,
@@ -431,7 +431,7 @@ def _get_monitor(
     return WatchlistMonitorService(session)
 
 
-@router.post("/{watchlist_id}/monitor/check")
+@router.post("/{watchlist_id:int}/monitor/check")
 async def check_watchlist(
     watchlist_id: int,
     current_user: User = Depends(get_current_active_user),

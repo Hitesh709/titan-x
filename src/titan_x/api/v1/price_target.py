@@ -1,6 +1,6 @@
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from titan_x.api import deps
@@ -80,5 +80,5 @@ async def get_target(
 ) -> dict[str, Any]:
     pt = await service.get_target(target_id)
     if not pt:
-        return {"error": "Price target not found"}
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Price target not found")
     return {"price_target": _pt_dict(pt)}

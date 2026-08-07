@@ -1,6 +1,6 @@
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from titan_x.api import deps
@@ -99,5 +99,5 @@ async def deactivate(
 ) -> dict[str, Any]:
     sl = await service.deactivate(stop_loss_id)
     if not sl:
-        return {"error": "Stop loss not found"}
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stop loss not found")
     return {"stop_loss": _sl_dict(sl)}

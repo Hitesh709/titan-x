@@ -10,6 +10,8 @@ from titan_x.api.dependencies import (
     require_api_key,
 )
 from titan_x.api.schemas import MessageResponse, PaginatedResponse
+from titan_x.db.repository import BaseRepository
+from titan_x.models.strategy import Strategy
 from titan_x.models.user import User
 from titan_x.services.backtest_engine import BacktestEngine
 from titan_x.services.optimization_engine import OptimizationEngine
@@ -46,6 +48,24 @@ def _get_execution_service(
     engine: Annotated[BacktestEngine, Depends(get_backtest_engine)],
 ) -> StrategyExecutionService:
     return StrategyExecutionService(engine._session)
+
+
+async def _require_strategy_owner(
+    strategy_id: int,
+    engine: Annotated[BacktestEngine, Depends(get_backtest_engine)],
+    current_user: Annotated[User, Depends(get_current_active_user)],
+) -> None:
+    repo = BaseRepository(engine._session, Strategy)
+    strategy = await repo.get(strategy_id)
+    if strategy is None or strategy.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Strategy not found")
+
+
+async def _require_superuser(
+    current_user: Annotated[User, Depends(get_current_active_user)],
+) -> None:
+    if not current_user.is_superuser:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Superuser access required")
 
 
 @strategy_router.post("", status_code=status.HTTP_201_CREATED)
@@ -98,6 +118,7 @@ async def get_strategy(
     strategy_id: int,
     builder: Annotated[StrategyBuilder, Depends(_get_strategy_builder)],
     current_user: Annotated[User, Depends(get_current_active_user)],
+    _owner: None = Depends(_require_strategy_owner),
 ) -> dict:
     result = await builder.get_strategy(strategy_id)
     if result is None:
@@ -110,6 +131,7 @@ async def update_strategy(
     strategy_id: int,
     builder: Annotated[StrategyBuilder, Depends(_get_strategy_builder)],
     current_user: Annotated[User, Depends(get_current_active_user)],
+    _owner: None = Depends(_require_strategy_owner),
     name: str | None = Query(None, min_length=1, max_length=256),
     description: str | None = Query(None, max_length=1000),
     entry_criteria: str | None = Query(None),
@@ -140,6 +162,7 @@ async def delete_strategy(
     strategy_id: int,
     builder: Annotated[StrategyBuilder, Depends(_get_strategy_builder)],
     current_user: Annotated[User, Depends(get_current_active_user)],
+    _owner: None = Depends(_require_strategy_owner),
 ) -> MessageResponse:
     deleted = await builder.delete_strategy(strategy_id)
     if not deleted:
@@ -152,6 +175,7 @@ async def run_strategy_backtest(
     strategy_id: int,
     builder: Annotated[StrategyBuilder, Depends(_get_strategy_builder)],
     current_user: Annotated[User, Depends(get_current_active_user)],
+    _owner: None = Depends(_require_strategy_owner),
     symbol: str = Query(..., min_length=1, max_length=16),
     start_date: date = Query(...),
     end_date: date = Query(...),
@@ -180,6 +204,7 @@ async def optimize_strategy(
     strategy_id: int,
     optimizer: Annotated[OptimizationEngine, Depends(_get_optimization_engine)],
     current_user: Annotated[User, Depends(get_current_active_user)],
+    _owner: None = Depends(_require_strategy_owner),
     symbol: str = Query(..., min_length=1, max_length=16),
     start_date: date = Query(...),
     end_date: date = Query(...),
@@ -213,10 +238,15 @@ async def optimize_strategy(
 async def get_optimization(
     opt_id: int,
     optimizer: Annotated[OptimizationEngine, Depends(_get_optimization_engine)],
+    engine: Annotated[BacktestEngine, Depends(get_backtest_engine)],
     current_user: Annotated[User, Depends(get_current_active_user)],
 ) -> dict:
     result = await optimizer.get_optimization(opt_id)
     if result is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Optimization not found")
+    strat_repo = BaseRepository(engine._session, Strategy)
+    strategy = await strat_repo.get(result["strategy_id"])
+    if strategy is None or strategy.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Optimization not found")
     return result
 
@@ -226,6 +256,7 @@ async def list_optimizations(
     strategy_id: int,
     optimizer: Annotated[OptimizationEngine, Depends(_get_optimization_engine)],
     current_user: Annotated[User, Depends(get_current_active_user)],
+    _owner: None = Depends(_require_strategy_owner),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
 ) -> PaginatedResponse[dict]:
@@ -370,6 +401,7 @@ async def execute_strategy_batch(
 @strategy_router.post("/execute-scheduled", status_code=status.HTTP_201_CREATED)
 async def execute_scheduled_strategies(
     exec_svc: Annotated[StrategyExecutionService, Depends(_get_execution_service)],
+    _admin: None = Depends(_require_superuser),
 ) -> list[dict]:
     return await exec_svc.execute_scheduled()
 

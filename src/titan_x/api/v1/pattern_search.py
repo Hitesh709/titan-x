@@ -1,7 +1,7 @@
 from datetime import date
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from titan_x.api import deps
@@ -83,7 +83,7 @@ async def get_query(
 ) -> dict[str, Any]:
     q = await service.get_query(query_id)
     if not q:
-        return {"error": "Query not found"}
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Query not found")
     return _query_dict(q)
 
 

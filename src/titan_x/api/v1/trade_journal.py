@@ -88,6 +88,11 @@ async def close_entry(
     service: TradeJournalService = Depends(_get_service),
     current_user: User = Depends(deps.get_current_active_user),
 ):
+    entry = await service.get_entry(journal_id)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Journal entry not found")
+    if entry.user_id != current_user.id and not current_user.is_superuser:
+        raise HTTPException(status_code=403, detail="Not your journal entry")
     entry = await service.close_entry(
         journal_id=journal_id,
         exit_date=exit_date,
@@ -102,8 +107,6 @@ async def close_entry(
     )
     if not entry:
         raise HTTPException(status_code=404, detail="Journal entry not found")
-    if entry.user_id != current_user.id and not current_user.is_superuser:
-        raise HTTPException(status_code=403, detail="Not your journal entry")
     return {"entry": _entry_dict(entry)}
 
 
@@ -125,7 +128,9 @@ async def update_entry(
                "setup_type", "mistake", "screenshot_url", "rating"}
     kwargs = {k: v for k, v in body.items() if k in allowed}
     updated = await service.update_entry(journal_id, **kwargs)
-    return {"entry": _entry_dict(updated)} if updated else {"error": "Update failed"}
+    if not updated:
+        raise HTTPException(status_code=500, detail="Update failed")
+    return {"entry": _entry_dict(updated)}
 
 
 @router.get("/{journal_id}", summary="Get a trade journal entry")

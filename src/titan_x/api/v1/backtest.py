@@ -9,6 +9,8 @@ from titan_x.api.dependencies import (
     require_api_key,
 )
 from titan_x.api.schemas import MessageResponse, PaginatedResponse
+from titan_x.db.repository import BaseRepository
+from titan_x.models.backtest import Backtest
 from titan_x.models.user import User
 from titan_x.services.backtest_engine import BacktestEngine
 
@@ -17,6 +19,17 @@ backtest_router = APIRouter(
     tags=["backtests"],
     dependencies=[Depends(require_api_key)],
 )
+
+
+async def _require_backtest_owner(
+    backtest_id: int,
+    engine: Annotated[BacktestEngine, Depends(get_backtest_engine)],
+    current_user: Annotated[User, Depends(get_current_active_user)],
+) -> None:
+    repo = BaseRepository(engine._session, Backtest)
+    bt = await repo.get(backtest_id)
+    if bt is None or bt.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Backtest not found")
 
 
 @backtest_router.post("", status_code=status.HTTP_201_CREATED)
@@ -56,6 +69,7 @@ async def run_backtest(
     backtest_id: int,
     engine: Annotated[BacktestEngine, Depends(get_backtest_engine)],
     current_user: Annotated[User, Depends(get_current_active_user)],
+    _owner: None = Depends(_require_backtest_owner),
 ) -> dict:
     try:
         result = await engine.run_backtest(backtest_id)
@@ -88,6 +102,7 @@ async def get_backtest(
     backtest_id: int,
     engine: Annotated[BacktestEngine, Depends(get_backtest_engine)],
     current_user: Annotated[User, Depends(get_current_active_user)],
+    _owner: None = Depends(_require_backtest_owner),
 ) -> dict:
     result = await engine.get_backtest_with_report(backtest_id)
     if result is None:
@@ -100,6 +115,7 @@ async def get_backtest_report(
     backtest_id: int,
     engine: Annotated[BacktestEngine, Depends(get_backtest_engine)],
     current_user: Annotated[User, Depends(get_current_active_user)],
+    _owner: None = Depends(_require_backtest_owner),
 ) -> dict:
     result = await engine.get_backtest_with_report(backtest_id)
     if result is None:
@@ -112,6 +128,7 @@ async def get_backtest_trades(
     backtest_id: int,
     engine: Annotated[BacktestEngine, Depends(get_backtest_engine)],
     current_user: Annotated[User, Depends(get_current_active_user)],
+    _owner: None = Depends(_require_backtest_owner),
 ) -> list[dict]:
     trades = await engine.get_trades(backtest_id)
     return [{
@@ -139,6 +156,7 @@ async def get_backtest_equity_curve(
     backtest_id: int,
     engine: Annotated[BacktestEngine, Depends(get_backtest_engine)],
     current_user: Annotated[User, Depends(get_current_active_user)],
+    _owner: None = Depends(_require_backtest_owner),
 ) -> list[dict]:
     curve = await engine.get_equity_curve(backtest_id)
     return [{
@@ -156,6 +174,7 @@ async def get_backtest_signals(
     backtest_id: int,
     engine: Annotated[BacktestEngine, Depends(get_backtest_engine)],
     current_user: Annotated[User, Depends(get_current_active_user)],
+    _owner: None = Depends(_require_backtest_owner),
 ) -> list[dict]:
     signals = await engine.get_signals(backtest_id)
     return [{
@@ -176,6 +195,7 @@ async def delete_backtest(
     backtest_id: int,
     engine: Annotated[BacktestEngine, Depends(get_backtest_engine)],
     current_user: Annotated[User, Depends(get_current_active_user)],
+    _owner: None = Depends(_require_backtest_owner),
 ) -> MessageResponse:
     deleted = await engine.delete_backtest(backtest_id)
     if not deleted:

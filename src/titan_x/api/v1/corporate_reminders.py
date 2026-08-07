@@ -238,7 +238,7 @@ async def unsubscribe(
     current_user: User = Depends(deps.get_current_active_user),
     service: CorporateReminderService = Depends(_get_service),
 ) -> dict[str, Any]:
-    deleted = await service.unsubscribe(reminder_id)
+    deleted = await service.unsubscribe(reminder_id, current_user.id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Reminder not found")
     return {"deleted": True}
@@ -260,7 +260,7 @@ async def acknowledge(
     current_user: User = Depends(deps.get_current_active_user),
     service: CorporateReminderService = Depends(_get_service),
 ) -> dict[str, Any]:
-    ok = await service.acknowledge(reminder_id)
+    ok = await service.acknowledge(reminder_id, current_user.id)
     if not ok:
         raise HTTPException(status_code=404, detail="Reminder not found")
     return {"acknowledged": True}

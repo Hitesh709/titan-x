@@ -9,13 +9,18 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from titan_x.api import deps
+from titan_x.api.dependencies import require_api_key
 from titan_x.models.user import User
 from titan_x.services.timescaledb_service import (
     HYPERTABLE_CONFIG,
     TimescaleDBService,
 )
 
-router = APIRouter(prefix="/timescaledb", tags=["timescaledb"])
+router = APIRouter(
+    prefix="/timescaledb",
+    tags=["timescaledb"],
+    dependencies=[Depends(require_api_key)],
+)
 
 
 async def _get_service(

@@ -74,7 +74,7 @@ async def list_evaluations(
     return {"total": len(evals), "evaluations": [_eval_dict(e) for e in evals]}
 
 
-@router.get("/{evaluation_id}", summary="Get an evaluation by id")
+@router.get("/{evaluation_id:int}", summary="Get an evaluation by id")
 async def get_evaluation(
     evaluation_id: int,
     service: NightlyEvaluationService = Depends(_get_service),
@@ -85,7 +85,7 @@ async def get_evaluation(
     return {"evaluation": _eval_dict(ev)}
 
 
-@router.get("/{evaluation_id}/errors", summary="Get prediction errors for an evaluation")
+@router.get("/{evaluation_id:int}/errors", summary="Get prediction errors for an evaluation")
 async def get_errors(
     evaluation_id: int,
     is_failure: bool | None = Query(None),
@@ -100,7 +100,7 @@ async def get_errors(
     return {"total": len(errors), "errors": [_error_dict(e) for e in errors]}
 
 
-@router.get("/{evaluation_id}/failures", summary="Get failures for an evaluation")
+@router.get("/{evaluation_id:int}/failures", summary="Get failures for an evaluation")
 async def get_failures(
     evaluation_id: int,
     limit: int = Query(100),

@@ -1,7 +1,7 @@
 from datetime import date
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from titan_x.api import deps
@@ -54,7 +54,10 @@ async def create_definition(
     current_user: User = Depends(deps.get_current_active_superuser),
 ) -> dict[str, Any]:
     if category not in PATTERN_CATEGORIES:
-        return {"error": f"Invalid category: {category}. Must be one of {PATTERN_CATEGORIES}"}
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid category: {category}. Must be one of {PATTERN_CATEGORIES}",
+        )
     d = await service.create_definition(name, category, description)
     return _def_dict(d)
 
@@ -103,7 +106,7 @@ async def detect_category(
     }
     detector = detect_map.get(category)
     if not detector:
-        return {"error": f"Invalid category: {category}"}
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid category: {category}")
     instances = await detector(symbol.upper(), end_date)
     return {"symbol": symbol.upper(), "category": category, "detected": len(instances), "instances": [_inst_dict(i) for i in instances]}
 

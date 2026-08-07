@@ -336,10 +336,11 @@ class CorporateReminderService:
                 continue
         return results
 
-    async def unsubscribe(self, reminder_id: int) -> bool:
-        result = await self.session.execute(
-            select(CorporateReminder).where(CorporateReminder.id == reminder_id),
-        )
+    async def unsubscribe(self, reminder_id: int, user_id: int | None = None) -> bool:
+        stmt = select(CorporateReminder).where(CorporateReminder.id == reminder_id)
+        if user_id is not None:
+            stmt = stmt.where(CorporateReminder.user_id == user_id)
+        result = await self.session.execute(stmt)
         reminder = result.scalar_one_or_none()
         if not reminder:
             return False
@@ -362,10 +363,11 @@ class CorporateReminderService:
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
-    async def acknowledge(self, reminder_id: int) -> bool:
-        result = await self.session.execute(
-            select(CorporateReminder).where(CorporateReminder.id == reminder_id),
-        )
+    async def acknowledge(self, reminder_id: int, user_id: int | None = None) -> bool:
+        stmt = select(CorporateReminder).where(CorporateReminder.id == reminder_id)
+        if user_id is not None:
+            stmt = stmt.where(CorporateReminder.user_id == user_id)
+        result = await self.session.execute(stmt)
         reminder = result.scalar_one_or_none()
         if not reminder:
             return False

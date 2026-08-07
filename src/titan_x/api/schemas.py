@@ -109,6 +109,19 @@ class UserResponse(BaseModel):
     updated_at: datetime
 
 
+class BrokerConnectionResponse(BaseModel):
+    """Broker connection summary that never exposes credentials or tokens."""
+
+    id: int
+    broker_name: str
+    label: str
+    is_active: bool
+    has_api_key: bool = False
+    has_api_secret: bool = False
+    token_expires_at: datetime | None = None
+    created_at: datetime | None = None
+
+
 class UserCreateRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
