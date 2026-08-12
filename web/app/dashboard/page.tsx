@@ -1,192 +1,171 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
-import { RefreshCw } from "lucide-react"
-import api from "@/lib/api"
-import type {
-  DashboardData,
-  MarketHeatmapData,
-  NewsArticle,
-} from "@/types"
-import { MarketOverview } from "@/components/dashboard/MarketOverview"
-import { PortfolioSummaryWidget } from "@/components/dashboard/PortfolioSummary"
-import { AiRecommendations } from "@/components/dashboard/AiRecommendations"
-import { WatchlistWidget } from "@/components/dashboard/Watchlist"
-import { MarketNewsWidget } from "@/components/dashboard/MarketNews"
-import { TopMoversWidget } from "@/components/dashboard/TopMovers"
-import { SectorHeatmap } from "@/components/dashboard/SectorHeatmap"
-import { RecentAlertsWidget } from "@/components/dashboard/RecentAlerts"
-import type { NewsRow } from "@/components/dashboard/types"
-import { useLiveRefresh } from "@/lib/live"
+import {
+  TrendingUp, DollarSign, Activity,
+  BarChart3, ArrowUpRight, ArrowDownRight,
+  LineChart,
+} from "lucide-react"
+import { formatCurrency, formatPercent, getChangeColor } from "@/lib/utils"
+import TopPickWidget from "@/components/TopPickWidget"
 
-const PERIODS = ["1W", "1M", "3M", "6M", "YTD"] as const
+const marketIndices = [
+  { symbol: "S&P 500", price: 5432.18, change: 1.24, volume: "2.1B" },
+  { symbol: "NASDAQ", price: 17123.45, change: 1.87, volume: "3.4B" },
+  { symbol: "DOW", price: 38987.23, change: -0.32, volume: "1.8B" },
+  { symbol: "RUSSELL", price: 2034.56, change: 0.89, volume: "890M" },
+]
 
-function normalizeNews(
-  marketNews: NewsArticle[],
-  dashboardNews: DashboardData["news"],
-): NewsRow[] {
-  const rows: NewsRow[] = marketNews.map((a) => ({
-    id: a.id,
-    symbol: a.symbol ?? null,
-    title: a.title,
-    source: a.source,
-    published_at: a.published_at ?? null,
-    sentiment: "neutral",
-    sentiment_confidence: null,
-    url: a.url,
-  }))
-  if (rows.length > 0) return rows
-  return dashboardNews.map((n) => ({
-    id: n.id,
-    symbol: n.symbol ?? null,
-    title: n.title,
-    source: n.source,
-    published_at: n.published_at ?? null,
-    sentiment: n.sentiment as "positive" | "negative" | "neutral",
-    sentiment_confidence: n.sentiment_confidence ?? null,
-    url: null,
-  }))
+const portfolioSummary = {
+  totalValue: 2456789.42,
+  dayChange: 23456.78,
+  dayChangePercent: 0.96,
+  totalGain: 456789.12,
+  totalGainPercent: 22.84,
+  allocation: [
+    { label: "Equities", value: 55, color: "bg-titan-500" },
+    { label: "Fixed Income", value: 20, color: "bg-emerald-500" },
+    { label: "Commodities", value: 10, color: "bg-yellow-500" },
+    { label: "Crypto", value: 10, color: "bg-purple-500" },
+    { label: "Cash", value: 5, color: "bg-gray-500" },
+  ],
 }
 
+const recentAlerts = [
+  { symbol: "NVDA", type: "Price Target", message: "Hit resistance at $875", time: "2 min ago", severity: "info" },
+  { symbol: "TSLA", type: "Volatility", message: "IV spike above 65%", time: "8 min ago", severity: "warning" },
+  { symbol: "AAPL", type: "News", message: "Analyst downgrade detected", time: "15 min ago", severity: "negative" },
+  { symbol: "MSFT", type: "Earnings", message: "Pre-earnings volume surge", time: "32 min ago", severity: "positive" },
+]
+
 export default function DashboardPage() {
-  const [dashboard, setDashboard] = useState<DashboardData | null>(null)
-  const [heatmap, setHeatmap] = useState<MarketHeatmapData | null>(null)
-  const [newsRows, setNewsRows] = useState<NewsRow[]>([])
-  const [period, setPeriod] = useState<(typeof PERIODS)[number]>("1W")
-  const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
-  const [errors, setErrors] = useState<Record<string, string>>({})
-  const mounted = useRef(true)
-
-  const load = useCallback(
-    async (silent = false) => {
-      if (!silent) setLoading(true)
-      const nextErrors: Record<string, string> = {}
-      const [dashRes, heatRes, newsRes] = await Promise.allSettled([
-        api.get<DashboardData>("/dashboard"),
-        api.get<MarketHeatmapData>(`/market-heatmap?period=${period}`),
-        api.get<{ items: NewsArticle[] }>("/news?limit=6&skip=0", { cacheTTL: 30_000 }),
-      ])
-      if (!mounted.current) return
-
-      let dash: DashboardData | null = null
-      if (dashRes.status === "fulfilled") {
-        dash = dashRes.value
-        setDashboard(dash)
-      } else {
-        nextErrors.dashboard = "Failed to load portfolio, watchlist and alerts."
-      }
-      if (heatRes.status === "fulfilled") {
-        setHeatmap(heatRes.value)
-      } else {
-        nextErrors.heatmap = "Failed to load market overview, movers and sectors."
-      }
-      if (newsRes.status === "fulfilled") {
-        setNewsRows(normalizeNews(newsRes.value.items, dash?.news ?? []))
-      } else if (dash) {
-        setNewsRows(normalizeNews([], dash.news))
-      }
-      setErrors(nextErrors)
-      setLoading(false)
-      setRefreshing(false)
-    },
-    [period],
-  )
-
-  useEffect(() => {
-    mounted.current = true
-    return () => {
-      mounted.current = false
-    }
-  }, [])
-
-  useLiveRefresh(() => void load(true), [load])
-
-  const handleRefresh = () => {
-    setRefreshing(true)
-    void load(true)
-  }
-
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-white">Dashboard</h1>
-          <p className="text-gray-500 text-sm mt-1">Live market, portfolio and AI intelligence</p>
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-bold text-white">Dashboard</h1>
+        <p className="text-gray-500 text-sm mt-1">Real-time portfolio and market overview</p>
+      </div>
+
+      {/* Portfolio Value Card */}
+      <div className="glass-card p-6">
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <p className="text-sm text-gray-400">Total Portfolio Value</p>
+            <h2 className="text-3xl font-bold text-white mt-1">{formatCurrency(portfolioSummary.totalValue)}</h2>
+            <div className="flex items-center gap-3 mt-2">
+              <span className={`flex items-center gap-1 text-sm font-medium ${getChangeColor(portfolioSummary.dayChange)}`}>
+                {portfolioSummary.dayChange >= 0 ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}
+                {formatCurrency(portfolioSummary.dayChange)} ({formatPercent(portfolioSummary.dayChangePercent)})
+              </span>
+              <span className="text-gray-600">today</span>
+            </div>
+          </div>
+          <div className="text-right">
+            <p className="text-sm text-gray-400">Total Return</p>
+            <p className={`text-lg font-semibold ${getChangeColor(portfolioSummary.totalGain)}`}>
+              {formatPercent(portfolioSummary.totalGainPercent)}
+            </p>
+          </div>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center rounded-lg bg-white/5 border border-white/10 p-0.5">
-            {PERIODS.map((p) => (
-              <button
-                key={p}
-                onClick={() => setPeriod(p)}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                  period === p ? "bg-titan-600 text-white" : "text-gray-500 hover:text-gray-200"
-                }`}
-              >
-                {p}
-              </button>
+
+        {/* Allocation */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-400">Asset Allocation</span>
+            <span className="text-gray-500">Weight</span>
+          </div>
+          <div className="flex h-2 rounded-full overflow-hidden bg-white/5">
+            {portfolioSummary.allocation.map((item) => (
+              <div key={item.label} className={item.color} style={{ width: `${item.value}%` }} title={`${item.label}: ${item.value}%`} />
             ))}
           </div>
-          <button
-            onClick={handleRefresh}
-            className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-white border border-white/10 rounded-lg px-3 py-2 transition-colors"
-          >
-            <RefreshCw size={13} className={refreshing ? "animate-spin" : ""} />
-            Refresh
-          </button>
+          <div className="flex flex-wrap gap-4 text-xs text-gray-500 pt-1">
+            {portfolioSummary.allocation.map((item) => (
+              <span key={item.label} className="flex items-center gap-1.5">
+                <span className={`w-2 h-2 rounded-full ${item.color}`} />
+                {item.label} {item.value}%
+              </span>
+            ))}
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        <MarketOverview heatmap={heatmap} loading={loading} error={errors.heatmap ?? null} onRetry={handleRefresh} />
-        <PortfolioSummaryWidget
-          data={dashboard?.portfolio ?? { has_account: false }}
-          loading={loading}
-          error={errors.dashboard ?? null}
-          onRetry={handleRefresh}
-        />
-        <AiRecommendations />
-        <WatchlistWidget
-          data={dashboard?.watchlists ?? []}
-          loading={loading}
-          error={errors.dashboard ?? null}
-          onRetry={handleRefresh}
-        />
-        <MarketNewsWidget
-          data={newsRows}
-          loading={loading}
-          error={errors.dashboard ?? null}
-          onRetry={handleRefresh}
-        />
-        <TopMoversWidget
-          title="Top Gainers"
-          type="gainers"
-          data={heatmap?.leaders ?? []}
-          loading={loading}
-          error={errors.heatmap ?? null}
-          onRetry={handleRefresh}
-        />
-        <TopMoversWidget
-          title="Top Losers"
-          type="losers"
-          data={heatmap?.laggards ?? []}
-          loading={loading}
-          error={errors.heatmap ?? null}
-          onRetry={handleRefresh}
-        />
-        <SectorHeatmap
-          data={heatmap?.sectors ?? []}
-          loading={loading}
-          error={errors.heatmap ?? null}
-          onRetry={handleRefresh}
-        />
-        <RecentAlertsWidget
-          data={dashboard?.alerts ?? []}
-          loading={loading}
-          error={errors.dashboard ?? null}
-          onRetry={handleRefresh}
-        />
+      {/* Stats Grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[
+          { icon: DollarSign, label: "Cash Balance", value: "$124,567.89", change: "+2.1%", positive: true },
+          { icon: Activity, label: "Today's Volume", value: "1.2M", change: "+12.3%", positive: true },
+          { icon: BarChart3, label: "Open Positions", value: "24", change: "3 pending", positive: null },
+          { icon: TrendingUp, label: "Win Rate", value: "68.4%", change: "+5.2%", positive: true },
+        ].map((stat) => (
+          <div key={stat.label} className="glass-card p-4">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs text-gray-500">{stat.label}</span>
+              <stat.icon size={16} className="text-titan-400" />
+            </div>
+            <div className="text-xl font-bold text-white">{stat.value}</div>
+            {stat.change && (
+              <div className={`text-xs mt-1 ${stat.positive === true ? "text-emerald-400" : stat.positive === false ? "text-red-400" : "text-gray-500"}`}>
+                {stat.change}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Market Indices + Top Movers */}
+      <div className="grid lg:grid-cols-2 gap-6">
+        {/* Market Indices */}
+        <div className="glass-card p-5">
+          <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
+            <LineChart size={16} className="text-titan-400" /> Market Indices
+          </h3>
+          <div className="space-y-3">
+            {marketIndices.map((index) => (
+              <div key={index.symbol} className="flex items-center justify-between py-2 border-b border-titan-800/20 last:border-0">
+                <div>
+                  <div className="text-sm font-medium text-white">{index.symbol}</div>
+                  <div className="text-xs text-gray-500">Vol: {index.volume}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-sm font-medium text-white">{index.price.toLocaleString()}</div>
+                  <div className={`text-xs font-medium ${getChangeColor(index.change)}`}>
+                    {index.change >= 0 ? "+" : ""}{index.change.toFixed(2)}%
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Top Picks */}
+        <TopPickWidget />
+      </div>
+
+      {/* Alerts */}
+      <div className="glass-card p-5">
+        <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
+          <Activity size={16} className="text-titan-400" /> Recent Activity
+        </h3>
+        <div className="space-y-3">
+          {recentAlerts.map((alert, i) => (
+            <div key={i} className="flex items-start gap-3 py-2 border-b border-titan-800/20 last:border-0">
+              <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${
+                alert.severity === "positive" ? "bg-emerald-500" :
+                alert.severity === "negative" ? "bg-red-500" :
+                alert.severity === "warning" ? "bg-yellow-500" : "bg-titan-500"
+              }`} />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-white">{alert.symbol}</span>
+                  <span className="badge-blue text-[10px]">{alert.type}</span>
+                </div>
+                <p className="text-sm text-gray-400 mt-0.5">{alert.message}</p>
+              </div>
+              <span className="text-xs text-gray-600 shrink-0">{alert.time}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   )

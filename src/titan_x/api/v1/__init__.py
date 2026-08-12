@@ -56,7 +56,6 @@ from titan_x.api.v1.microstructure import router as microstructure_router
 from titan_x.api.v1.regime_detection import router as regime_router
 from titan_x.api.v1.valuation import router as valuation_router
 from titan_x.api.v1.market_data import router as market_data_router
-from titan_x.api.v1.indices import router as indices_router
 from titan_x.api.v1.strategy import strategy_router
 from titan_x.api.v1.trading_calendar import router as trading_calendar_router
 from titan_x.api.v1.timescaledb import router as timescaledb_router
@@ -90,21 +89,9 @@ from titan_x.api.v1.paper_trading import router as paper_trading_router
 from titan_x.api.v1.dashboard import router as dashboard_router
 from titan_x.api.v1.search import router as search_router
 from titan_x.api.v1.export import router as export_router
-from titan_x.api.v1.research import router as research_router
+from titan_x.api.v1.top_picks import router as top_picks_router
 
 v1_router = APIRouter(prefix="/api/v1")
-
-
-@v1_router.get("/")
-async def v1_root() -> dict[str, str]:
-    return {
-        "app": "TITAN X API",
-        "version": "0.1.0",
-        "docs": "/docs",
-        "health": "/api/v1/health/live",
-    }
-
-
 v1_router.include_router(ai_registry_router)
 v1_router.include_router(audit_router)
 v1_router.include_router(health_router)
@@ -152,7 +139,6 @@ v1_router.include_router(strategy_router)
 v1_router.include_router(trading_calendar_router)
 v1_router.include_router(timescaledb_router)
 v1_router.include_router(market_data_router)
-v1_router.include_router(indices_router)
 v1_router.include_router(correlation_router)
 v1_router.include_router(datalake_router)
 v1_router.include_router(global_market_router)
@@ -195,6 +181,6 @@ v1_router.include_router(paper_trading_router)
 v1_router.include_router(dashboard_router)
 v1_router.include_router(search_router)
 v1_router.include_router(export_router)
-v1_router.include_router(research_router)
+v1_router.include_router(top_picks_router)
 
 __all__ = ["v1_router"]

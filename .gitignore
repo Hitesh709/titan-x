@@ -1,33 +1,49 @@
-.env
-.venv/
+# Python
 __pycache__/
 *.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual envs
+env/
+venv/
+.venv/
+.env
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Caches
 .pytest_cache/
-.mypy_cache/
 .ruff_cache/
-.coverage
-htmlcov/
-dist/
-build/
+.mypy_cache/
 *.egg-info/
+build/
+dist/
+
+# IDE
 .idea/
 .vscode/
-coverage.xml
+*.swp
+*.swo
 
-# Android / BeeWare build artifacts
-android/build/
-android/Android/
-android/gradle/
-android/*.keystore
-android/*.p12
+# OS
+.DS_Store
+Thumbs.db
 
-.env
-.env.local
-*.db
+# Logs
+*.log
 
-# Node / Next.js
+# Node / Next.js (web/)
 node_modules/
 .next/
 out/
-npm-debug.log*
-*.tsbuildinfo
+.env*.local
+
+# Temporary diagnostic scripts
+check_*.py
+prof_provider.py
+fix_rt.py

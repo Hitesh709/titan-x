@@ -1,239 +1,71 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1"
-
-const ACCESS_KEY = "titan_x_access"
-const REFRESH_KEY = "titan_x_refresh"
-const REMEMBER_KEY = "titan_x_remember"
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api/v1"
 
 interface RequestOptions {
   method?: string
   body?: unknown
   headers?: Record<string, string>
-  params?: Record<string, string | number | boolean | null | undefined>
-  skipAuth?: boolean
-  _retried?: boolean
-  cacheTTL?: number
-}
-
-const DEFAULT_CACHE_TTL = 30_000
-const cache = new Map<string, { data: unknown; expires: number }>()
-
-function decodeTokenPayload(token: string): Record<string, unknown> | null {
-  try {
-    const payload = token.split(".")[1]
-    if (!payload) return null
-    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/")
-    const json = decodeURIComponent(
-      atob(base64)
-        .split("")
-        .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
-        .join("")
-    )
-    return JSON.parse(json)
-  } catch {
-    return null
-  }
-}
-
-function getTokenExpiry(token: string | null): number | null {
-  if (!token) return null
-  const payload = decodeTokenPayload(token)
-  if (!payload || typeof payload.exp !== "number") return null
-  return payload.exp * 1000
 }
 
 class ApiClient {
-  private accessToken: string | null = null
-  private refreshToken: string | null = null
-  private remember = false
-  private refreshPromise: Promise<boolean> | null = null
-  private apiKey: string | null =
-    typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_KEY
-      ? process.env.NEXT_PUBLIC_API_KEY
-      : null
-  private onSessionExpired: (() => void) | null = null
+  private token: string | null = null
 
-  constructor() {
+  setToken(token: string | null) {
+    this.token = token
     if (typeof window !== "undefined") {
-      const remember = localStorage.getItem(REMEMBER_KEY) === "1"
-      this.remember = remember
-      this.refreshToken = (remember ? localStorage : sessionStorage).getItem(REFRESH_KEY)
-      this.accessToken = sessionStorage.getItem(ACCESS_KEY)
+      if (token) localStorage.setItem("titan_token", token)
+      else localStorage.removeItem("titan_token")
     }
   }
 
-  setSessionExpiredHandler(handler: (() => void) | null) {
-    this.onSessionExpired = handler
-  }
-
-  setTokens(accessToken: string | null, refreshToken: string | null, remember: boolean) {
-    this.accessToken = accessToken
-    this.refreshToken = refreshToken
-    this.remember = remember
+  getToken(): string | null {
+    if (this.token) return this.token
     if (typeof window !== "undefined") {
-      const store = remember ? localStorage : sessionStorage
-      if (refreshToken) store.setItem(REFRESH_KEY, refreshToken)
-      else store.removeItem(REFRESH_KEY)
-      if (accessToken) sessionStorage.setItem(ACCESS_KEY, accessToken)
-      else sessionStorage.removeItem(ACCESS_KEY)
-      if (remember) localStorage.setItem(REMEMBER_KEY, "1")
-      else localStorage.removeItem(REMEMBER_KEY)
+      this.token = localStorage.getItem("titan_token")
     }
-  }
-
-  clearTokens() {
-    this.accessToken = null
-    this.refreshToken = null
-    if (typeof window !== "undefined") {
-      localStorage.removeItem(REFRESH_KEY)
-      sessionStorage.removeItem(REFRESH_KEY)
-      sessionStorage.removeItem(ACCESS_KEY)
-      localStorage.removeItem(REMEMBER_KEY)
-    }
-  }
-
-  getAccessToken(): string | null {
-    return this.accessToken
-  }
-
-  getRefreshToken(): string | null {
-    return this.refreshToken
-  }
-
-  getRemember(): boolean {
-    return this.remember
-  }
-
-  hasSession(): boolean {
-    return !!this.accessToken || !!this.refreshToken
-  }
-
-  getTokenExpiryMs(): number | null {
-    return getTokenExpiry(this.accessToken)
-  }
-
-  setApiKey(key: string | null) {
-    this.apiKey = key
-  }
-
-  async refreshTokens(): Promise<boolean> {
-    if (!this.refreshToken) return false
-    if (this.refreshPromise) return this.refreshPromise
-
-    this.refreshPromise = (async () => {
-      try {
-        const res = await fetch(`${API_BASE}/auth/refresh`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ refresh_token: this.refreshToken }),
-        })
-        if (!res.ok) {
-          this.clearTokens()
-          this.onSessionExpired?.()
-          return false
-        }
-        const data = await res.json()
-        this.setTokens(data.access_token, data.refresh_token, this.remember)
-        return true
-      } catch {
-        this.clearTokens()
-        this.onSessionExpired?.()
-        return false
-      } finally {
-        this.refreshPromise = null
-      }
-    })()
-
-    return this.refreshPromise
+    return this.token
   }
 
   async request<T = unknown>(endpoint: string, options: RequestOptions = {}): Promise<T> {
-    const { method = "GET", body, headers = {}, params, skipAuth = false, cacheTTL } = options
+    const { method = "GET", body, headers = {} } = options
+    const token = this.getToken()
+
     const h: Record<string, string> = {
       "Content-Type": "application/json",
       ...headers,
     }
 
-    if (this.accessToken) h["Authorization"] = `Bearer ${this.accessToken}`
-    if (this.apiKey) h["X-API-Key"] = this.apiKey
+    if (token) h["Authorization"] = `Bearer ${token}`
 
-    const query = params
-      ? "?" +
-        new URLSearchParams(
-          Object.entries(params)
-            .filter(([, v]) => v !== undefined && v !== null && v !== "")
-            .map(([k, v]) => [k, String(v)])
-        ).toString()
-      : ""
-
-    const cacheKey = method === "GET" && cacheTTL ? `${endpoint}${query}` : ""
-    if (cacheKey) {
-      const cached = cache.get(cacheKey)
-      if (cached && cached.expires > Date.now()) {
-        return cached.data as T
-      }
-    }
-
-    const doFetch = () =>
-      fetch(`${API_BASE}${endpoint}${query}`, {
-        method,
-        headers: h,
-        body: body ? JSON.stringify(body) : undefined,
-      })
-
-    let res = await doFetch()
-
-    if (res.status === 401 && !skipAuth && !options._retried && this.refreshToken) {
-      const refreshed = await this.refreshTokens()
-      if (refreshed) {
-        h["Authorization"] = `Bearer ${this.accessToken}`
-        res = await doFetch()
-      }
-    }
+    const res = await fetch(`${API_BASE}${endpoint}`, {
+      method,
+      headers: h,
+      body: body ? JSON.stringify(body) : undefined,
+    })
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }))
-      const detail =
-        typeof err.detail === "string"
-          ? err.detail
-          : Array.isArray(err.detail)
-            ? err.detail.map((d: { msg?: string }) => d.msg).filter(Boolean).join("; ")
-            : err.message || res.statusText
-      throw new Error(detail || "API Error")
+      throw new Error(err.detail || "API Error")
     }
 
-    const data = (await res.json()) as T
-    if (cacheKey) {
-      cache.set(cacheKey, { data, expires: Date.now() + (cacheTTL ?? DEFAULT_CACHE_TTL) })
-      setTimeout(() => cache.delete(cacheKey), cacheTTL ?? DEFAULT_CACHE_TTL).unref?.()
-    }
-
-    return data
+    return res.json()
   }
 
-  get<T = unknown>(endpoint: string, options?: RequestOptions) {
-    return this.request<T>(endpoint, options)
+  get<T = unknown>(endpoint: string) {
+    return this.request<T>(endpoint)
   }
 
-  post<T = unknown>(endpoint: string, body: unknown = undefined, options?: RequestOptions) {
-    this.clearCache()
-    return this.request<T>(endpoint, { method: "POST", body, ...options })
+  post<T = unknown>(endpoint: string, body: unknown) {
+    return this.request<T>(endpoint, { method: "POST", body })
   }
 
-  put<T = unknown>(endpoint: string, body: unknown, options?: RequestOptions) {
-    this.clearCache()
-    return this.request<T>(endpoint, { method: "PUT", body, ...options })
+  put<T = unknown>(endpoint: string, body: unknown) {
+    return this.request<T>(endpoint, { method: "PUT", body })
   }
 
-  delete<T = unknown>(endpoint: string, options?: RequestOptions) {
-    this.clearCache()
-    return this.request<T>(endpoint, { method: "DELETE", ...options })
-  }
-
-  clearCache() {
-    cache.clear()
+  delete<T = unknown>(endpoint: string) {
+    return this.request<T>(endpoint, { method: "DELETE" })
   }
 }
 
 export const api = new ApiClient()
-export { getTokenExpiry, decodeTokenPayload }
 export default api
