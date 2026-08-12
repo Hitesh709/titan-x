@@ -5,6 +5,7 @@ Usage:
   python scripts/seed_market_data.py            # default universe
   python scripts/seed_market_data.py --symbols RELIANCE TCS INFY   # subset
 """
+
 import argparse
 import asyncio
 from datetime import date, timedelta
@@ -20,15 +21,56 @@ from titan_x.models.company import Company
 from titan_x.models.price import DailyPrice
 
 NSE_LARGE_CAP = [
-    "RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK", "HINDUNILVR",
-    "ITC", "SBIN", "BHARTIARTL", "KOTAKBANK", "LT", "BAJFINANCE",
-    "AXISBANK", "ASIANPAINT", "MARUTI", "TITAN", "HCLTECH", "SUNPHARMA",
-    "ULTRACEMCO", "WIPRO", "TATAMOTORS", "NTPC", "POWERGRID", "ADANIENT",
-    "ADANIPORTS", "TATASTEEL", "JSWSTEEL", "ONGC", "COALINDIA", "BAJAJFINSV",
-    "NESTLEIND", "DLF", "EICHERMOT", "GRASIM", "HINDALCO", "DRREDDY",
-    "DIVISLAB", "BPCL", "GAIL", "HEROMOTOCO", "TECHM", "SBILIFE",
-    "INDUSINDBK", "CIPLA", "APOLLOHOSP", "BRITANNIA", "TATAPOWER", "HDFCLIFE",
-    "LUPIN", "PIDILITIND",
+    "RELIANCE",
+    "TCS",
+    "HDFCBANK",
+    "INFY",
+    "ICICIBANK",
+    "HINDUNILVR",
+    "ITC",
+    "SBIN",
+    "BHARTIARTL",
+    "KOTAKBANK",
+    "LT",
+    "BAJFINANCE",
+    "AXISBANK",
+    "ASIANPAINT",
+    "MARUTI",
+    "TITAN",
+    "HCLTECH",
+    "SUNPHARMA",
+    "ULTRACEMCO",
+    "WIPRO",
+    "TATAMOTORS",
+    "NTPC",
+    "POWERGRID",
+    "ADANIENT",
+    "ADANIPORTS",
+    "TATASTEEL",
+    "JSWSTEEL",
+    "ONGC",
+    "COALINDIA",
+    "BAJAJFINSV",
+    "NESTLEIND",
+    "DLF",
+    "EICHERMOT",
+    "GRASIM",
+    "HINDALCO",
+    "DRREDDY",
+    "DIVISLAB",
+    "BPCL",
+    "GAIL",
+    "HEROMOTOCO",
+    "TECHM",
+    "SBILIFE",
+    "INDUSINDBK",
+    "CIPLA",
+    "APOLLOHOSP",
+    "BRITANNIA",
+    "TATAPOWER",
+    "HDFCLIFE",
+    "LUPIN",
+    "PIDILITIND",
 ]
 
 
@@ -88,16 +130,23 @@ async def sync_prices(provider, session, symbol: str) -> int:
     for p in points:
         existing = await session.execute(
             select(DailyPrice).where(
-                DailyPrice.symbol == sym, DailyPrice.trade_date == p.trade_date,
+                DailyPrice.symbol == sym,
+                DailyPrice.trade_date == p.trade_date,
             )
         )
         if existing.scalar_one_or_none():
             continue
-        session.add(DailyPrice(
-            symbol=sym,
-            trade_date=p.trade_date,
-            open=p.open, high=p.high, low=p.low, close=p.close, volume=p.volume,
-        ))
+        session.add(
+            DailyPrice(
+                symbol=sym,
+                trade_date=p.trade_date,
+                open=p.open,
+                high=p.high,
+                low=p.low,
+                close=p.close,
+                volume=p.volume,
+            )
+        )
         inserted += 1
     return inserted
 

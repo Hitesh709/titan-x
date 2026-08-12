@@ -34,16 +34,13 @@ class MarketDataProvider(ABC):
     @abstractmethod
     async def get_historical_prices(
         self, symbol: str, interval: str = "1d", start: date | None = None, end: date | None = None
-    ) -> list[MarketDataPoint]:
-        ...
+    ) -> list[MarketDataPoint]: ...
 
     @abstractmethod
-    async def get_quote(self, symbol: str) -> dict:
-        ...
+    async def get_quote(self, symbol: str) -> dict: ...
 
     @abstractmethod
-    async def get_company_profile(self, symbol: str) -> dict:
-        ...
+    async def get_company_profile(self, symbol: str) -> dict: ...
 
 
 class MockMarketDataProvider(MarketDataProvider):
@@ -59,15 +56,17 @@ class MockMarketDataProvider(MarketDataProvider):
         while current <= end_date:
             if current.weekday() < 5:
                 price = base_price + i * 0.5 + (hash(f"{symbol}_{i}") % 20 - 10)
-                points.append(MarketDataPoint(
-                    symbol=symbol,
-                    trade_date=current,
-                    open=price,
-                    high=price + 2,
-                    low=price - 2,
-                    close=price + 0.5,
-                    volume=1_000_000 + (hash(f"{symbol}_v{i}") % 500_000),
-                ))
+                points.append(
+                    MarketDataPoint(
+                        symbol=symbol,
+                        trade_date=current,
+                        open=price,
+                        high=price + 2,
+                        low=price - 2,
+                        close=price + 0.5,
+                        volume=1_000_000 + (hash(f"{symbol}_v{i}") % 500_000),
+                    )
+                )
                 i += 1
             current += timedelta(days=1)
         return points
@@ -119,9 +118,7 @@ class YahooFinanceProvider(MarketDataProvider):
     BASE_URL = "https://query1.finance.yahoo.com/v8/finance/chart"
 
     def __init__(self, api_key: str | None = None):
-        self._client = httpx.AsyncClient(
-            headers={"User-Agent": YAHOO_USER_AGENT}, timeout=20.0
-        )
+        self._client = httpx.AsyncClient(headers={"User-Agent": YAHOO_USER_AGENT}, timeout=20.0)
         self._semaphore = asyncio.Semaphore(5)
 
     async def _get(self, url: str, params: dict | None = None) -> dict:
@@ -143,6 +140,7 @@ class YahooFinanceProvider(MarketDataProvider):
         params = {"symbol": self._normalize_symbol(symbol), "interval": interval}
         if start or end:
             from datetime import time as dt_time
+
             period1 = int(datetime.combine(start, dt_time.min).timestamp()) if start else None
             period2 = int(datetime.combine(end, dt_time.min).timestamp()) if end else None
             if period1:
@@ -169,15 +167,19 @@ class YahooFinanceProvider(MarketDataProvider):
             close = closes[i] if i < len(closes) else None
             if close is None:
                 continue
-            points.append(MarketDataPoint(
-                symbol=symbol.upper(),
-                trade_date=datetime.fromtimestamp(ts, tz=datetime.now().astimezone().tzinfo).date(),
-                open=opens[i] if i < len(opens) else close,
-                high=highs[i] if i < len(highs) else close,
-                low=lows[i] if i < len(lows) else close,
-                close=close,
-                volume=int(volumes[i]) if i < len(volumes) and volumes[i] else 0,
-            ))
+            points.append(
+                MarketDataPoint(
+                    symbol=symbol.upper(),
+                    trade_date=datetime.fromtimestamp(
+                        ts, tz=datetime.now().astimezone().tzinfo
+                    ).date(),
+                    open=opens[i] if i < len(opens) else close,
+                    high=highs[i] if i < len(highs) else close,
+                    low=lows[i] if i < len(lows) else close,
+                    close=close,
+                    volume=int(volumes[i]) if i < len(volumes) and volumes[i] else 0,
+                )
+            )
         return points
 
     async def get_quote(self, symbol: str) -> dict:

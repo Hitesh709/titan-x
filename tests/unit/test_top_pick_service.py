@@ -13,29 +13,33 @@ N_DAYS = 260
 
 
 def _seed(session: AsyncSession, symbol: str, trend: str) -> None:
-    session.add(Company(
-        symbol=symbol,
-        company_name=f"{symbol} Ltd",
-        isin=f"INE{symbol[:8]:0<8}",
-        exchange="NSE",
-        sector="Technology",
-        market_cap=2_000_000_000_000,
-        status="active",
-    ))
+    session.add(
+        Company(
+            symbol=symbol,
+            company_name=f"{symbol} Ltd",
+            isin=f"INE{symbol[:8]:0<8}",
+            exchange="NSE",
+            sector="Technology",
+            market_cap=2_000_000_000_000,
+            status="active",
+        )
+    )
     base = 1000.0
     start = date.today() - timedelta(days=N_DAYS)
     for i in range(N_DAYS):
         factor = 1.001 if trend == "up" else (0.999 if trend == "down" else 1.0)
-        close = base * (factor ** i)
-        session.add(DailyPrice(
-            symbol=symbol,
-            trade_date=start + timedelta(days=i),
-            open=close * 0.99,
-            high=close * 1.02,
-            low=close * 0.98,
-            close=close,
-            volume=1_000_000 + i * 1000,
-        ))
+        close = base * (factor**i)
+        session.add(
+            DailyPrice(
+                symbol=symbol,
+                trade_date=start + timedelta(days=i),
+                open=close * 0.99,
+                high=close * 1.02,
+                low=close * 0.98,
+                close=close,
+                volume=1_000_000 + i * 1000,
+            )
+        )
 
 
 @pytest_asyncio.fixture
@@ -52,14 +56,26 @@ async def session() -> AsyncSession:
 class TestTopPickService:
     @pytest.mark.asyncio
     async def test_insufficient_history_is_skipped(self, session: AsyncSession) -> None:
-        session.add(Company(
-            symbol="NEW.NS", company_name="New Co", isin="INE000000001",
-            exchange="NSE", status="active",
-        ))
-        session.add(DailyPrice(
-            symbol="NEW.NS", trade_date=date.today(),
-            open=10.0, high=11.0, low=9.0, close=10.0, volume=1000,
-        ))
+        session.add(
+            Company(
+                symbol="NEW.NS",
+                company_name="New Co",
+                isin="INE000000001",
+                exchange="NSE",
+                status="active",
+            )
+        )
+        session.add(
+            DailyPrice(
+                symbol="NEW.NS",
+                trade_date=date.today(),
+                open=10.0,
+                high=11.0,
+                low=9.0,
+                close=10.0,
+                volume=1000,
+            )
+        )
         await session.commit()
         result = await TopPickService(session).get_top_picks(limit=10)
         assert result["scored"] == 0
@@ -102,20 +118,31 @@ class TestTopPickService:
     async def test_risk_filter_flags_overbought(self, session: AsyncSession) -> None:
         # Single price that ends with a large spike => high RSI, drawdown check
         symbol = "SPIKECO.NS"
-        session.add(Company(
-            symbol=symbol, company_name="Spike Co", isin="INE000000099",
-            exchange="NSE", status="active",
-        ))
+        session.add(
+            Company(
+                symbol=symbol,
+                company_name="Spike Co",
+                isin="INE000000099",
+                exchange="NSE",
+                status="active",
+            )
+        )
         start = date.today() - timedelta(days=N_DAYS)
         close = 100.0
         for i in range(N_DAYS):
             if i == N_DAYS - 3:
                 close = 180.0
-            session.add(DailyPrice(
-                symbol=symbol, trade_date=start + timedelta(days=i),
-                open=close * 0.99, high=close * 1.01, low=close * 0.99,
-                close=close, volume=1_000_000,
-            ))
+            session.add(
+                DailyPrice(
+                    symbol=symbol,
+                    trade_date=start + timedelta(days=i),
+                    open=close * 0.99,
+                    high=close * 1.01,
+                    low=close * 0.99,
+                    close=close,
+                    volume=1_000_000,
+                )
+            )
         await session.commit()
 
         result = await TopPickService(session).get_top_picks(limit=10)

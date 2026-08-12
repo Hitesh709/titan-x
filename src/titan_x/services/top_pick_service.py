@@ -8,6 +8,7 @@ Layers (weights):
   L5 Regime       0.15 - bull / bear / sideways regime from price structure
   L6 Risk Filter  0.10 - volatility, drawdown, overbought/oversold sanity gate
 """
+
 from __future__ import annotations
 
 from datetime import date, timedelta
@@ -42,12 +43,16 @@ class TopPickService:
 
     async def get_top_picks(self, limit: int = 10) -> dict[str, Any]:
         symbols = (
-            (await self._session.execute(
-                select(DailyPrice.symbol)
-                .group_by(DailyPrice.symbol)
-                .having(func.count() >= 120)
-                .order_by(desc(func.max(DailyPrice.trade_date)))
-            )).scalars().all()
+            (
+                await self._session.execute(
+                    select(DailyPrice.symbol)
+                    .group_by(DailyPrice.symbol)
+                    .having(func.count() >= 120)
+                    .order_by(desc(func.max(DailyPrice.trade_date)))
+                )
+            )
+            .scalars()
+            .all()
         )
         results = []
         for symbol in symbols:
@@ -66,24 +71,31 @@ class TopPickService:
             "generated_at": date.today().isoformat(),
             "universe_size": len(symbols),
             "scored": len(results),
-            "layers": [{"key": k, "label": _LAYER_LABELS[k], "weight": w}
-                       for k, w in LAYER_WEIGHTS.items()],
+            "layers": [
+                {"key": k, "label": _LAYER_LABELS[k], "weight": w} for k, w in LAYER_WEIGHTS.items()
+            ],
             "top_picks": picks,
         }
 
     # ------------------------------------------------------------------
     async def _score(self, symbol: str) -> dict[str, Any]:
-        prices = list((await self._session.execute(
-            select(DailyPrice)
-            .where(DailyPrice.symbol == symbol)
-            .order_by(DailyPrice.trade_date.asc())
-        )).scalars().all())
+        prices = list(
+            (
+                await self._session.execute(
+                    select(DailyPrice)
+                    .where(DailyPrice.symbol == symbol)
+                    .order_by(DailyPrice.trade_date.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
         if len(prices) < 120:
             return {"symbol": symbol, "composite": None}
 
-        company = (await self._session.execute(
-            select(Company).where(Company.symbol == symbol)
-        )).scalar_one_or_none()
+        company = (
+            await self._session.execute(select(Company).where(Company.symbol == symbol))
+        ).scalar_one_or_none()
 
         close = [p.close for p in prices]
         high = [p.high for p in prices]
@@ -209,18 +221,20 @@ class TopPickService:
         low: list[float],
         volume: list[int],
     ) -> dict[str, Any]:
-        company = (await self._session.execute(
-            select(Company).where(Company.symbol == symbol)
-        )).scalar_one_or_none()
+        company = (
+            await self._session.execute(select(Company).where(Company.symbol == symbol))
+        ).scalar_one_or_none()
         if company is None:
             return self._volume_flow_score(close, high, low, volume)
 
-        fii = (await self._session.execute(
-            select(FIIHolding)
-            .where(FIIHolding.company_id == company.id)
-            .order_by(desc(FIIHolding.filing_date))
-            .limit(1)
-        )).scalar_one_or_none()
+        fii = (
+            await self._session.execute(
+                select(FIIHolding)
+                .where(FIIHolding.company_id == company.id)
+                .order_by(desc(FIIHolding.filing_date))
+                .limit(1)
+            )
+        ).scalar_one_or_none()
 
         if fii is None:
             return self._volume_flow_score(close, high, low, volume)
@@ -259,8 +273,14 @@ class TopPickService:
         score = 50.0
         evidence = ["Institutional filings absent - using volume-flow proxy"]
         if len(close) < 30:
-            return {"score": 50, "signal": "neutral", "confidence": 0.0,
-                    "evidence": evidence, "metrics": {}, "source": "volume_proxy"}
+            return {
+                "score": 50,
+                "signal": "neutral",
+                "confidence": 0.0,
+                "evidence": evidence,
+                "metrics": {},
+                "source": "volume_proxy",
+            }
 
         obv = IndicatorMath.obv(close, volume)
         if len(obv) >= 21 and obv[-1] > obv[-21]:
@@ -283,7 +303,8 @@ class TopPickService:
         if len(volume) >= 20:
             avg_vol = sum(volume[-20:]) / 20
             up_days = sum(
-                1 for i in range(max(1, len(close) - 20), len(close))
+                1
+                for i in range(max(1, len(close) - 20), len(close))
                 if close[i] > close[i - 1] and volume[i] > avg_vol
             )
             if up_days >= 8:
@@ -299,8 +320,10 @@ class TopPickService:
             "signal": "bullish" if capped >= 60 else ("bearish" if capped <= 35 else "neutral"),
             "confidence": round(abs(capped - 50) / 50, 2),
             "evidence": evidence[:6],
-            "metrics": {"cmf": round(cmf_v, 3) if cmf_v is not None else None,
-                        "obv_trend": "up" if obv[-1] > obv[-21] else "down"},
+            "metrics": {
+                "cmf": round(cmf_v, 3) if cmf_v is not None else None,
+                "obv_trend": "up" if obv[-1] > obv[-21] else "down",
+            },
             "source": "volume_proxy",
         }
 
@@ -313,8 +336,13 @@ class TopPickService:
         metrics: dict[str, Any] = {}
 
         if company is None:
-            return {"score": 50, "signal": "neutral", "confidence": 0.0,
-                    "evidence": ["No fundamentals profile on file"], "metrics": metrics}
+            return {
+                "score": 50,
+                "signal": "neutral",
+                "confidence": 0.0,
+                "evidence": ["No fundamentals profile on file"],
+                "metrics": metrics,
+            }
 
         if company.market_cap:
             mc_b = company.market_cap / 1e9
@@ -366,24 +394,36 @@ class TopPickService:
     # ------------------------------------------------------------------
     async def _score_news(self, symbol: str) -> dict[str, Any]:
         since = datetime_now() - timedelta(days=7)
-        articles = list((await self._session.execute(
-            select(NewsArticle)
-            .where(NewsArticle.symbol == symbol, NewsArticle.published_at >= since)
-            .order_by(desc(NewsArticle.published_at))
-            .limit(10)
-        )).scalars().all())
+        articles = list(
+            (
+                await self._session.execute(
+                    select(NewsArticle)
+                    .where(NewsArticle.symbol == symbol, NewsArticle.published_at >= since)
+                    .order_by(desc(NewsArticle.published_at))
+                    .limit(10)
+                )
+            )
+            .scalars()
+            .all()
+        )
 
         if not articles:
-            return {"score": 50, "signal": "neutral", "confidence": 0.0,
-                    "evidence": ["No news flow in last 7 days (sentiment unknown)"],
-                    "metrics": {"article_count": 0}}
+            return {
+                "score": 50,
+                "signal": "neutral",
+                "confidence": 0.0,
+                "evidence": ["No news flow in last 7 days (sentiment unknown)"],
+                "metrics": {"article_count": 0},
+            }
 
         pos = neg = 0
         sentiments: list[str] = []
         for a in articles:
-            nlp = (await self._session.execute(
-                select(NewsNLPAnalysis).where(NewsNLPAnalysis.article_id == a.id)
-            )).scalar_one_or_none()
+            nlp = (
+                await self._session.execute(
+                    select(NewsNLPAnalysis).where(NewsNLPAnalysis.article_id == a.id)
+                )
+            ).scalar_one_or_none()
             label = nlp.sentiment_label if nlp else "neutral"
             sentiments.append(label)
             if label in ("positive", "bullish"):
@@ -422,8 +462,12 @@ class TopPickService:
         sma20 = _last(IndicatorMath.sma(close, 20))
 
         if not sma50 or not sma200:
-            return {"score": 50, "signal": "neutral", "confidence": 0.0,
-                    "evidence": ["Insufficient history for regime detection"]}
+            return {
+                "score": 50,
+                "signal": "neutral",
+                "confidence": 0.0,
+                "evidence": ["Insufficient history for regime detection"],
+            }
 
         score = 50.0
         evidence: list[str] = []
@@ -568,4 +612,5 @@ def _signal_for(composite: float, risk_status: str) -> str:
 
 def datetime_now():
     from datetime import UTC, datetime
+
     return datetime.now(UTC)
