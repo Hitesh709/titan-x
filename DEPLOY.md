@@ -1,5 +1,62 @@
 # Deploy — TITAN X Production Deployment Guide
 
+## Automated Backups (Render free tier)
+
+Render's free Postgres database is **deleted after 90 days**, so automated backups
+are essential. TITAN X runs a backup **inside the API process** (no paid cron job):
+every `BACKUP_INTERVAL_HOURS` it runs `pg_dump`, compresses the result, and uploads
+it to an S3-compatible bucket (AWS S3, Cloudflare R2, MinIO, …).
+
+### Enable backups
+
+1. Create an S3-compatible bucket (Cloudflare R2 is free: 10 GB). Note the
+   endpoint (e.g. `https://<id>.r2.cloudflarestorage.com`), bucket name, region,
+   and an access key/secret.
+2. In the Render dashboard, on the `titan-x-api` service → **Environment**, set:
+
+   | Key                     | Value                                  |
+   |-------------------------|----------------------------------------|
+   | `BACKUP_ENABLED`        | `true`                                 |
+   | `BACKUP_INTERVAL_HOURS` | `24`                                   |
+   | `BACKUP_S3_PREFIX`      | `titan-x-backups`                      |
+   | `BACKUP_S3_ENDPOINT`    | your endpoint                          |
+   | `BACKUP_S3_BUCKET`      | your bucket name                       |
+   | `BACKUP_S3_REGION`      | `auto` (R2) or your region            |
+   | `BACKUP_S3_ACCESS_KEY`  | secret (`sync: false`)                 |
+   | `BACKUP_S3_SECRET_KEY`  | secret (`sync: false`)                 |
+
+3. Redeploy. Backups appear at `titan-x-backups/titan-x-<timestamp>.sql.gz`.
+
+> Note: the free web service sleeps after 15 min idle, so the backup loop only
+> fires while it's awake. For a quiet app you'll get a backup each time it's
+> visited, not strictly every 24h. Use a paid always-on instance for guaranteed
+> cadence.
+
+### Admin endpoints (require `X-API-Key` + admin JWT)
+
+- `GET  /api/v1/admin/backup/list` — list available backups.
+- `POST /api/v1/admin/backup/restore` — restore the latest backup, or a specific
+  one via `{ "key": "titan-x-backups/titan-x-<ts>.sql.gz" }`.
+
+  Restore is **disruptive** (it drops/recreates database objects). Example:
+
+  ```bash
+  curl -X POST "https://titan-x.onrender.com/api/v1/admin/backup/restore" \
+    -H "Authorization: Bearer <ADMIN_JWT>" \
+    -H "X-API-Key: <API_KEY>" \
+    -H "Content-Type: application/json" \
+    -d '{}'
+  ```
+
+### Manual restore (alternative)
+
+```bash
+# Download from your bucket, then:
+gunzip -c titan-x-<ts>.sql.gz | psql "$DATABASE_URL"
+```
+
+---
+
 ## Prerequisites
 
 - Docker 24+ & Docker Compose v2

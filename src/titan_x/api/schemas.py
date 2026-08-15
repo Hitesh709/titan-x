@@ -89,6 +89,7 @@ class SendVerificationResponse(BaseModel):
 
 class MessageResponse(BaseModel):
     message: str
+    data: dict | list | None = None
 
 
 class PaginatedResponse(BaseModel, Generic[T]):
