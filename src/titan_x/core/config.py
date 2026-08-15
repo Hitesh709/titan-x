@@ -99,6 +99,17 @@ class Settings(BaseSettings):
 
     notification_history_retention_days: int = Field(default=90, ge=1, le=730)
 
+    # S3-compatible database backups (AWS S3 / Cloudflare R2 / MinIO).
+    # Disabled by default; the API runs a scheduled pg_dump upload loop when enabled.
+    backup_enabled: bool = False
+    backup_s3_endpoint: str | None = None
+    backup_s3_bucket: str | None = None
+    backup_s3_region: str | None = None
+    backup_s3_access_key: str | None = None
+    backup_s3_secret_key: str | None = None
+    backup_s3_prefix: str = "titan-x-backups"
+    backup_interval_hours: int = Field(default=24, ge=1, le=720)
+
     @field_validator("api_key", "jwt_secret_key")
     @classmethod
     def validate_min_length(cls, value: SecretStr) -> SecretStr:

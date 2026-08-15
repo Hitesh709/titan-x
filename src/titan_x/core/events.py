@@ -210,6 +210,12 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
     else:
         app.state.scheduler = None
 
+    if settings.backup_enabled:
+        from titan_x.infrastructure.backup import backup_loop
+
+        asyncio.create_task(backup_loop(settings))
+        logger.info("backup_loop_started", interval_hours=settings.backup_interval_hours)
+
 
 async def on_shutdown(app: FastAPI, settings: Settings) -> None:
     scheduler: Scheduler | None = getattr(app.state, "scheduler", None)
