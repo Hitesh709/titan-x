@@ -9,6 +9,12 @@ import structlog
 logger = structlog.get_logger(__name__)
 
 
+def _to_psql_url(settings) -> str:
+    """Convert the async SQLAlchemy URL into one `psql` can use, forcing SSL."""
+    url = str(settings.database_url).replace("+asyncpg", "")
+    return url + ("?sslmode=require" if "?" not in url else "&sslmode=require")
+
+
 async def run_database_backup(settings) -> dict:
     """Dump the PostgreSQL database via pg_dump and upload it to an
     S3-compatible bucket (AWS S3, Cloudflare R2, MinIO, ...).
@@ -122,8 +128,7 @@ async def restore_from_backup(settings, key: str | None = None) -> dict:
         data = gzip.decompress(buf.getvalue())
 
     # pg_dump uses postgres:// (not the asyncpg variant); force SSL for Render.
-    url = str(settings.database_url).replace("+asyncpg", "")
-    url = url + ("?sslmode=require" if "?" not in url else "&sslmode=require")
+    url = _to_psql_url(settings)
 
     logger.info("restore_starting", key=key, bytes=len(data))
     proc = await asyncio.create_subprocess_exec(
@@ -143,6 +148,27 @@ async def restore_from_backup(settings, key: str | None = None) -> dict:
 
     logger.info("restore_completed", key=key)
     return {"restored_key": key, "bytes": len(data)}
+
+
+async def download_backup(settings, key: str) -> tuple[bytes, str]:
+    """Download a backup object from S3 and return its raw (gzipped) bytes."""
+    if not settings.backup_enabled:
+        raise RuntimeError("Backups are not configured (BACKUP_ENABLED=false)")
+
+    import aioboto3
+    import io
+
+    session = aioboto3.Session()
+    async with session.client(
+        "s3",
+        endpoint_url=settings.backup_s3_endpoint or None,
+        aws_access_key_id=settings.backup_s3_access_key,
+        aws_secret_access_key=settings.backup_s3_secret_key,
+        region_name=settings.backup_s3_region or None,
+    ) as s3:
+        buf = io.BytesIO()
+        await s3.download_fileobj(settings.backup_s3_bucket, key, buf)
+        return buf.getvalue(), key
 
 
 async def backup_loop(settings) -> None:

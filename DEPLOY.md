@@ -35,6 +35,14 @@ it to an S3-compatible bucket (AWS S3, Cloudflare R2, MinIO, …).
 ### Admin endpoints (require `X-API-Key` + admin JWT)
 
 - `GET  /api/v1/admin/backup/list` — list available backups.
+- `GET  /api/v1/admin/backup/download?key=<key>` — download a backup file
+  (`application/gzip`) directly, e.g.:
+
+  ```bash
+  curl -L "https://titan-x.onrender.com/api/v1/admin/backup/download?key=titan-x-backups/titan-x-<ts>.sql.gz" \
+    -H "Authorization: Bearer <ADMIN_JWT>" -H "X-API-Key: <API_KEY>" -o backup.sql.gz
+  ```
+
 - `POST /api/v1/admin/backup/restore` — restore the latest backup, or a specific
   one via `{ "key": "titan-x-backups/titan-x-<ts>.sql.gz" }`.
 

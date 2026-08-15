@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel
 
 from titan_x.api.dependencies import require_api_key
@@ -42,6 +42,23 @@ async def restore_backup(
     return MessageResponse(
         message=f"Restore completed from {result['restored_key']}",
         data=result,
+    )
+
+
+@admin_router.get("/backup/download", response_model=None)
+async def download_backup_endpoint(
+    user: Annotated[User, Depends(require_role(Role.ADMIN))],
+    key: str,
+) -> Response:
+    from titan_x.core.config import get_settings
+    from titan_x.infrastructure.backup import download_backup
+
+    data, key = await download_backup(get_settings(), key)
+    filename = key.split("/")[-1]
+    return Response(
+        content=data,
+        media_type="application/gzip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
