@@ -21,7 +21,7 @@ export default function MarketsPage() {
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
     try {
-      const res = await api.get<{ items: IndexSnapshot[] }>("/indices", { cacheTTL: 20_000 })
+      const res = await api.get<{ items: IndexSnapshot[] }>("/indices")
       if (!mounted.current) return
       setIndices(res.items ?? [])
       setError(null)

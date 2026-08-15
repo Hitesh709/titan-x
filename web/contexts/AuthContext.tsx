@@ -8,12 +8,13 @@ import type { User, AuthResponse } from "@/types"
 interface VerificationResult {
   message: string
   verification_url?: string
+  reset_url?: string
 }
 
 interface AuthContextType {
   user: User | null
   loading: boolean
-  login: (email: string, password: string) => Promise<void>
+  login: (email: string, password: string, remember?: boolean) => Promise<void>
   register: (email: string, password: string) => Promise<void>
   logout: () => void
   isAuthenticated: boolean
@@ -42,7 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const login = useCallback(async (email: string, password: string) => {
+  const login = useCallback(async (email: string, password: string, _remember = true) => {
     const data: AuthResponse = await api.post("/auth/login", { email, password })
     api.setToken(data.access_token)
     const me = await api.get<User>("/auth/me")

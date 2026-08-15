@@ -73,7 +73,7 @@ export default function TradingPage() {
       const [accRes, posRes, ordRes] = await Promise.allSettled([
         api.get<PaperAccountSummary>("/paper-trading/account"),
         api.get<PaperPosition[]>("/paper-trading/portfolio"),
-        api.get<{ items: OrderRow[] }>("/paper-trading/orders", { params: { limit: 50, skip: 0 } }),
+        api.get<{ items: OrderRow[] }>("/paper-trading/orders?limit=50&skip=0"),
       ])
       if (!mounted.current) return
       if (accRes.status === "fulfilled") setAccount(accRes.value)
@@ -110,7 +110,7 @@ export default function TradingPage() {
     try {
       await api.get("/paper-trading/account")
     } catch {
-      await api.post("/paper-trading/account", {}, { params: { initial_capital: 100000 } })
+      await api.post("/paper-trading/account?initial_capital=100000", {})
     }
   }
 
@@ -128,16 +128,17 @@ export default function TradingPage() {
     setSubmitting(true)
     try {
       await ensureAccount()
-      const placed = await api.post<PlacedOrder>("/paper-trading/orders", {}, {
-        params: {
-          symbol: sym,
-          side,
-          order_type: orderType,
-          quantity: qty,
-          price: orderType === "limit" ? Number(price) : undefined,
-          time_in_force: "day",
-        },
+      const orderParams = new URLSearchParams({
+        symbol: sym,
+        side,
+        order_type: orderType,
+        quantity: String(qty),
+        time_in_force: "day",
       })
+      if (orderType === "limit" && price) {
+        orderParams.set("price", String(Number(price)))
+      }
+      const placed = await api.post<PlacedOrder>(`/paper-trading/orders?${orderParams.toString()}`, {})
       if (placed.status === "rejected") {
         setFormError(placed.rejection_reason || "Order rejected")
       } else {
