@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     task_queue_enabled: bool = True
     task_queue_poll_interval: int = Field(default=1, ge=1, le=60)
     task_queue_max_retries: int = Field(default=3, ge=0, le=10)
+    # Run the task-queue consumer inside the API process instead of a separate
+    # (paid) worker service. Keep True on Render's free tier; set False if you
+    # deploy a dedicated worker.
+    run_worker_in_process: bool = True
 
     scheduler_enabled: bool = True
     scheduler_poll_interval: int = Field(default=15, ge=5, le=300)

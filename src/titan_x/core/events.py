@@ -170,6 +170,43 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
         app.state.scheduler = scheduler
         asyncio.create_task(scheduler.start())
         logger.info("scheduler_initialized")
+
+        # Run the task-queue consumer in-process (no separate paid worker needed).
+        if settings.run_worker_in_process and app.state.task_queue is not None:
+
+            async def _handle_task(task: dict) -> None:
+                job_type = task.get("type")
+                job = scheduler._registered_jobs.get(job_type)
+                if job is None:
+                    logger.warning("worker_no_handler", job_type=job_type)
+                    return
+                payload = dict(task.get("payload") or {})
+                async with session_factory() as session:
+                    payload["session"] = session
+                    try:
+                        result = await job.execute(payload)
+                    except Exception:  # noqa: BLE001
+                        logger.exception("worker_task_failed", job_type=job_type)
+                        result = {"status": "failed", "error": "unhandled exception"}
+                job_id = payload.get("job_id")
+                if job_id is not None:
+                    await scheduler.handle_completion(
+                        job_id,
+                        result.get("status", "failed"),
+                        result.get("duration_ms"),
+                        result.get("error"),
+                    )
+
+            worker = Worker(
+                app.state.task_queue,
+                "scheduled_jobs",
+                _handle_task,
+                poll_interval=settings.task_queue_poll_interval,
+                max_retries=settings.task_queue_max_retries,
+            )
+            app.state.background_worker = worker
+            asyncio.create_task(worker.start())
+            logger.info("in_process_worker_started")
     else:
         app.state.scheduler = None
 
