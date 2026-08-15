@@ -54,11 +54,11 @@ class ApiClient {
     return this.request<T>(endpoint)
   }
 
-  post<T = unknown>(endpoint: string, body: unknown) {
+  post<T = unknown>(endpoint: string, body?: unknown) {
     return this.request<T>(endpoint, { method: "POST", body })
   }
 
-  put<T = unknown>(endpoint: string, body: unknown) {
+  put<T = unknown>(endpoint: string, body?: unknown) {
     return this.request<T>(endpoint, { method: "PUT", body })
   }
 
@@ -69,3 +69,18 @@ class ApiClient {
 
 export const api = new ApiClient()
 export default api
+
+export function decodeTokenPayload(token: string): Record<string, unknown> | null {
+  try {
+    const parts = token.split(".")
+    if (parts.length < 2) return null
+    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/")
+    const json =
+      typeof atob === "function"
+        ? atob(b64)
+        : Buffer.from(b64, "base64").toString("utf-8")
+    return JSON.parse(json)
+  } catch {
+    return null
+  }
+}

@@ -98,16 +98,15 @@ export default function BacktestPage() {
     e.preventDefault()
     setCreating(true)
     try {
-      await api.post("/backtests", null, {
-        params: {
-          name: form.name,
-          symbol: form.symbol,
-          start_date: form.start_date,
-          end_date: form.end_date,
-          initial_capital: form.initial_capital,
-          strategy_type: form.strategy_type,
-        }
+      const params = new URLSearchParams({
+        name: form.name,
+        symbol: form.symbol,
+        start_date: form.start_date,
+        end_date: form.end_date,
+        initial_capital: String(form.initial_capital),
+        strategy_type: form.strategy_type,
       })
+      await api.post(`/backtests?${params.toString()}`)
       setShowCreate(false)
       setForm({ ...form, name: "", symbol: "" })
       void load()

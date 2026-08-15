@@ -38,6 +38,7 @@ from titan_x.api.v1.fundamentals import fund_router
 from titan_x.api.v1.global_market import router as global_market_router
 from titan_x.api.v1.health import health_router
 from titan_x.api.v1.historical_similarity import hist_sim_router
+from titan_x.api.v1.indices import router as indices_router
 from titan_x.api.v1.institutional_analysis import inst_router
 from titan_x.api.v1.intraday import intraday_router
 from titan_x.api.v1.knowledge_graph import kg_router
@@ -180,6 +181,7 @@ v1_router.include_router(sector_rotation_router)
 v1_router.include_router(advanced_screener_router)
 v1_router.include_router(paper_trading_router)
 v1_router.include_router(dashboard_router)
+v1_router.include_router(indices_router)
 v1_router.include_router(search_router)
 v1_router.include_router(export_router)
 v1_router.include_router(top_picks_router)

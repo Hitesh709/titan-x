@@ -47,3 +47,8 @@ out/
 check_*.py
 prof_provider.py
 fix_rt.py
+
+# Next.js build artifacts
+web/tsconfig.tsbuildinfo
+web/.next/
+web/node_modules/

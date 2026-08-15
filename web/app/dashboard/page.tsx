@@ -97,20 +97,21 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
-    try {
-      const [d, i] = await Promise.all([
-        api.get<DashboardData>("/dashboard"),
-        api.get<{ items: IndexItem[] }>("/indices"),
-      ])
-      setDashboard(d)
-      setIndices(i.items || [])
+    const [dash, idx] = await Promise.allSettled([
+      api.get<DashboardData>("/dashboard"),
+      api.get<{ items: IndexItem[] }>("/indices"),
+    ])
+    if (dash.status === "fulfilled") {
+      setDashboard(dash.value)
       setError(null)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load dashboard")
-    } finally {
-      setLoading(false)
-      setRefreshing(false)
+    } else {
+      setError(dash.reason instanceof Error ? dash.reason.message : "Failed to load dashboard")
     }
+    if (idx.status === "fulfilled") {
+      setIndices(idx.value.items || [])
+    }
+    setLoading(false)
+    setRefreshing(false)
   }, [])
 
   useEffect(() => {

@@ -8,6 +8,13 @@ export interface User {
   created_at?: string
 }
 
+export interface PaginatedResponse<T> {
+  items: T[]
+  total: number
+  skip: number
+  limit: number
+}
+
 export interface AuthResponse {
   access_token: string
   refresh_token: string
