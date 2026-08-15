@@ -13,6 +13,7 @@ services:
   # matches next.config.js (rewrite target) and NEXT_PUBLIC_API_URL.
   - type: web
     name: titan-x
+    plan: free
     runtime: node
     rootDir: web
     buildCommand: npm ci && npm run build
@@ -28,6 +29,7 @@ services:
   # ---------- Backend API (FastAPI, Docker) ----------
   - type: web
     name: titan-x-api
+    plan: free
     runtime: docker
     dockerfilePath: ./Dockerfile
     healthCheckPath: /api/v1/health/live
@@ -65,6 +67,7 @@ services:
   # ---------- Background Worker (Docker) ----------
   - type: worker
     name: titan-x-worker
+    plan: free
     runtime: docker
     dockerfilePath: ./Dockerfile.worker
     envVars:
