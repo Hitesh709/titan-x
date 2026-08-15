@@ -9,6 +9,18 @@ strip_quotes() {
 echo "=== TITAN X Entrypoint ==="
 echo "Environment: ${ENVIRONMENT:-production}"
 
+# Render (and some hosts) hand over a `postgres://` or `postgresql://` URL, but
+# SQLAlchemy's async engine requires the `postgresql+asyncpg://` driver. Rewrite
+# the scheme so the connection works without manual intervention.
+if [ -n "$DATABASE_URL" ]; then
+    case "$DATABASE_URL" in
+        postgresql+asyncpg://*|postgres+asyncpg://*) ;;
+        postgres://*) DATABASE_URL="postgresql+asyncpg://${DATABASE_URL#postgres://}" ;;
+        postgresql://*) DATABASE_URL="postgresql+asyncpg://${DATABASE_URL#postgresql://}" ;;
+    esac
+    export DATABASE_URL
+fi
+
 # Run database migrations on startup
 if [ "${RUN_MIGRATIONS:-true}" = "true" ]; then
     echo "Applying database migrations..."

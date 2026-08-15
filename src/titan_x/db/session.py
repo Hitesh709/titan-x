@@ -1,6 +1,6 @@
 from collections.abc import AsyncIterator
 
-from sqlalchemy import event
+from sqlalchemy import event, make_url
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 from titan_x.core.config import Settings
@@ -26,6 +26,14 @@ def _set_sqlite_pragmas(dbapi_connection, _connection_record) -> None:
 def create_engine(settings: Settings) -> AsyncEngine:
     connect_args: dict = {}
     url = str(settings.database_url)
+    # Render/managed Postgres hands over `postgres://` or `postgresql://`, but
+    # SQLAlchemy's async engine needs the `postgresql+asyncpg://` driver.
+    parsed = make_url(url)
+    if parsed.get_backend_name() in ("postgres", "postgresql") and "asyncpg" not in (
+        parsed.get_driver_name() or ""
+    ):
+        parsed = parsed.set(drivername="postgresql+asyncpg")
+        url = str(parsed)
     if url.startswith("postgresql"):
         connect_args["server_settings"] = {"application_name": settings.app_name}
     elif url.startswith("sqlite"):
