@@ -27,6 +27,7 @@ export function SymbolAutocomplete({
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLUListElement>(null)
   const debounceRef = useRef<NodeJS.Timeout>()
+  const selectedRef = useRef(false)
 
   const fetchSuggestions = useCallback(async (query: string) => {
     if (!query || query.length < 1) {
@@ -35,17 +36,28 @@ export function SymbolAutocomplete({
     }
     try {
       setLoading(true)
-      const res = await api.get<{
-        symbols: CompanySearchResult[]
-        total_results: number
-      }>(`/search?q=${encodeURIComponent(query)}&limit=10`)
-      setSuggestions(res.symbols ?? [])
+      const res = await api.get<{ items: CompanySearchResult[]; total: number }>(
+        `/companies?search=${encodeURIComponent(query)}&exchange=NSE&limit=10&order_by=symbol`,
+      )
+      setSuggestions(res.items ?? [])
     } catch {
       setSuggestions([])
     } finally {
       setLoading(false)
     }
   }, [])
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const next = e.target.value.toUpperCase()
+    if (selectedRef.current) {
+      // Value came from a suggestion click — don't reopen the dropdown.
+      selectedRef.current = false
+      onChange(next)
+      return
+    }
+    onChange(next)
+    if (next.length > 0) setIsOpen(true)
+  }
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -111,7 +123,7 @@ export function SymbolAutocomplete({
   }
 
   const handleFocus = () => {
-    if (value && suggestions.length > 0) setIsOpen(true)
+    if (value.length > 0) setIsOpen(true)
   }
 
   return (
@@ -121,7 +133,7 @@ export function SymbolAutocomplete({
         <input
           type="text"
           value={value}
-          onChange={e => onChange(e.target.value.toUpperCase())}
+          onChange={handleChange}
           onFocus={handleFocus}
           onBlur={handleBlur}
           onKeyDown={handleKeyDown}
@@ -159,6 +171,7 @@ export function SymbolAutocomplete({
               aria-selected={i === highlightedIndex}
               onMouseEnter={() => setHighlightedIndex(i)}
               onClick={() => {
+                selectedRef.current = true
                 onChange(s.symbol)
                 setIsOpen(false)
                 setHighlightedIndex(-1)
