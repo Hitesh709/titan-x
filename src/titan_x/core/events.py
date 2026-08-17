@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from titan_x.core.config import Settings
 from titan_x.db.base import Base
 from titan_x.db.session import create_engine, create_session_factory
-from titan_x.infrastructure.cache import RedisCache
+from titan_x.infrastructure.cache import MemoryCache, RedisCache
 from titan_x.infrastructure.scheduler import Scheduler
 from titan_x.infrastructure.session_store import RedisSessionStore
 from titan_x.infrastructure.task_queue import TaskQueue, Worker
@@ -140,7 +140,8 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
         cache = RedisCache(redis)
         session_store = RedisSessionStore(redis, default_ttl=settings.session_ttl)
     else:
-        cache = AsyncMock()
+        logger.warning("redis_unavailable - falling back to in-memory cache")
+        cache = MemoryCache()
         session_store = AsyncMock()
     app.state.cache = cache
     app.state.session_store = session_store

@@ -1,4 +1,5 @@
 import asyncio
+import structlog
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
@@ -8,6 +9,8 @@ from titan_x.api.dependencies import get_cache, get_current_active_user, request
 from titan_x.infrastructure.cache import RedisCache
 from titan_x.models.user import User
 from titan_x.services.dashboard_service import DashboardService
+
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(
     prefix="/dashboard",
@@ -22,12 +25,19 @@ async def get_dashboard(
     cache: Annotated[RedisCache, Depends(get_cache)],
 ) -> dict:
     cache_key = f"dashboard:{current_user.id}"
-    cached = await cache.get(cache_key)
+    cached: object | None = None
+    try:
+        cached = await cache.get(cache_key)
+    except Exception:  # noqa: BLE001
+        logger.warning("dashboard_cache_get_failed", user_id=current_user.id, exc_info=True)
     if cached is not None:
-        return cached
+        return cached  # type: ignore[return-value]
     svc = DashboardService(session)
     result = await svc.get_dashboard(current_user.id)
-    asyncio.ensure_future(cache.set(cache_key, result, ttl=30))
+    try:
+        asyncio.ensure_future(cache.set(cache_key, result, ttl=30))
+    except Exception:  # noqa: BLE001
+        logger.warning("dashboard_cache_set_failed", user_id=current_user.id)
     return result
 
 

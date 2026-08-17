@@ -5,7 +5,10 @@ from collections.abc import Awaitable, Callable
 from functools import wraps
 from typing import Any, TypeVar
 
+import structlog
 from redis.asyncio import Redis
+
+logger = structlog.get_logger(__name__)
 
 F = TypeVar("F", bound=Callable[..., Awaitable[Any]])
 
@@ -19,7 +22,11 @@ class RedisCache:
         return f"{self._prefix}:{key}"
 
     async def get(self, key: str, default: Any = None) -> Any:
-        data: str | None = await self._redis.get(self._key(key))
+        try:
+            data: str | None = await self._redis.get(self._key(key))
+        except Exception:  # noqa: BLE001
+            logger.warning("redis_get_failed", key=key)
+            return default
         if data is None:
             return default
         try:
@@ -28,11 +35,18 @@ class RedisCache:
             return data
 
     async def set(self, key: str, value: Any, ttl: int | None = None) -> None:
-        serialized: str = json.dumps(value, default=str)
-        if ttl is not None:
-            await self._redis.setex(self._key(key), ttl, serialized)
-        else:
-            await self._redis.set(self._key(key), serialized)
+        try:
+            serialized: str = json.dumps(value, default=str)
+        except (TypeError, ValueError):
+            logger.warning("redis_set_serialize_failed", key=key)
+            return
+        try:
+            if ttl is not None:
+                await self._redis.setex(self._key(key), ttl, serialized)
+            else:
+                await self._redis.set(self._key(key), serialized)
+        except Exception:  # noqa: BLE001
+            logger.warning("redis_set_failed", key=key)
 
     async def delete(self, key: str) -> None:
         await self._redis.delete(self._key(key))
@@ -54,6 +68,40 @@ class RedisCache:
 
     async def close(self) -> None:
         await self._redis.aclose()
+
+
+class MemoryCache:
+    """Process-local fallback used when Redis is unavailable.
+
+    Unlike a mock, ``get`` returns ``None`` (a real cache miss) so callers that
+    do ``if cached is not None: return cached`` behave correctly instead of
+    returning a truthy mock object (which previously produced 500s).
+    """
+
+    def __init__(self, prefix: str = "cache") -> None:
+        self._prefix = prefix
+        self._store: dict[str, Any] = {}
+
+    def _key(self, key: str) -> str:
+        return f"{self._prefix}:{key}"
+
+    async def get(self, key: str, default: Any = None) -> Any:
+        return self._store.get(self._key(key), default)
+
+    async def set(self, key: str, value: Any, ttl: int | None = None) -> None:
+        self._store[self._key(key)] = value
+
+    async def delete(self, key: str) -> None:
+        self._store.pop(self._key(key), None)
+
+    async def clear(self) -> None:
+        self._store.clear()
+
+    async def exists(self, key: str) -> bool:
+        return self._key(key) in self._store
+
+    async def ttl(self, key: str) -> int:
+        return -1
 
 
 def cached(cache: RedisCache, ttl: int | None = None, key_builder: Callable[..., str] | None = None) -> Callable[[F], F]:
