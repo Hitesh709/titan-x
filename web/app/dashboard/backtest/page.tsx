@@ -289,7 +289,7 @@ export default function BacktestPage() {
                     <th className="py-3 px-4 text-gray-500 font-medium text-xs uppercase">Symbol</th>
                     <th className="py-3 px-4 text-gray-500 font-medium text-xs uppercase">Strategy</th>
                     <th className="py-3 px-4 text-gray-500 font-medium text-xs uppercase">Status</th>
-                    <th className="py-3 px-4 text-gray-500 font-medium text-xs uppercase">Capital</th>
+                    <th className="py-3 px-4 text-gray-500 font-medium text-xs uppercase text-right">Capital</th>
                     <th className="py-3 px-4 text-gray-500 font-medium text-xs uppercase">Period</th>
                     <th className="py-3 px-4 text-gray-500 font-medium text-xs uppercase">Created</th>
                     <th className="py-3 px-4 text-gray-500 font-medium text-xs uppercase">Actions</th>
@@ -321,9 +321,9 @@ export default function BacktestPage() {
                         <td className="py-3 px-4 text-gray-500 text-xs">{formatDate(b.created_at)}</td>
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-1">
-                            <button onClick={() => handleRun(b)} disabled={b.status === "running"} className="btn-ghost text-xs px-2 py-1" title="Run"><Play size={12} /></button>
-                            <button onClick={() => handleViewReport(b)} className="btn-ghost text-xs px-2 py-1" title="View Report"><FileText size={12} /></button>
-                            <button onClick={() => handleDelete(b.id)} className="btn-ghost text-xs px-2 py-1 text-red-500 hover:text-red-400" title="Delete"><Trash2 size={12} /></button>
+                            <button onClick={() => handleRun(b)} disabled={b.status === "running"} className="btn-ghost text-xs px-2 py-1" title="Run" aria-label={`Run backtest ${b.name}`}><Play size={12} /></button>
+                            <button onClick={() => handleViewReport(b)} className="btn-ghost text-xs px-2 py-1" title="View Report" aria-label={`View report for ${b.name}`}><FileText size={12} /></button>
+                            <button onClick={() => handleDelete(b.id)} className="btn-ghost text-xs px-2 py-1 text-red-500 hover:text-red-400" title="Delete" aria-label={`Delete backtest ${b.name}`}><Trash2 size={12} /></button>
                           </div>
                         </td>
                       </tr>

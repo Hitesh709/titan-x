@@ -38,20 +38,20 @@ export default function SettingsPage() {
         </h3>
         <div className="grid md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Full Name</label>
-            <input type="text" className="input-field text-sm" defaultValue="John Doe" />
+            <label htmlFor="full_name" className="block text-xs text-gray-500 mb-1">Full Name</label>
+            <input id="full_name" type="text" className="input-field text-sm" defaultValue="John Doe" />
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Email</label>
-            <input type="email" className="input-field text-sm" defaultValue="john@example.com" />
+            <label htmlFor="email" className="block text-xs text-gray-500 mb-1">Email</label>
+            <input id="email" type="email" className="input-field text-sm" defaultValue="john@example.com" />
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Company</label>
-            <input type="text" className="input-field text-sm" defaultValue="Acme Investments" />
+            <label htmlFor="company" className="block text-xs text-gray-500 mb-1">Company</label>
+            <input id="company" type="text" className="input-field text-sm" defaultValue="Acme Investments" />
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Time Zone</label>
-            <select className="input-field text-sm">
+            <label htmlFor="time_zone" className="block text-xs text-gray-500 mb-1">Time Zone</label>
+            <select id="time_zone" className="input-field text-sm">
               <option>America/New_York (EST)</option>
               <option>America/Chicago (CST)</option>
               <option>America/Los_Angeles (PST)</option>
@@ -78,7 +78,11 @@ export default function SettingsPage() {
                 <div className="text-xs text-gray-500">{n.desc}</div>
               </div>
               <button
+                type="button"
                 onClick={() => toggleNotification(i)}
+                role="switch"
+                aria-checked={n.enabled}
+                aria-label={n.label}
                 className={`relative w-10 h-5 rounded-full transition-colors ${
                   n.enabled ? "bg-titan-500" : "bg-white/10"
                 }`}

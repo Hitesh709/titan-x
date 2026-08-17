@@ -69,8 +69,9 @@ export function RefreshButton({ onClick, spinning }: { onClick: () => void; spin
       onClick={onClick}
       className="text-gray-500 hover:text-gray-200 transition-colors"
       title="Refresh"
+      aria-label="Refresh"
     >
-      <RefreshCw size={14} className={spinning ? "animate-spin" : ""} />
+      <RefreshCw size={14} className={spinning ? "animate-spin" : ""} aria-hidden="true" />
     </button>
   )
 }

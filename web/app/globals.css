@@ -6,6 +6,7 @@
 
 @layer base {
   :root {
+    color-scheme: dark;
     --background: 222 47% 11%;
     --foreground: 210 40% 98%;
     --card: 222 47% 14%;
@@ -25,14 +26,33 @@
     --ring: 217 91% 60%;
     --radius: 0.5rem;
   }
-}
 
-@layer base {
+  html {
+    color-scheme: dark;
+    scroll-behavior: smooth;
+  }
+
   * {
     @apply border-gray-800;
   }
+
   body {
     @apply bg-titan-950 text-gray-100 antialiased;
+    /* Align digits in financial figures (prices, percentages, volumes) */
+    font-variant-numeric: tabular-nums;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    @apply bg-titan-500/30 text-white;
+  }
+
+  /* Visible, consistent keyboard focus for accessibility.
+     :where keeps specificity at 0 so .input-field's focus:ring still wins on form controls. */
+  :where(a, button, [role="button"], summary, input, select, textarea):focus-visible {
+    outline: 2px solid #60a5fa;
+    outline-offset: 2px;
+    border-radius: 4px;
   }
 }
 
@@ -94,6 +114,16 @@
 
 .animate-pulse-glow {
   animation: pulse-glow 3s ease-in-out infinite;
+}
+
+/* Respect users who prefer reduced motion: disable non-essential animation/transition. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 ::-webkit-scrollbar {

@@ -262,9 +262,9 @@ const OrderRowItem = memo(function OrderRowItem({
           {o.status}
         </span>
         {onCancel && (
-          <button onClick={() => onCancel(o.id)} className="text-gray-500 hover:text-red-400" title="Cancel">
-            <Trash2 size={14} />
-          </button>
+        <button onClick={() => onCancel(o.id)} className="text-gray-500 hover:text-red-400" title="Cancel" aria-label={`Cancel order ${o.id}`}>
+          <Trash2 size={14} aria-hidden="true" />
+        </button>
         )}
       </div>
     </div>

@@ -192,11 +192,11 @@ export default function AlertsPage() {
       {error && (
         <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-sm text-red-300 flex items-center justify-between">
           <span>{error}</span>
-          <button onClick={() => setError(null)} className="text-red-500 hover:text-red-300">×</button>
+          <button onClick={() => setError(null)} className="text-red-500 hover:text-red-300" aria-label="Dismiss error">×</button>
         </div>
       )}
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
           { label: "Active Alerts", value: totalActive },
           { label: "Triggered", value: totalTriggered },
