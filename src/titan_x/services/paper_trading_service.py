@@ -1,3 +1,4 @@
+import random
 from collections.abc import Sequence
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -476,6 +477,9 @@ class PaperTradingService:
         return curve
 
     async def refresh_prices(self, user_id: int) -> int:
+        from titan_x.core.config import get_settings
+
+        settings = get_settings()
         account = await self.get_account(user_id)
         if account is None:
             return 0
@@ -485,9 +489,18 @@ class PaperTradingService:
         updated = 0
         for p in positions:
             latest = await self._price_service.get_latest_price(p.symbol)
-            if latest:
-                p.current_price = Decimal(str(latest.close))
-                updated += 1
+            if latest is None:
+                continue
+            base = Decimal(str(latest.close))
+            if settings.paper_demo_prices:
+                # Demo mode: mark the price around the last close so P&L is live
+                # without a real-time feed. Bounded oscillation re-derived from
+                # the last close each refresh (never accumulates).
+                drift = Decimal(str(random.uniform(-0.015, 0.015)))
+                p.current_price = (base * (1 + drift)).quantize(Decimal("0.01"))
+            else:
+                p.current_price = base
+            updated += 1
         await self._session.flush()
         return updated
 

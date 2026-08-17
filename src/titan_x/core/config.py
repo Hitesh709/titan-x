@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     trusted_hosts: str = ""
     enable_https_redirect: bool = False
     seed_demo_on_startup: bool = False
+    paper_demo_prices: bool = True
     frontend_url: str = "http://localhost:3000"
     market_data_provider: str = "yahoo"
     market_data_ingest_on_startup: bool = True

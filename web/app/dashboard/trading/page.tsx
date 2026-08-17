@@ -103,7 +103,15 @@ export default function TradingPage() {
 
   const handleRefresh = () => {
     setRefreshing(true)
-    load(true)
+    refreshPrices().finally(() => load(true))
+  }
+
+  const refreshPrices = async () => {
+    try {
+      await api.post("/paper-trading/portfolio/refresh", {})
+    } catch {
+      // non-fatal: positions simply keep their last mark
+    }
   }
 
   const ensureAccount = async () => {
@@ -147,6 +155,7 @@ export default function TradingPage() {
         setQuantity("")
         setPrice("")
       }
+      await refreshPrices()
       await load(true)
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Failed to place order")
@@ -171,7 +180,15 @@ export default function TradingPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Trading</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold text-white">Trading</h1>
+            <span
+              className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30"
+              title="Simulated trading with virtual cash — no real broker, no real money"
+            >
+              Demo · Paper
+            </span>
+          </div>
           <p className="text-gray-500 text-sm mt-1">
             Place paper trades and track your positions, orders, and P&amp;L
           </p>

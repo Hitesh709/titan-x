@@ -16,9 +16,30 @@ export default function PortfolioHoldingsPage() {
   const [refreshing, setRefreshing] = useState(false)
   const mounted = useRef(true)
 
+  const ensureAccount = async () => {
+    try {
+      await api.get("/paper-trading/account")
+    } catch {
+      try {
+        await api.post("/paper-trading/account?initial_capital=100000", {})
+      } catch {
+        /* account may already exist or creation failed; load() will surface errors */
+      }
+    }
+  }
+
+  const refreshPrices = async () => {
+    try {
+      await api.post("/paper-trading/portfolio/refresh", {})
+    } catch {
+      /* non-fatal: positions keep their last mark */
+    }
+  }
+
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
     try {
+      await ensureAccount()
       const [accRes, posRes] = await Promise.allSettled([
         api.get<PaperAccountSummary>("/paper-trading/account"),
         api.get<PaperPosition[]>("/paper-trading/portfolio"),
@@ -44,6 +65,7 @@ export default function PortfolioHoldingsPage() {
 
   useEffect(() => {
     mounted.current = true
+    refreshPrices().finally(() => load(true))
     return () => {
       mounted.current = false
     }
@@ -53,7 +75,7 @@ export default function PortfolioHoldingsPage() {
 
   const handleRefresh = () => {
     setRefreshing(true)
-    load(true)
+    refreshPrices().finally(() => load(true))
   }
 
   const totalValue = positions.reduce((s, p) => s + p.market_value, 0)
@@ -65,7 +87,15 @@ export default function PortfolioHoldingsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <p className="text-gray-500 text-sm">Current holdings and account summary</p>
+        <div className="flex items-center gap-2">
+          <p className="text-gray-500 text-sm">Current holdings and account summary</p>
+          <span
+            className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30"
+            title="Simulated portfolio with virtual cash — no real broker, no real money"
+          >
+            Demo · Paper
+          </span>
+        </div>
         <RefreshButton onClick={handleRefresh} spinning={refreshing} />
       </div>
 

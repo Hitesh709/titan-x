@@ -22,6 +22,7 @@ export function SymbolAutocomplete({
 }: SymbolAutocompleteProps) {
   const [suggestions, setSuggestions] = useState<CompanySearchResult[]>([])
   const [isOpen, setIsOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
   const [highlightedIndex, setHighlightedIndex] = useState(-1)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLUListElement>(null)
@@ -33,6 +34,7 @@ export function SymbolAutocomplete({
       return
     }
     try {
+      setLoading(true)
       const res = await api.get<{
         symbols: CompanySearchResult[]
         total_results: number
@@ -40,6 +42,8 @@ export function SymbolAutocomplete({
       setSuggestions(res.symbols ?? [])
     } catch {
       setSuggestions([])
+    } finally {
+      setLoading(false)
     }
   }, [])
 
@@ -174,6 +178,12 @@ export function SymbolAutocomplete({
             </li>
           ))}
         </ul>
+      )}
+
+      {isOpen && !loading && value.length >= 1 && suggestions.length === 0 && (
+        <div className="absolute z-50 mt-1 w-full glass-card rounded-lg border border-white/10 px-3 py-2 text-sm text-gray-500">
+          No symbols found
+        </div>
       )}
     </div>
   )

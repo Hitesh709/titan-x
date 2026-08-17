@@ -47,6 +47,13 @@ services:
         value: "10"
       - key: CORS_ORIGINS
         value: https://titan-x.onrender.com
+      # Seed the demo NSE universe + synthetic price history on every start so
+      # symbol search and paper trades always have data (free-tier Postgres can
+      # reset between deploys, which otherwise leaves an empty companies table).
+      - key: SEED_DEMO_ON_STARTUP
+        value: "true"
+      - key: PAPER_DEMO_PRICES
+        value: "true"
       # Render Postgres provides postgres://...; the entrypoint rewrites it to
       # postgresql+asyncpg:// for SQLAlchemy's async engine.
       - key: DATABASE_URL
