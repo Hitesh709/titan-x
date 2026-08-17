@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 from coding_agent.config import AgentConfig
 from coding_agent.llm import LLMMessage, create_provider
 from coding_agent.llm.base import LLMProvider
 from coding_agent.tools import ToolRegistry, default_registry
+
+logger = logging.getLogger(__name__)
 
 
 class Agent:
@@ -41,7 +44,7 @@ class Agent:
 
             if response.tool_calls:
                 if stream:
-                    print()
+                    logging.debug("tool_call")
 
                 self.messages.append(
                     LLMMessage(
@@ -79,7 +82,7 @@ class Agent:
 
                     if stream:
                         status = "success" if "Error" not in result_msg else "error"
-                        print(f"  \u2514\u2500 {tool_name}: {status}")
+                        logging.debug("  └─ %s: %s", tool_name, status)
             else:
                 return response.content or ""
 

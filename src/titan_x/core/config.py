@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     environment: Literal["development", "test", "staging", "production"] = "development"
     debug: bool = False
     log_level: str = "INFO"
+    log_format: str = "json"
+    log_slow_request_ms: int = Field(default=1000, ge=0, le=60000)
     host: str = "0.0.0.0"
     port: int = Field(default=8000, ge=1, le=65535)
     database_url: AnyUrl

@@ -8,9 +8,13 @@ Usage:
 
 import argparse
 import asyncio
+import logging
 from datetime import date, timedelta
 
 from sqlalchemy import select
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+logger = logging.getLogger(__name__)
 
 from titan_x.core.config import get_settings
 from titan_x.db.base import Base
@@ -82,7 +86,7 @@ async def upsert_company(provider, session, raw_symbol: str) -> Company | None:
         profile = await provider.get_company_profile(sym)
         quote = await provider.get_quote(sym)
     except Exception as exc:  # noqa: BLE001
-        print(f"  ! {raw_symbol}: profile/quote failed: {exc}")
+        logger.warning("  ! %s: profile/quote failed: %s", raw_symbol, exc)
         return None
 
     name = (profile.get("name") or raw_symbol).strip()
@@ -104,14 +108,14 @@ async def upsert_company(provider, session, raw_symbol: str) -> Company | None:
             status="active",
         )
         session.add(company)
-        print(f"  + {raw_symbol}: created company '{name}'")
+        logger.info("  + %s: created company '%s'", raw_symbol, name)
     else:
         company.company_name = name
         company.sector = sector
         company.industry = industry
         if market_cap:
             company.market_cap = market_cap
-        print(f"  = {raw_symbol}: updated company '{name}'")
+        logger.info("  = %s: updated company '%s'", raw_symbol, name)
     await session.flush()
     return company
 
@@ -123,7 +127,7 @@ async def sync_prices(provider, session, symbol: str) -> int:
     try:
         points = await provider.get_historical_prices(sym, interval="1d", start=start, end=end)
     except Exception as exc:  # noqa: BLE001
-        print(f"  ! {sym}: prices failed: {exc}")
+        logger.warning("  ! %s: prices failed: %s", sym, exc)
         return 0
 
     inserted = 0
@@ -161,12 +165,12 @@ async def run(symbols: list[str]) -> None:
     provider = YahooFinanceProvider()
     async with factory() as session:
         for raw in symbols:
-            print(f"== {raw} ==")
+            logger.info("== %s ==", raw)
             company = await upsert_company(provider, session, raw)
             if company is None:
                 continue
             n = await sync_prices(provider, session, raw)
-            print(f"   inserted {n} daily prices")
+            logger.info("   inserted %d daily prices", n)
         await session.commit()
     await provider.close()
 
@@ -174,7 +178,7 @@ async def run(symbols: list[str]) -> None:
     async with factory() as session:
         n_companies = (await session.execute(select(Company).count())).scalar() or 0
         n_prices = (await session.execute(select(DailyPrice).count())).scalar() or 0
-        print(f"\nDONE: {n_companies} companies, {n_prices} daily price rows")
+        logger.info("DONE: %d companies, %d daily price rows", n_companies, n_prices)
     await engine.dispose()
 
 
