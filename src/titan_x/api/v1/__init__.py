@@ -74,6 +74,7 @@ from titan_x.api.v1.prices import corp_actions_router, prices_router
 from titan_x.api.v1.professional_report import router as professional_report_router
 from titan_x.api.v1.ranking import router as ranking_router
 from titan_x.api.v1.recommendation import router as recommendation_router
+from titan_x.api.v1.research import router as research_router
 from titan_x.api.v1.regime_detection import router as regime_router
 from titan_x.api.v1.reports import router as reports_router
 from titan_x.api.v1.risk import risk_router
@@ -175,6 +176,7 @@ v1_router.include_router(experiment_manager_router)
 v1_router.include_router(model_evaluation_router)
 v1_router.include_router(drift_detection_router)
 v1_router.include_router(recommendation_router)
+v1_router.include_router(research_router)
 v1_router.include_router(dynamic_ai_score_router)
 v1_router.include_router(market_heatmap_router)
 v1_router.include_router(sector_rotation_router)
