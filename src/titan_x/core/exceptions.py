@@ -51,12 +51,22 @@ async def _http_exception_handler(request: Request, exc: HTTPException) -> JSONR
 
 
 async def _sqlalchemy_error_handler(request: Request, exc: SQLAlchemyError) -> JSONResponse:
-    _log(request, "database_error", error=type(exc).__name__)
+    logger.exception(
+        "database_error",
+        path=request.url.path,
+        method=request.method,
+        error=type(exc).__name__,
+    )
     return JSONResponse(status_code=500, content={"detail": _INTERNAL_ERROR_DETAIL})
 
 
 async def _unhandled_error_handler(request: Request, exc: Exception) -> JSONResponse:
-    _log(request, "unhandled_exception", error=type(exc).__name__)
+    logger.exception(
+        "unhandled_exception",
+        path=request.url.path,
+        method=request.method,
+        error=type(exc).__name__,
+    )
     return JSONResponse(status_code=500, content={"detail": _INTERNAL_ERROR_DETAIL})
 
 

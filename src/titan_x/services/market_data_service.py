@@ -200,29 +200,49 @@ class MarketDataService:
         provider_name: str | None = None,
         api_key: str | None = None,
     ) -> dict:
-        provider_name = self._resolve_provider(provider_name)
-        provider = get_market_data_provider(provider_name, api_key)
-        profile = await provider.get_company_profile(
-            symbol.upper(), synthetic_ok=self._is_mock(provider_name)
-        )
+        symbol = symbol.upper()
+        # Prefer the local company record (always present for seeded/universe
+        # symbols). This avoids an external call on the hot path and means the
+        # endpoint never 500s just because the live provider is unavailable.
+        company = (
+            await self.session.execute(select(Company).where(Company.symbol == symbol))
+        ).scalar_one_or_none()
+        if company is not None:
+            return {
+                "symbol": company.symbol,
+                "name": company.company_name,
+                "isin": company.isin,
+                "exchange": company.exchange,
+                "sector": company.sector,
+                "industry": company.industry,
+                "market_cap": company.market_cap,
+                "currency": "INR",
+                "description": company.description,
+                "website": company.website,
+                "listing_date": company.listing_date.isoformat() if company.listing_date else None,
+            }
 
-        company_stmt = select(Company).where(Company.symbol == symbol.upper())
-        company_result = await self.session.execute(company_stmt)
-        company = company_result.scalar_one_or_none()
-
-        if company is None:
-            company = Company(
-                symbol=symbol.upper(),
-                company_name=profile.get("name", f"{symbol.upper()} Corp"),
-                isin=f"IN{symbol.upper()}001",
-                exchange=profile.get("exchange", "NSE"),
-                sector=profile.get("sector", "Unknown"),
-                industry=profile.get("industry"),
-                market_cap=profile.get("market_cap"),
+        # Fallback to the provider only when we have no local record.
+        try:
+            provider_name = self._resolve_provider(provider_name)
+            provider = get_market_data_provider(provider_name, api_key)
+            profile = await provider.get_company_profile(
+                symbol, synthetic_ok=self._is_mock(provider_name)
             )
-            self.session.add(company)
-            await self.session.flush()
-
+        except Exception:  # noqa: BLE001
+            profile = None
+        if not profile:
+            # No data anywhere: return a safe minimal profile so the UI can
+            # render gracefully instead of receiving a 500.
+            return {
+                "symbol": symbol,
+                "name": symbol,
+                "exchange": "NSE",
+                "sector": None,
+                "industry": None,
+                "market_cap": None,
+                "currency": "INR",
+            }
         return profile
 
     async def get_history(
@@ -231,17 +251,48 @@ class MarketDataService:
         provider_name: str | None = None,
         api_key: str | None = None,
     ) -> dict:
-        provider_name = self._resolve_provider(provider_name)
-        provider = get_market_data_provider(provider_name, api_key)
-        try:
-            points = await provider.get_historical_prices(
-                symbol.upper(), synthetic_ok=self._is_mock(provider_name)
+        symbol = symbol.upper()
+        # Prefer locally stored daily prices (seeded/ingested) — always safe.
+        existing = (
+            await self.session.execute(
+                select(DailyPrice)
+                .where(DailyPrice.symbol == symbol)
+                .order_by(DailyPrice.trade_date.asc())
             )
-        finally:
-            if hasattr(provider, "close"):
-                await provider.close()
+        ).scalars().all()
+        if existing:
+            return {
+                "symbol": symbol,
+                "points": [
+                    {
+                        "trade_date": p.trade_date.isoformat(),
+                        "open": p.open,
+                        "high": p.high,
+                        "low": p.low,
+                        "close": p.close,
+                        "volume": p.volume,
+                    }
+                    for p in existing
+                ],
+            }
+
+        # Fallback to the provider only when there is no local history.
+        try:
+            provider_name = self._resolve_provider(provider_name)
+            provider = get_market_data_provider(provider_name, api_key)
+            try:
+                points = await provider.get_historical_prices(
+                    symbol, synthetic_ok=self._is_mock(provider_name)
+                )
+            finally:
+                if hasattr(provider, "close"):
+                    await provider.close()
+        except Exception:  # noqa: BLE001
+            points = None
+        if not points:
+            return {"symbol": symbol, "points": []}
         return {
-            "symbol": symbol.upper(),
+            "symbol": symbol,
             "points": [
                 {
                     "trade_date": p.trade_date.isoformat(),

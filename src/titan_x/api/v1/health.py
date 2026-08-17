@@ -2,11 +2,15 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Response, status
 
-from titan_x.api.dependencies import get_health_service, require_api_key
+from titan_x.api.dependencies import get_health_service
 from titan_x.api.schemas import LivenessResponse, ReadinessResponse
 from titan_x.services.health_service import HealthService
 
-health_router = APIRouter(tags=["health"], dependencies=[Depends(require_api_key)])
+# Health endpoints are intentionally PUBLIC: Render's healthCheckPath
+# (/api/v1/health/live) probes them without credentials. Gating them behind
+# require_api_key returned 401, causing Render to treat the instance as
+# unhealthy and restart it (recurring downtime / 5xx).
+health_router = APIRouter(tags=["health"])
 
 
 @health_router.get("/health/live", response_model=LivenessResponse)
