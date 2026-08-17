@@ -89,13 +89,6 @@ export function ChangePill({ value }: { value: number | null | undefined }) {
   )
 }
 
-export function signalColor(signal: string): string {
-  const s = signal.toLowerCase()
-  if (s.includes("buy")) return "text-emerald-400"
-  if (s.includes("sell")) return "text-red-400"
-  return "text-gray-400"
-}
-
 export function signalBadge(signal: string): string {
   const s = signal.toLowerCase()
   if (s.includes("buy")) return "badge-green"

@@ -69,6 +69,7 @@ export default function ResearchPage() {
     mounted.current = true
     return () => {
       mounted.current = false
+      if (searchTimer.current) clearTimeout(searchTimer.current)
     }
   }, [])
 

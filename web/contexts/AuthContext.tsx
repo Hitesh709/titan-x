@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react"
+import { createContext, useContext, useEffect, useState, useCallback, useMemo, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import api from "@/lib/api"
 import type { User, AuthResponse } from "@/types"
@@ -78,8 +78,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await api.post("/auth/reset-password", { token, new_password: newPassword })
   }, [])
 
+  const value = useMemo<AuthContextType>(
+    () => ({
+      user,
+      loading,
+      login,
+      register,
+      logout,
+      isAuthenticated: !!user,
+      verifyEmail,
+      sendVerification,
+      forgotPassword,
+      resetPassword,
+    }),
+    [user, loading, login, register, logout, verifyEmail, sendVerification, forgotPassword, resetPassword],
+  )
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, isAuthenticated: !!user, verifyEmail, sendVerification, forgotPassword, resetPassword }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   )
