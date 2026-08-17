@@ -109,7 +109,7 @@ export function QuickTradeForm(props: QuickTradeFormProps) {
     onSubmit, submitting, formError, formSuccess,
   } = props
   return (
-    <form onSubmit={onSubmit} className="glass-card p-5">
+    <form onSubmit={onSubmit} className="glass-card p-5 relative z-20">
       <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
         <Zap size={16} className="text-titan-400" /> Quick Trade
       </h3>
