@@ -7,6 +7,7 @@ import { useLiveRefresh } from "@/lib/live"
 import type { StockRecommendation } from "@/types"
 import { WidgetLoading, WidgetError, RefreshButton } from "@/components/dashboard/widget"
 import { StatCard, RecommendationCard } from "./components"
+import { SymbolAnalyzer } from "./analyzer"
 
 type SortKey = "confidence" | "return" | "symbol"
 type SortDir = "asc" | "desc"
@@ -136,6 +137,8 @@ export default function RecommendationsPage() {
       </div>
 
       {error && <WidgetError message={error} onRetry={() => load(false)} />}
+
+      <SymbolAnalyzer />
 
       {loading ? (
         <div className="grid md:grid-cols-3 gap-4">
