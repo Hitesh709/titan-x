@@ -492,6 +492,7 @@ export interface StockRecommendation {
   price_target?: number | null
   generated_at?: string | null
   metadata_json?: string | null
+  inputs_json?: string | null
   current_price?: number | null
 }
 

@@ -14,12 +14,46 @@ interface ParsedMeta {
   returns?: Record<string, number | null>
 }
 
+interface PillarScore {
+  name: string
+  score: number
+  direction: number
+}
+
+const PILLAR_LABELS: Record<string, string> = {
+  technical: "Technical",
+  fundamental: "Fundamental",
+  news: "News",
+  regime: "Regime",
+  similarity: "Pattern",
+  risk: "Risk",
+}
+
 function parseMeta(rec: StockRecommendation): ParsedMeta {
   if (!rec.metadata_json) return {}
   try {
     return JSON.parse(rec.metadata_json) as ParsedMeta
   } catch {
     return {}
+  }
+}
+
+function parsePillars(rec: StockRecommendation): PillarScore[] {
+  if (!rec.inputs_json) return []
+  try {
+    const factors = JSON.parse(rec.inputs_json) as Record<
+      string,
+      { score?: number; direction?: number }
+    >
+    return Object.entries(factors)
+      .filter(([name]) => name in PILLAR_LABELS)
+      .map(([name, v]) => ({
+        name,
+        score: typeof v.score === "number" ? v.score : 0,
+        direction: typeof v.direction === "number" ? v.direction : 0,
+      }))
+  } catch {
+    return []
   }
 }
 
@@ -59,6 +93,7 @@ export function RiskBadge({ risk }: { risk?: string | null }) {
 
 function RecommendationCardBase({ rec }: { rec: StockRecommendation }) {
   const meta = parseMeta(rec)
+  const pillars = parsePillars(rec)
   const dirCls =
     rec.direction === "BUY" ? "badge-green" : rec.direction === "SELL" ? "badge-red" : "badge-blue"
 
@@ -110,6 +145,38 @@ function RecommendationCardBase({ rec }: { rec: StockRecommendation }) {
           <div className="text-sm text-gray-300">{rec.timeframe ?? "—"}</div>
         </div>
       </div>
+
+      {pillars.length > 0 && (
+        <div className="mt-4">
+          <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
+            Pillar scores
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {pillars.map((p) => (
+              <div key={p.name} className="bg-white/[0.03] rounded-lg p-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] text-gray-400">{PILLAR_LABELS[p.name] ?? p.name}</span>
+                  <span
+                    className={`text-[11px] font-semibold ${
+                      p.score >= 55 ? "text-emerald-400" : p.score <= 45 ? "text-red-400" : "text-amber-400"
+                    }`}
+                  >
+                    {Math.round(p.score)}
+                  </span>
+                </div>
+                <div className="mt-1 h-1 rounded-full bg-white/5 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${
+                      p.score >= 55 ? "bg-emerald-500" : p.score <= 45 ? "bg-red-500" : "bg-amber-500"
+                    }`}
+                    style={{ width: `${Math.min(100, p.score)}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="flex items-center gap-2 mt-3">
         <RiskBadge risk={rec.risk_level} />
