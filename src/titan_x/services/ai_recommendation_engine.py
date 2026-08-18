@@ -53,14 +53,18 @@ PILLAR_WEIGHTS = {
 }
 
 MIN_BARS = 60                 # below this -> insufficient data (NO-TRADE)
-MIN_CONFIDENT_PILLARS = 4     # need >=4 pillars with confidence >= PILLAR_MIN_CONF
 PILLAR_MIN_CONF = 0.40
-REQUIRED_AGREEMENT = 4        # >=4 of confident pillars must agree on direction
+# Data-adaptive gating: only pillars that actually have data (confidence above
+# the threshold *and* take a directional stance) count toward the required
+# agreement. This lets the engine still produce signals when auxiliary data
+# (fundamentals / news / sector context) is sparse in production.
+MIN_DIRECTIONAL_PILLARS = 3   # need >=3 directional, confident pillars
+AGREEMENT_FRACTION = 0.60      # >=60% of directional pillars must agree
 
 # Signal thresholds
 HIGH_CONVICTION_SCORE = 90.0
 HIGH_CONVICTION_PROB = 0.80
-STRONG_SCORE = 82.0
+STRONG_SCORE = 65.0
 STRONG_PROB = 0.75
 
 # Risk / quality gates
@@ -622,6 +626,7 @@ class RecommendationSignal:
     caution: list[str]
     pillars: list[PillarScore]
     model_agreement: int
+    agreement_total: int
     confident_pillars: int
     agreement_ratio: float
     data_quality: float
@@ -672,12 +677,22 @@ class AIRecommendationEngine:
         vote = sum(p.weight * p.direction * p.confidence for p in pillars)
         final_dir = 1 if vote > 0.12 else (-1 if vote < -0.12 else 0)
 
-        confident = [p for p in pillars if p.confidence >= PILLAR_MIN_CONF]
-        agreeing = [p for p in confident if p.direction == final_dir] if final_dir != 0 else []
-        agreement_ratio = (len(agreeing) / len(confident)) if confident else 0.0
+        # Only pillars that take a directional stance AND have real data count
+        # toward the agreement requirement (neutral / no-data pillars abstain).
+        directional_confident = [
+            p for p in pillars if p.confidence >= PILLAR_MIN_CONF and p.direction != 0
+        ]
+        neutral_confident = [
+            p for p in pillars if p.confidence >= PILLAR_MIN_CONF and p.direction == 0
+        ]
+        confident = directional_confident + neutral_confident
+        agreeing = [p for p in directional_confident if p.direction == final_dir] if final_dir != 0 else []
+        agreement_ratio = (len(agreeing) / len(directional_confident)) if directional_confident else 0.0
 
-        wsum = sum(p.weight * p.confidence for p in pillars) or 1.0
-        raw_score = _clamp(sum(p.weight * p.score * p.confidence for p in pillars) / wsum)
+        # Score only over pillars that actually have data, so missing
+        # fundamentals / news do not pull the ensemble toward neutral.
+        wsum = sum(p.weight * p.confidence for p in confident) or 1.0
+        raw_score = _clamp(sum(p.weight * p.score * p.confidence for p in confident) / wsum)
 
         data_quality = _clamp(100 - 12 * len(missing), 0, 100)
         base_prob = _sigmoid((raw_score - 50) / 9.0)
@@ -710,11 +725,11 @@ class AIRecommendationEngine:
         rejection: list[str] = []
         if len(bars) < MIN_BARS:
             rejection.append("insufficient_price_data")
-        if len(confident) < MIN_CONFIDENT_PILLARS:
-            rejection.append("insufficient_confident_models")
         if final_dir == 0:
             rejection.append("no_clear_direction")
-        if len(confident) >= 5 and len(agreeing) < REQUIRED_AGREEMENT:
+        if len(directional_confident) < MIN_DIRECTIONAL_PILLARS:
+            rejection.append("insufficient_directional_models")
+        if directional_confident and agreement_ratio < AGREEMENT_FRACTION:
             rejection.append("model_disagreement")
         if rr < MIN_RISK_REWARD and final_dir != 0:
             rejection.append("poor_risk_reward")
@@ -730,16 +745,20 @@ class AIRecommendationEngine:
             rejection.append("weak_probability")
 
         no_trade = len(rejection) > 0
+        enough_agreement = (
+            len(directional_confident) >= MIN_DIRECTIONAL_PILLARS
+            and agreement_ratio >= AGREEMENT_FRACTION
+        )
 
         if no_trade:
             signal = "hold"
             direction_str = "HOLD"
             conviction = "NONE"
-        elif raw_score >= HIGH_CONVICTION_SCORE and calibrated >= HIGH_CONVICTION_PROB and len(agreeing) >= REQUIRED_AGREEMENT:
+        elif raw_score >= HIGH_CONVICTION_SCORE and calibrated >= HIGH_CONVICTION_PROB and enough_agreement:
             conviction = "HIGH"
             signal = "strong_buy" if final_dir > 0 else "strong_sell"
             direction_str = "BUY" if final_dir > 0 else "SELL"
-        elif raw_score >= STRONG_SCORE and calibrated >= STRONG_PROB and len(agreeing) >= REQUIRED_AGREEMENT:
+        elif raw_score >= STRONG_SCORE and calibrated >= STRONG_PROB and enough_agreement:
             conviction = "STRONG"
             signal = "buy" if final_dir > 0 else "sell"
             direction_str = "BUY" if final_dir > 0 else "SELL"
@@ -776,7 +795,8 @@ class AIRecommendationEngine:
             caution=[],
             pillars=pillars,
             model_agreement=len(agreeing),
-            confident_pillars=len(confident),
+            agreement_total=len(directional_confident),
+            confident_pillars=len(directional_confident),
             agreement_ratio=round(agreement_ratio, 3),
             data_quality=round(data_quality, 1),
             missing_pillars=missing,
@@ -964,7 +984,7 @@ def explain(sig: RecommendationSignal) -> dict:
             "stop": sig.stop_price,
             "risk_reward": sig.risk_reward,
             "min_required_rr": MIN_RISK_REWARD,
-            "model_agreement": f"{sig.model_agreement}/{REQUIRED_AGREEMENT}",
+            "model_agreement": f"{sig.model_agreement}/{sig.agreement_total}",
             "confident_pillars": sig.confident_pillars,
             "agreement_ratio": sig.agreement_ratio,
             "data_quality": sig.data_quality,

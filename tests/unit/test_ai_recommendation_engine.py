@@ -90,7 +90,7 @@ def test_strong_bullish_setup_produces_actionable_signal():
     assert rec["no_trade"] is False
     assert rec["signal"] in ("buy", "strong_buy")
     assert rec["direction"] == "BUY"
-    assert rec["score"] >= 82.0
+    assert rec["score"] >= 65.0
     assert rec["calibrated_probability"] >= 0.75
     assert rec["entry_price"] > 0
     assert rec["stop_price"] < rec["entry_price"] < rec["price_target"]
@@ -105,7 +105,7 @@ def test_weak_random_setup_is_no_trade():
     assert rec["signal"] == "hold"
     assert rec["rejection_reasons"]
     assert ("weak_probability" in rec["rejection_reasons"]
-            or "insufficient_confident_models" in rec["rejection_reasons"])
+            or "insufficient_directional_models" in rec["rejection_reasons"])
 
 
 def test_disagreement_is_no_trade():

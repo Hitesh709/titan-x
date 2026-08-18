@@ -1,6 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 from starlette.background import BackgroundTasks
 
 from titan_x.api import deps
@@ -10,14 +9,12 @@ from titan_x.infrastructure.market_data_providers import YahooFinanceProvider
 from titan_x.models.company import Company
 from titan_x.models.fundamental import FundamentalMetric
 from titan_x.models.market_breadth import MarketBreadth
-from titan_x.models.news import NewsArticle
 from titan_x.models.sector import SectorPerformance
 from titan_x.models.user import User
 from titan_x.services.ai_recommendation_engine import (
     AIRecommendationEngine,
     bars_from_records,
     fundamentals_from_records,
-    news_from_records,
 )
 from titan_x.services.recommendation_service import RecommendationService
 
@@ -214,18 +211,6 @@ async def analyze_symbol(
     ).scalars().all()
     fundamentals = fundamentals_from_records(list(fund_rows))
 
-    # Recent news with NLP sentiment
-    news_rows = (
-        await session.execute(
-            select(NewsArticle)
-            .options(selectinload(NewsArticle.nlp_analysis))
-            .where(NewsArticle.symbol == symbol)
-            .order_by(NewsArticle.published_at.desc())
-            .limit(50)
-        )
-    ).scalars().all()
-    news = news_from_records(list(news_rows))
-
     # Sector + breadth context
     sector_ctx: dict = {}
     breadth_ctx: dict = {}
@@ -258,7 +243,7 @@ async def analyze_symbol(
 
     rec = engine.build(
         symbol, bars,
-        fundamentals=fundamentals, news=news,
+        fundamentals=fundamentals,
         sector_ctx=sector_ctx, breadth_ctx=breadth_ctx,
     )
     rec["data_points"] = len(points)
