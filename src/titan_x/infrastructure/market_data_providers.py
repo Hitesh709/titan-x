@@ -33,7 +33,12 @@ class MarketDataPoint:
 class MarketDataProvider(ABC):
     @abstractmethod
     async def get_historical_prices(
-        self, symbol: str, interval: str = "1d", start: date | None = None, end: date | None = None
+        self,
+        symbol: str,
+        interval: str = "1d",
+        start: date | None = None,
+        end: date | None = None,
+        synthetic_ok: bool = False,
     ) -> list[MarketDataPoint]: ...
 
     @abstractmethod
@@ -45,7 +50,12 @@ class MarketDataProvider(ABC):
 
 class MockMarketDataProvider(MarketDataProvider):
     async def get_historical_prices(
-        self, symbol: str, interval: str = "1d", start: date | None = None, end: date | None = None
+        self,
+        symbol: str,
+        interval: str = "1d",
+        start: date | None = None,
+        end: date | None = None,
+        synthetic_ok: bool = False,
     ) -> list[MarketDataPoint]:
         start_date = start or date.today() - timedelta(days=365)
         end_date = end or date.today()
@@ -97,7 +107,12 @@ class AlphaVantageProvider(MarketDataProvider):
         self.api_key = api_key
 
     async def get_historical_prices(
-        self, symbol: str, interval: str = "1d", start: date | None = None, end: date | None = None
+        self,
+        symbol: str,
+        interval: str = "1d",
+        start: date | None = None,
+        end: date | None = None,
+        synthetic_ok: bool = False,
     ) -> list[MarketDataPoint]:
         raise NotImplementedError("Alpha Vantage not configured")
 
@@ -135,7 +150,12 @@ class YahooFinanceProvider(MarketDataProvider):
         return sym
 
     async def get_historical_prices(
-        self, symbol: str, interval: str = "1d", start: date | None = None, end: date | None = None
+        self,
+        symbol: str,
+        interval: str = "1d",
+        start: date | None = None,
+        end: date | None = None,
+        synthetic_ok: bool = False,
     ) -> list[MarketDataPoint]:
         params = {"symbol": self._normalize_symbol(symbol), "interval": interval}
         if start or end:
@@ -227,7 +247,12 @@ class YahooFinanceProvider(MarketDataProvider):
 
 class NSEProvider(MarketDataProvider):
     async def get_historical_prices(
-        self, symbol: str, interval: str = "1d", start: date | None = None, end: date | None = None
+        self,
+        symbol: str,
+        interval: str = "1d",
+        start: date | None = None,
+        end: date | None = None,
+        synthetic_ok: bool = False,
     ) -> list[MarketDataPoint]:
         raise NotImplementedError("NSE provider not configured")
 

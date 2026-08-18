@@ -183,7 +183,9 @@ class RecommendationScanService:
             async def fetch(symbol: str) -> list[dict[str, Any]] | None:
                 async with sem:
                     try:
-                        points = await provider.get_historical_prices(symbol, synthetic_ok=False)
+                        points = await provider.get_historical_prices(
+                            symbol, interval="1d", start=date.today() - timedelta(days=400)
+                        )
                     except Exception:  # noqa: BLE001
                         return None
                 if not points:
