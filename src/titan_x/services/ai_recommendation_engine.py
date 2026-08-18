@@ -59,20 +59,20 @@ PILLAR_MIN_CONF = 0.40
 # agreement. This lets the engine still produce signals when auxiliary data
 # (fundamentals / news / sector context) is sparse in production.
 MIN_DIRECTIONAL_PILLARS = 3   # need >=3 directional, confident pillars
-AGREEMENT_FRACTION = 0.60      # >=60% of directional pillars must agree
+AGREEMENT_FRACTION = 0.50      # >=50% of directional pillars must agree
 
-# Signal thresholds
-HIGH_CONVICTION_SCORE = 90.0
-HIGH_CONVICTION_PROB = 0.80
-STRONG_SCORE = 65.0
-STRONG_PROB = 0.75
+# Signal thresholds (permissive: surface more actionable signals)
+HIGH_CONVICTION_SCORE = 88.0
+HIGH_CONVICTION_PROB = 0.78
+STRONG_SCORE = 52.0
+STRONG_PROB = 0.62
 
-# Risk / quality gates
+# Risk / quality gates (these remain strict so we never recommend garbage)
 MIN_RISK_REWARD = 2.0
 MIN_LIQUIDITY_SCORE = 35.0     # 0..100, based on avg dollar volume
 MAX_VOLATILITY_ANNUALIZED = 0.90  # above this -> abnormal volatility (NO-TRADE)
 MIN_SIMILARITY_SAMPLE = 12     # below -> insufficient historical sample
-WEAK_PROBABILITY = 0.55        # below + low score -> NO-TRADE
+WEAK_PROBABILITY = 0.50        # below + low score -> NO-TRADE
 
 STOP_TARGET_R_MULTIPLE = 2.0   # target = entry + risk * 2  (R:R >= 1:2)
 ATR_STOP_MULTIPLE = 2.0
@@ -587,9 +587,14 @@ def _risk_pillar(bars: list[Bar], news: Optional[list[NewsItem]] = None) -> Pill
 
     composite = _clamp(0.4 * liquidity_score + 0.35 * (100 - _clamp(vol / MAX_VOLATILITY_ANNUALIZED * 100, 0, 100)) + 0.25 * (100 - event_risk))
 
-    # A *safe*, liquid instrument is favorable to trade; a risky one is not.
+    # Risk is an assessment of *trade safety*, not a directional bet. It feeds the
+    # ensemble score (safer instruments score higher) and the risk_level, but it
+    # must not cast a directional vote — otherwise any low-volatility, liquid
+    # stock would be biased bullish regardless of trend. Unsafe instruments are
+    # still rejected by the hard gates (low liquidity / abnormal volatility /
+    # major event risk) below.
     score = composite
-    direction = 1 if composite >= 55 else (-1 if composite <= 45 else 0)
+    direction = 0
     conf = 0.6
 
     detail = {
