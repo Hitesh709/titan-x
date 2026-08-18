@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { Search, X } from "lucide-react"
 import api from "@/lib/api"
 import type { CompanySearchResult } from "@/types"
@@ -28,6 +29,15 @@ export function SymbolAutocomplete({
   const listRef = useRef<HTMLUListElement>(null)
   const debounceRef = useRef<NodeJS.Timeout>()
   const selectedRef = useRef(false)
+  const inputElRef = useRef<HTMLInputElement>(null)
+  const [coords, setCoords] = useState<{ top: number; left: number; width: number } | null>(null)
+
+  const updatePosition = useCallback(() => {
+    const el = inputElRef.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    setCoords({ top: r.bottom + 4, left: r.left, width: r.width })
+  }, [])
 
   const fetchSuggestions = useCallback(async (query: string) => {
     if (!query || query.length < 1) {
@@ -56,7 +66,10 @@ export function SymbolAutocomplete({
       return
     }
     onChange(next)
-    if (next.length > 0) setIsOpen(true)
+    if (next.length > 0) {
+      setIsOpen(true)
+      updatePosition()
+    }
   }
 
   useEffect(() => {
@@ -123,14 +136,30 @@ export function SymbolAutocomplete({
   }
 
   const handleFocus = () => {
-    if (value.length > 0) setIsOpen(true)
+    if (value.length > 0) {
+      setIsOpen(true)
+      updatePosition()
+    }
   }
+
+  useEffect(() => {
+    if (!isOpen) return
+    updatePosition()
+    const onScrollResize = () => updatePosition()
+    window.addEventListener("scroll", onScrollResize, true)
+    window.addEventListener("resize", onScrollResize)
+    return () => {
+      window.removeEventListener("scroll", onScrollResize, true)
+      window.removeEventListener("resize", onScrollResize)
+    }
+  }, [isOpen, updatePosition])
 
   return (
     <div className={`relative ${className}`} ref={inputRef}>
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 size-4" />
         <input
+          ref={inputElRef}
           type="text"
           value={value}
           onChange={handleChange}
@@ -157,46 +186,55 @@ export function SymbolAutocomplete({
         )}
       </div>
 
-      {isOpen && suggestions.length > 0 && (
-        <ul
-          ref={listRef}
-          id="symbol-suggestions"
-          role="listbox"
-          className="absolute z-50 mt-1 w-full glass-card rounded-lg border border-white/10 overflow-hidden max-h-60 overflow-y-auto"
-        >
-          {suggestions.map((s, i) => (
-            <li
-              key={s.symbol}
-              role="option"
-              aria-selected={i === highlightedIndex}
-              onMouseEnter={() => setHighlightedIndex(i)}
-              onClick={() => {
-                selectedRef.current = true
-                onChange(s.symbol)
-                setIsOpen(false)
-                setHighlightedIndex(-1)
-                inputRef.current?.focus()
-              }}
-              className={`px-3 py-2 text-sm cursor-pointer ${
-                i === highlightedIndex ? "bg-white/10" : ""
-              } hover:bg-white/5`}
+      {isOpen && coords && createPortal(
+        <>
+          {suggestions.length > 0 && (
+            <ul
+              ref={listRef}
+              id="symbol-suggestions"
+              role="listbox"
+              style={{ position: "fixed", top: coords.top, left: coords.left, width: coords.width, zIndex: 1000 }}
+              className="glass-card rounded-lg border border-white/10 overflow-hidden max-h-60 overflow-y-auto"
             >
-              <div className="flex items-center justify-between">
-                <span className="font-medium text-white">{s.symbol}</span>
-                {s.company_name && (
-                  <span className="text-gray-500 text-xs truncate max-w-[60%] text-right ml-2">{s.company_name}</span>
-                )}
-              </div>
-              {s.sector && <div className="text-[10px] text-gray-500 mt-0.5">{s.sector}</div>}
-            </li>
-          ))}
-        </ul>
-      )}
+              {suggestions.map((s, i) => (
+                <li
+                  key={s.symbol}
+                  role="option"
+                  aria-selected={i === highlightedIndex}
+                  onMouseEnter={() => setHighlightedIndex(i)}
+                  onClick={() => {
+                    selectedRef.current = true
+                    onChange(s.symbol)
+                    setIsOpen(false)
+                    setHighlightedIndex(-1)
+                    inputElRef.current?.focus()
+                  }}
+                  className={`px-3 py-2 text-sm cursor-pointer ${
+                    i === highlightedIndex ? "bg-white/10" : ""
+                  } hover:bg-white/5`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-white">{s.symbol}</span>
+                    {s.company_name && (
+                      <span className="text-gray-500 text-xs truncate max-w-[60%] text-right ml-2">{s.company_name}</span>
+                    )}
+                  </div>
+                  {s.sector && <div className="text-[10px] text-gray-500 mt-0.5">{s.sector}</div>}
+                </li>
+              ))}
+            </ul>
+          )}
 
-      {isOpen && !loading && value.length >= 1 && suggestions.length === 0 && (
-        <div className="absolute z-50 mt-1 w-full glass-card rounded-lg border border-white/10 px-3 py-2 text-sm text-gray-500">
-          No symbols found
-        </div>
+          {!loading && value.length >= 1 && suggestions.length === 0 && (
+            <div
+              style={{ position: "fixed", top: coords.top, left: coords.left, width: coords.width, zIndex: 1000 }}
+              className="glass-card rounded-lg border border-white/10 px-3 py-2 text-sm text-gray-500"
+            >
+              No symbols found
+            </div>
+          )}
+        </>,
+        document.body,
       )}
     </div>
   )
