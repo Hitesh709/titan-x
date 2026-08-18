@@ -67,12 +67,14 @@ export default function RecommendationsPage() {
         }
         const last = st.last
         if (last) {
-          const stored = Number(last.stored ?? 0)
+          const universe = Number(last.universe ?? 0)
           const scanned = Number(last.scanned ?? 0)
+          const stored = Number(last.stored ?? 0)
           const noTrade = Number(last.no_trade ?? 0)
+          const insufficient = Number(last.insufficient_data ?? 0)
           const failed = Number(last.failed ?? 0)
           setScanInfo(
-            `Scan finished: ${stored} signal(s) stored, ${noTrade} no-trade, ${failed} failed out of ${scanned} scanned.`,
+            `Scanned ${scanned}/${universe} symbols · ${stored} signal(s) stored · ${noTrade} no-trade · ${insufficient} insufficient data · ${failed} failed.`,
           )
         }
         void load(true)
