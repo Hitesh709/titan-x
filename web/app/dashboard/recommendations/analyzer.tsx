@@ -219,7 +219,9 @@ export function SymbolAnalyzer() {
               Pillar breakdown
             </div>
             <div className="space-y-2">
-              {result.explainability.pillars.map((p) => (
+              {result.explainability.pillars
+                .filter((p) => p.name !== "news")
+                .map((p) => (
                 <div key={p.name} className="flex items-center gap-3">
                   <div className="w-32 shrink-0 flex items-center gap-1.5 text-xs text-gray-300">
                     {dirIcon(p.direction)}
