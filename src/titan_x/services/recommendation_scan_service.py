@@ -1,9 +1,10 @@
 """Scan the full NSE universe and generate live recommendations.
 
 Fetches real daily price history from Yahoo Finance for every active company,
-computes a recommendation with the RecommendationEngine and persists it to the
-``recommendations`` table. Designed to run in the background so the app stays
-responsive while a full-market scan progresses in chunks.
+computes a recommendation with the AIRecommendationEngine (6-pillar, selective
+ensemble) and persists actionable signals to the ``recommendations`` table.
+Designed to run in the background so the app stays responsive while a
+full-market scan progresses in chunks. NO-TRADE outcomes are skipped.
 """
 import asyncio
 import json
@@ -22,7 +23,10 @@ from titan_x.models.company import Company
 from titan_x.models.market_breadth import MarketBreadth
 from titan_x.models.recommendation import Recommendation
 from titan_x.models.sector import SectorPerformance
-from titan_x.services.recommendation_engine import RecommendationEngine
+from titan_x.services.ai_recommendation_engine import (
+    AIRecommendationEngine,
+    bars_from_records,
+)
 from titan_x.services.recommendation_service import RecommendationService
 
 logger = structlog.get_logger(__name__)
@@ -61,7 +65,7 @@ def _point_to_dict(p: MarketDataPoint) -> dict[str, Any]:
 class RecommendationScanService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
-        self.engine = RecommendationEngine()
+        self.engine = AIRecommendationEngine()
 
     async def get_active_symbols(self, limit: int | None = None) -> list[str]:
         stmt = select(Company.symbol).where(Company.status == "active").order_by(Company.symbol)
@@ -168,6 +172,7 @@ class RecommendationScanService:
         processed = 0
         stored = 0
         insufficient = 0
+        no_trade = 0
         failed = 0
         skipped = 0
 
@@ -196,13 +201,16 @@ class RecommendationScanService:
                         failed += 1
                         continue
                     rec = self.engine.build(
-                        symbol, points,
+                        symbol, bars_from_records(points),
                         sector_ctx=sector_ctx.get(sector_by_symbol.get(symbol) or ""),
                         breadth_ctx=breadth_ctx,
                     )
                     rec["data_points"] = len(points)
                     if rec.get("insufficient_data"):
                         insufficient += 1
+                        continue
+                    if rec.get("no_trade"):
+                        no_trade += 1
                         continue
                     await self._store(rec, svc)
                     stored += 1
@@ -218,6 +226,7 @@ class RecommendationScanService:
             "scanned": processed,
             "stored": stored,
             "insufficient_data": insufficient,
+            "no_trade": no_trade,
             "failed": failed,
             "skipped_fresh": len(all_symbols) - len(symbols),
         }
@@ -226,6 +235,7 @@ class RecommendationScanService:
             "scanned": result["scanned"],
             "stored": result["stored"],
             "insufficient_data": result["insufficient_data"],
+            "no_trade": result["no_trade"],
             "failed": result["failed"],
             "skipped_fresh": result["skipped_fresh"],
             "finished_at": datetime.now(timezone.utc).isoformat(),

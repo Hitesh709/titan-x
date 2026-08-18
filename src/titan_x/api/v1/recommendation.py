@@ -1,10 +1,24 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from starlette.background import BackgroundTasks
 
 from titan_x.api import deps
 from titan_x.api.deps import get_app_session_factory
 from titan_x.api.schemas import PaginatedResponse
+from titan_x.infrastructure.market_data_providers import YahooFinanceProvider
+from titan_x.models.company import Company
+from titan_x.models.fundamental import FundamentalMetric
+from titan_x.models.market_breadth import MarketBreadth
+from titan_x.models.news import NewsArticle
+from titan_x.models.sector import SectorPerformance
 from titan_x.models.user import User
+from titan_x.services.ai_recommendation_engine import (
+    AIRecommendationEngine,
+    bars_from_records,
+    fundamentals_from_records,
+    news_from_records,
+)
 from titan_x.services.recommendation_service import RecommendationService
 
 router = APIRouter(tags=["recommendations"])
@@ -166,6 +180,113 @@ async def get_recommendations_by_symbol(
         items=[_rec_dict(r) for r in items],
         total=total, skip=offset, limit=limit,
     )
+
+
+@router.get("/recommendations/analyze/{symbol}")
+async def analyze_symbol(
+    symbol: str,
+    session=Depends(deps.get_session),
+    _: User = Depends(deps.get_current_active_user),
+):
+    """Run the full 6-pillar AI recommendation engine for a single symbol and
+    return the complete, explainable analysis (signal, probability, entry /
+    target / stop, model agreement and per-pillar breakdown)."""
+    symbol = symbol.upper()
+    engine = AIRecommendationEngine()
+
+    provider = YahooFinanceProvider()
+    try:
+        points = await provider.get_historical_prices(symbol, synthetic_ok=False)
+    except Exception:  # noqa: BLE001
+        points = None
+    finally:
+        await provider.close()
+
+    if not points:
+        raise HTTPException(404, f"No price data available for symbol '{symbol}'")
+    bars = bars_from_records(points)
+
+    # Fundamentals (latest available metrics for the symbol)
+    fund_rows = (
+        await session.execute(
+            select(FundamentalMetric).where(FundamentalMetric.symbol == symbol)
+        )
+    ).scalars().all()
+    fundamentals = fundamentals_from_records(list(fund_rows))
+
+    # Recent news with NLP sentiment
+    news_rows = (
+        await session.execute(
+            select(NewsArticle)
+            .options(selectinload(NewsArticle.nlp_analysis))
+            .where(NewsArticle.symbol == symbol)
+            .order_by(NewsArticle.published_at.desc())
+            .limit(50)
+        )
+    ).scalars().all()
+    news = news_from_records(list(news_rows))
+
+    # Sector + breadth context
+    sector_ctx: dict = {}
+    breadth_ctx: dict = {}
+    company = (
+        await session.execute(select(Company).where(Company.symbol == symbol))
+    ).scalar_one_or_none()
+    if company and company.sector:
+        sp = (
+            await session.execute(
+                select(SectorPerformance)
+                .where(SectorPerformance.sector == company.sector)
+                .order_by(SectorPerformance.as_of_date.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if sp:
+            sector_ctx = {
+                "momentum_score": sp.momentum_score or 50.0,
+                "relative_strength": sp.relative_strength or 50.0,
+            }
+    breadth = (
+        await session.execute(select(MarketBreadth).order_by(MarketBreadth.trade_date.desc()).limit(1))
+    ).scalar_one_or_none()
+    if breadth:
+        adv = breadth.advancing / breadth.declining if breadth.declining and breadth.declining > 0 else 1.0
+        breadth_ctx = {
+            "index_strength_score": breadth.index_strength_score or 50.0,
+            "adv_decl_ratio": adv,
+        }
+
+    rec = engine.build(
+        symbol, bars,
+        fundamentals=fundamentals, news=news,
+        sector_ctx=sector_ctx, breadth_ctx=breadth_ctx,
+    )
+    rec["data_points"] = len(points)
+    return {
+        "symbol": symbol,
+        "recommendation": {
+            "signal": rec["signal"],
+            "direction": rec["direction"],
+            "score": rec["score"],
+            "confidence": rec["confidence"],
+            "calibrated_probability": rec["calibrated_probability"],
+            "conviction": rec["conviction"],
+            "entry_price": rec["entry_price"],
+            "price_target": rec["price_target"],
+            "stop_price": rec["stop_price"],
+            "risk_reward": rec["risk_reward"],
+            "holding_period_days": rec["holding_period_days"],
+            "expected_return_pct": rec["expected_return_pct"],
+            "risk_level": rec["risk_level"],
+            "no_trade": rec["no_trade"],
+            "rejection_reasons": rec["rejection_reasons"],
+            "evidence": rec["evidence"],
+            "caution": rec["caution"],
+            "as_of_date": rec["as_of_date"],
+            "data_points": rec["data_points"],
+        },
+        "explainability": rec["explainability"],
+    }
 
 
 @router.patch("/recommendations/{rec_id}/decision")
