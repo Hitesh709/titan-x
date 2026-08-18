@@ -58,7 +58,7 @@ export default function RecommendationsPage() {
   const pollScanStatus = useCallback(() => {
     if (!mounted.current) return
     api
-      .get<{ running: boolean; last?: Record<string, unknown> }>("/recommendations/scan/status")
+      .get<{ running: boolean; last?: Record<string, unknown>; last_error?: string }>("/recommendations/scan/status")
       .then((st) => {
         if (!mounted.current) return
         if (st.running) {
@@ -73,9 +73,10 @@ export default function RecommendationsPage() {
           const noTrade = Number(last.no_trade ?? 0)
           const insufficient = Number(last.insufficient_data ?? 0)
           const failed = Number(last.failed ?? 0)
-          setScanInfo(
-            `Scanned ${scanned}/${universe} symbols · ${stored} signal(s) stored · ${noTrade} no-trade · ${insufficient} insufficient data · ${failed} failed.`,
-          )
+          let msg = `Scanned ${scanned}/${universe} symbols · ${stored} signal(s) stored · ${noTrade} no-trade · ${insufficient} insufficient data · ${failed} failed.`
+          const err = st.last_error
+          if (err) msg += ` Scan error: ${err}`
+          setScanInfo(msg)
         }
         void load(true)
       })

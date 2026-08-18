@@ -145,9 +145,11 @@ class YahooFinanceProvider(MarketDataProvider):
     @staticmethod
     def _normalize_symbol(symbol: str) -> str:
         sym = symbol.strip().upper()
-        if sym.endswith(".NS") or sym.endswith(".BO"):
+        if "." in sym:
             return sym
-        return sym
+        # NSE symbols are stored bare (e.g. "RELIANCE"); Yahoo needs the
+        # ".NS" suffix to resolve them on the Indian exchange.
+        return f"{sym}.NS"
 
     async def get_historical_prices(
         self,
