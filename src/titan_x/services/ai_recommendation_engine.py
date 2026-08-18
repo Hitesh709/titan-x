@@ -366,7 +366,10 @@ def _technical_pillar(bars: list[Bar]) -> PillarScore:
     vol -= 5 if vol_ratio < 0.8 else 0
 
     score = _clamp(trend + mom + mr + vol)
-    direction = 1 if score >= 55 else (-1 if score <= 45 else 0)
+    # Require a decidedly bullish/bearish read before this pillar casts a
+    # directional vote; a score in the 40-60 "no man's land" is treated as
+    # neutral so sideways / noisy series don't masquerade as signals.
+    direction = 1 if score >= 60 else (-1 if score <= 40 else 0)
 
     conf = 0.55
     if len(closes) >= 200 and ema200:
@@ -727,16 +730,26 @@ class AIRecommendationEngine:
         event_risk = p_risk.detail.get("event_risk_score", 0.0)
         sim_sample = p_sim.detail.get("sample_size", 0)
 
+        # In production the auxiliary pillars (fundamentals / news / sector
+        # context) are frequently empty, leaving only price-based pillars
+        # (technical + similarity) with a directional stance. Allow a signal to
+        # be led by a single, strongly directional technical read so genuinely
+        # trending stocks are not all rejected for "insufficient models".
+        tech = next((p for p in pillars if p.name == "technical"), None)
+        tech_led = bool(
+            tech and tech.direction != 0 and tech.confidence >= 0.6 and tech.score >= 65
+        )
+
         rejection: list[str] = []
         if len(bars) < MIN_BARS:
             rejection.append("insufficient_price_data")
         if final_dir == 0:
             rejection.append("no_clear_direction")
-        if len(directional_confident) < MIN_DIRECTIONAL_PILLARS:
+        if len(directional_confident) < MIN_DIRECTIONAL_PILLARS and not tech_led:
             rejection.append("insufficient_directional_models")
         if directional_confident and agreement_ratio < AGREEMENT_FRACTION:
             rejection.append("model_disagreement")
-        if rr < MIN_RISK_REWARD and final_dir != 0:
+        if rr < MIN_RISK_REWARD - 1e-6 and final_dir != 0:
             rejection.append("poor_risk_reward")
         if liquidity < MIN_LIQUIDITY_SCORE:
             rejection.append("low_liquidity")
@@ -751,8 +764,8 @@ class AIRecommendationEngine:
 
         no_trade = len(rejection) > 0
         enough_agreement = (
-            len(directional_confident) >= MIN_DIRECTIONAL_PILLARS
-            and agreement_ratio >= AGREEMENT_FRACTION
+            (len(directional_confident) >= MIN_DIRECTIONAL_PILLARS and agreement_ratio >= AGREEMENT_FRACTION)
+            or tech_led
         )
 
         if no_trade:

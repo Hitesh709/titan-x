@@ -21,6 +21,8 @@ export default function RecommendationsPage() {
   const [query, setQuery] = useState("")
   const [sortKey, setSortKey] = useState<SortKey>("confidence")
   const [sortDir, setSortDir] = useState<SortDir>("desc")
+  const [scanInfo, setScanInfo] = useState<string | null>(null)
+  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const mounted = useRef(true)
 
   const load = useCallback(async (silent = false) => {
@@ -47,20 +49,49 @@ export default function RecommendationsPage() {
     mounted.current = true
     return () => {
       mounted.current = false
+      if (pollRef.current) clearTimeout(pollRef.current)
     }
   }, [])
 
   useLiveRefresh(() => void load(true), [load])
 
+  const pollScanStatus = useCallback(() => {
+    if (!mounted.current) return
+    api
+      .get<{ running: boolean; last?: Record<string, unknown> }>("/recommendations/scan/status")
+      .then((st) => {
+        if (!mounted.current) return
+        if (st.running) {
+          pollRef.current = setTimeout(() => pollScanStatus(), 2000)
+          return
+        }
+        const last = st.last
+        if (last) {
+          const stored = Number(last.stored ?? 0)
+          const scanned = Number(last.scanned ?? 0)
+          const noTrade = Number(last.no_trade ?? 0)
+          const failed = Number(last.failed ?? 0)
+          setScanInfo(
+            `Scan finished: ${stored} signal(s) stored, ${noTrade} no-trade, ${failed} failed out of ${scanned} scanned.`,
+          )
+        }
+        void load(true)
+      })
+      .catch(() => {
+        if (mounted.current) void load(true)
+      })
+  }, [load])
+
   const handleScan = async () => {
     setScanning(true)
     setError(null)
+    setScanInfo(null)
     try {
       await api.post("/recommendations/scan?limit=40", {})
-      await load(true)
+      pollScanStatus()
+      setScanning(false)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Scan failed")
-    } finally {
       setScanning(false)
     }
   }
@@ -137,6 +168,10 @@ export default function RecommendationsPage() {
       </div>
 
       {error && <WidgetError message={error} onRetry={() => load(false)} />}
+
+      {scanInfo && (
+        <div className="glass-card p-3 text-sm text-titan-300 border border-titan-500/20">{scanInfo}</div>
+      )}
 
       <SymbolAnalyzer />
 

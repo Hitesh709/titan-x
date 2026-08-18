@@ -127,6 +127,20 @@ def test_insufficient_price_data_is_no_trade():
     assert "insufficient_price_data" in rec["rejection_reasons"]
 
 
+def test_price_only_trending_produces_signal():
+    """Production scan scenario: only OHLCV is available (fundamentals / news /
+    sector context tables are empty), so only the technical + similarity
+    pillars take a directional stance. A genuinely trending stock must still
+    yield an actionable signal (the original bug returned an empty list)."""
+    eng = AIRecommendationEngine()
+    rec = eng.build("TREND", _trend_bars(drift=0.0022))
+    assert rec["no_trade"] is False
+    assert rec["direction"] == "BUY"
+    assert rec["score"] >= 52.0
+    assert rec["calibrated_probability"] >= 0.62
+
+
+
 def test_explainability_is_complete():
     eng = AIRecommendationEngine()
     rec = eng.build(
