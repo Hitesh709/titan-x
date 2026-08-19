@@ -107,33 +107,43 @@ async def trigger_scan(
     background_tasks: BackgroundTasks,
     max_age_minutes: int | None = Query(default=60, ge=0),
     limit: int | None = Query(default=None, ge=1, le=2000),
+    sync: bool = Query(default=False),
     session_factory=Depends(get_app_session_factory),
     _: User = Depends(deps.get_current_active_user),
 ):
-    """Start a background full-market recommendation scan.
+    """Run a full-market recommendation scan.
 
-    Returns immediately; results appear incrementally as the scan progresses.
-    The frontend polls ``GET /recommendations`` every few seconds to pick them up.
+    By default it runs as a background task and returns immediately; the
+    frontend polls ``GET /recommendations/scan/status`` for progress.
+
+    Pass ``sync=true`` to run the scan inline and return the result directly
+    in the response (handy when background tasks are unreliable on the host).
     """
     from titan_x.services.recommendation_scan_service import (
+        get_scan_status,
         run_background_scan,
         run_universe_load,
     )
 
+    async def _run() -> None:
+        await run_universe_load(session_factory)
+        await run_background_scan(session_factory, max_age_minutes=max_age_minutes, limit=limit)
+
+    if sync:
+        try:
+            await _run()
+        except Exception:  # noqa: BLE001
+            # The error is already recorded in _scan_state["last_error"].
+            pass
+        return get_scan_status()
+
     async def _background() -> None:
         try:
-            await run_universe_load(session_factory)
-            await run_background_scan(session_factory, max_age_minutes=max_age_minutes, limit=limit)
+            await _run()
         except Exception as exc:  # noqa: BLE001
             import structlog
 
             structlog.get_logger("recommendation.scan").error("background_scan_failed", error=str(exc))
-            try:
-                from titan_x.services.recommendation_scan_service import _scan_state
-
-                _scan_state["last_error"] = str(exc)
-            except Exception:  # noqa: BLE001
-                pass
 
     background_tasks.add_task(_background)
 

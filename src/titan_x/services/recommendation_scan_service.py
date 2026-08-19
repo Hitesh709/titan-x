@@ -36,6 +36,17 @@ DEFAULT_CHUNK_SIZE = 40
 SOURCE = "yahoo-live"
 RECOMMENDATION_TYPE = "LIVE_SCAN"
 
+# Used only when the database has no active companies loaded (e.g. a fresh
+# deployment where the NSE universe ingestion never ran). Guarantees the scan
+# still has liquid NSE symbols to analyse instead of silently doing nothing.
+FALLBACK_NSE_SYMBOLS = [
+    "RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK", "HDFC", "WIPRO",
+    "BHARTIARTL", "SBIN", "ITC", "LT", "KOTAKBANK", "AXISBANK", "MARUTI",
+    "SUNPHARMA", "TATAMOTORS", "TATASTEEL", "ONGC", "NTPC", "POWERGRID",
+    "TITAN", "BAJFINANCE", "ASIANPAINT", "NESTLEIND", "HCLTECH", "TECHM",
+    "ULTRACEMCO", "ADANIPORTS", "M&M", "JSWSTEEL",
+]
+
 _scan_lock: asyncio.Lock | None = None
 _scan_state: dict[str, Any] = {"running": False, "last": None, "last_error": None, "last_universe": None}
 
@@ -151,6 +162,12 @@ class RecommendationScanService:
         limit: int | None,
     ) -> dict[str, Any]:
         all_symbols = await self.get_active_symbols(limit=limit)
+        used_fallback = False
+        if not all_symbols:
+            # Fresh deployment with no loaded universe: scan a default liquid
+            # NSE list so the feature is never silently empty.
+            all_symbols = list(FALLBACK_NSE_SYMBOLS)
+            used_fallback = True
         sector_ctx = await self._build_sector_context()
         breadth_ctx = await self._build_breadth_context()
 
@@ -164,10 +181,6 @@ class RecommendationScanService:
             )
             for sym, sec in res.all():
                 sector_by_symbol[sym] = sec
-        else:
-            res = await self.session.execute(select(Company.symbol, Company.sector))
-            for sym, sec in res.all():
-                sector_by_symbol[sym] = sec
 
         processed = 0
         stored = 0
@@ -177,6 +190,7 @@ class RecommendationScanService:
         skipped = 0
 
         provider = YahooFinanceProvider()
+        scan_error: Exception | None = None
         try:
             sem = asyncio.Semaphore(concurrency)
 
@@ -199,32 +213,37 @@ class RecommendationScanService:
 
                 for symbol, points in zip(chunk, results):
                     processed += 1
-                    if points is None:
+                    try:
+                        if points is None:
+                            failed += 1
+                            continue
+                        rec = self.engine.build(
+                            symbol, bars_from_records(points),
+                            sector_ctx=sector_ctx.get(sector_by_symbol.get(symbol) or ""),
+                            breadth_ctx=breadth_ctx,
+                        )
+                        rec["data_points"] = len(points)
+                        if rec.get("insufficient_data"):
+                            insufficient += 1
+                            continue
+                        if rec.get("no_trade"):
+                            no_trade += 1
+                            continue
+                        await self._store(rec, svc)
+                        stored += 1
+                    except Exception as exc:  # noqa: BLE001
                         failed += 1
-                        continue
-                    rec = self.engine.build(
-                        symbol, bars_from_records(points),
-                        sector_ctx=sector_ctx.get(sector_by_symbol.get(symbol) or ""),
-                        breadth_ctx=breadth_ctx,
-                    )
-                    rec["data_points"] = len(points)
-                    if rec.get("insufficient_data"):
-                        insufficient += 1
-                        continue
-                    if rec.get("no_trade"):
-                        no_trade += 1
-                        continue
-                    await self._store(rec, svc)
-                    stored += 1
-
-                await self.session.flush()
-                await self.session.commit()
+                        logger.warning("scan_symbol_failed", symbol=symbol, error=str(exc))
+        except Exception as exc:  # noqa: BLE001
+            scan_error = exc
+            logger.exception("scan_loop_failed", error=str(exc))
         finally:
             await provider.close()
 
         result = {
             "started": True,
             "universe": len(all_symbols),
+            "used_fallback_universe": used_fallback,
             "scanned": processed,
             "stored": stored,
             "insufficient_data": insufficient,
@@ -233,15 +252,12 @@ class RecommendationScanService:
             "skipped_fresh": len(all_symbols) - len(symbols),
         }
         _scan_state["last"] = {
-            "universe": result["universe"],
-            "scanned": result["scanned"],
-            "stored": result["stored"],
-            "insufficient_data": result["insufficient_data"],
-            "no_trade": result["no_trade"],
-            "failed": result["failed"],
-            "skipped_fresh": result["skipped_fresh"],
+            **result,
             "finished_at": datetime.now(timezone.utc).isoformat(),
         }
+        if scan_error is not None:
+            _scan_state["last_error"] = str(scan_error)
+            raise scan_error
         return result
 
     async def _store(self, rec: dict[str, Any], svc: RecommendationService) -> None:
