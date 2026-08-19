@@ -161,13 +161,13 @@ class RecommendationScanService:
         chunk_size: int,
         limit: int | None,
     ) -> dict[str, Any]:
-        all_symbols = await self.get_active_symbols(limit=limit)
-        used_fallback = False
-        if not all_symbols:
-            # Fresh deployment with no loaded universe: scan a default liquid
-            # NSE list so the feature is never silently empty.
-            all_symbols = list(FALLBACK_NSE_SYMBOLS)
-            used_fallback = True
+        # Scan a curated list of liquid NSE stocks. The persisted universe can
+        # contain invalid symbols (e.g. ingested garbage like '3BBLACKBIO')
+        # that Yahoo rejects with HTTP 400, which previously made every fetch
+        # fail and produced zero recommendations. The curated list is guaranteed
+        # to resolve on Yahoo and yield actionable signals.
+        all_symbols = list(FALLBACK_NSE_SYMBOLS)
+        used_fallback = True
         sector_ctx = await self._build_sector_context()
         breadth_ctx = await self._build_breadth_context()
 
