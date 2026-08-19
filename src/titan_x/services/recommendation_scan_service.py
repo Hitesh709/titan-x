@@ -191,6 +191,7 @@ class RecommendationScanService:
 
         provider = YahooFinanceProvider()
         scan_error: Exception | None = None
+        errors: list[str] = []
         try:
             sem = asyncio.Semaphore(concurrency)
 
@@ -200,9 +201,11 @@ class RecommendationScanService:
                         points = await provider.get_historical_prices(
                             symbol, interval="1d", start=date.today() - timedelta(days=400)
                         )
-                    except Exception:  # noqa: BLE001
+                    except Exception as exc:  # noqa: BLE001
+                        errors.append(f"{symbol}: {type(exc).__name__}: {exc}")
                         return None
                 if not points:
+                    errors.append(f"{symbol}: empty result")
                     return None
                 return [_point_to_dict(p) for p in points]
 
@@ -250,11 +253,14 @@ class RecommendationScanService:
             "no_trade": no_trade,
             "failed": failed,
             "skipped_fresh": len(all_symbols) - len(symbols),
+            "first_error": errors[0] if errors else None,
         }
         _scan_state["last"] = {
             **result,
             "finished_at": datetime.now(timezone.utc).isoformat(),
         }
+        if errors:
+            _scan_state["last_error"] = errors[0]
         if scan_error is not None:
             _scan_state["last_error"] = str(scan_error)
             raise scan_error

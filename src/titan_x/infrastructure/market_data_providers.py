@@ -133,14 +133,26 @@ class YahooFinanceProvider(MarketDataProvider):
     BASE_URL = "https://query1.finance.yahoo.com/v8/finance/chart"
 
     def __init__(self, api_key: str | None = None):
-        self._client = httpx.AsyncClient(headers={"User-Agent": YAHOO_USER_AGENT}, timeout=20.0)
+        self._client = httpx.AsyncClient(
+            headers={"User-Agent": YAHOO_USER_AGENT}, timeout=20.0, follow_redirects=True
+        )
         self._semaphore = asyncio.Semaphore(5)
 
     async def _get(self, url: str, params: dict | None = None) -> dict:
         async with self._semaphore:
-            resp = await self._client.get(url, params=params)
-            resp.raise_for_status()
-            return resp.json()
+            try:
+                resp = await self._client.get(url, params=params)
+                resp.raise_for_status()
+                return resp.json()
+            except Exception:  # noqa: BLE001
+                # Retry on the alternate Yahoo host (cloud IPs often get
+                # redirected/rate-limited on one host but not the other).
+                alt = url.replace("query1.finance.yahoo.com", "query2.finance.yahoo.com")
+                if alt == url:
+                    raise
+                resp = await self._client.get(alt, params=params)
+                resp.raise_for_status()
+                return resp.json()
 
     @staticmethod
     def _normalize_symbol(symbol: str) -> str:
