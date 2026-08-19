@@ -277,12 +277,85 @@ class NSEProvider(MarketDataProvider):
         raise NotImplementedError("NSE provider not configured")
 
 
+class StooqProvider(MarketDataProvider):
+    """Free, key-less CSV historical data from Stooq.
+
+    Works reliably from datacenter IPs (unlike Yahoo's unofficial API,
+    which increasingly returns 400/429 to cloud hosts). NSE symbols use the
+    '.ns' suffix (e.g. 'asianpaint.ns').
+    """
+
+    BASE_URL = "https://stooq.com/q/d/l/"
+
+    @staticmethod
+    def _normalize_symbol(symbol: str) -> str:
+        sym = symbol.strip().lower()
+        if not (sym.endswith(".ns") or sym.endswith(".bo")):
+            sym = f"{sym}.ns"
+        return sym
+
+    async def get_historical_prices(
+        self,
+        symbol: str,
+        interval: str = "1d",
+        start: date | None = None,
+        end: date | None = None,
+        synthetic_ok: bool = False,
+    ) -> list[MarketDataPoint]:
+        params: dict[str, str] = {"s": self._normalize_symbol(symbol), "i": "d"}
+        if start is not None:
+            params["d1"] = start.strftime("%Y%m%d")
+        if end is not None:
+            params["d2"] = end.strftime("%Y%m%d")
+        async with httpx.AsyncClient(timeout=25.0, follow_redirects=True) as client:
+            resp = await client.get(self.BASE_URL, params=params)
+            resp.raise_for_status()
+            text = resp.text.strip()
+        lines = text.splitlines()
+        if len(lines) < 2:
+            raise ValueError(f"No data returned for {symbol}")
+        points: list[MarketDataPoint] = []
+        for line in lines[1:]:
+            parts = line.split(",")
+            if len(parts) < 6:
+                continue
+            date_str, o, h, l, c, v = parts[0], parts[1], parts[2], parts[3], parts[4], parts[5]
+            try:
+                d = datetime.strptime(date_str, "%Y-%m-%d").date()
+                points.append(
+                    MarketDataPoint(
+                        symbol=symbol.upper(),
+                        trade_date=d,
+                        open=float(o),
+                        high=float(h),
+                        low=float(l),
+                        close=float(c),
+                        volume=int(float(v)) if v else 0,
+                    )
+                )
+            except (ValueError, TypeError):
+                continue
+        if not points:
+            raise ValueError(f"No parseable rows for {symbol}")
+        return points
+
+    async def get_quote(self, symbol: str) -> dict:
+        raise NotImplementedError("Stooq quotes not implemented")
+
+    async def get_company_profile(self, symbol: str) -> dict:
+        raise NotImplementedError("Stooq profiles not implemented")
+
+    async def close(self) -> None:
+        return None
+
+
 def get_market_data_provider(provider_name: str, api_key: str | None = None) -> MarketDataProvider:
     providers = {
         "mock": MockMarketDataProvider,
         "alphavantage": lambda: AlphaVantageProvider(api_key or ""),
         "yahoo": YahooFinanceProvider,
         "nse": NSEProvider,
+        "stooq": StooqProvider,
     }
     cls = providers.get(provider_name.lower())
     if cls is None:

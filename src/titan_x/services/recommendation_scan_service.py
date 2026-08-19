@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from titan_x.infrastructure.market_data_providers import (
     MarketDataPoint,
+    StooqProvider,
     YahooFinanceProvider,
 )
 from titan_x.models.company import Company
@@ -189,7 +190,11 @@ class RecommendationScanService:
         failed = 0
         skipped = 0
 
-        provider = YahooFinanceProvider()
+        # Stooq is the primary source (reliable from datacenter IPs); Yahoo is
+        # a fallback because its unofficial API is often blocked (HTTP 400/429)
+        # from cloud hosts.
+        stooq = StooqProvider()
+        yahoo = YahooFinanceProvider()
         scan_error: Exception | None = None
         errors: list[str] = []
         try:
@@ -197,13 +202,19 @@ class RecommendationScanService:
 
             async def fetch(symbol: str) -> list[dict[str, Any]] | None:
                 async with sem:
+                    points = None
                     try:
-                        points = await provider.get_historical_prices(
+                        points = await stooq.get_historical_prices(
                             symbol, interval="1d", start=date.today() - timedelta(days=400)
                         )
-                    except Exception as exc:  # noqa: BLE001
-                        errors.append(f"{symbol}: {type(exc).__name__}: {exc}")
-                        return None
+                    except Exception as stooq_exc:  # noqa: BLE001
+                        try:
+                            points = await yahoo.get_historical_prices(
+                                symbol, interval="1d", start=date.today() - timedelta(days=400)
+                            )
+                        except Exception as yahoo_exc:  # noqa: BLE001
+                            errors.append(f"{symbol}: stooq={type(stooq_exc).__name__}: {stooq_exc}; yahoo={type(yahoo_exc).__name__}: {yahoo_exc}")
+                            return None
                 if not points:
                     errors.append(f"{symbol}: empty result")
                     return None
@@ -241,7 +252,8 @@ class RecommendationScanService:
             scan_error = exc
             logger.exception("scan_loop_failed", error=str(exc))
         finally:
-            await provider.close()
+            await stooq.close()
+            await yahoo.close()
 
         result = {
             "started": True,
