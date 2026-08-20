@@ -294,6 +294,12 @@ class StooqProvider(MarketDataProvider):
             sym = f"{sym}.ns"
         return sym
 
+    def _headers(self) -> dict[str, str]:
+        return {
+            "User-Agent": YAHOO_USER_AGENT,
+            "Accept": "text/csv,text/plain,*/*",
+        }
+
     async def get_historical_prices(
         self,
         symbol: str,
@@ -303,14 +309,23 @@ class StooqProvider(MarketDataProvider):
         synthetic_ok: bool = False,
     ) -> list[MarketDataPoint]:
         params: dict[str, str] = {"s": self._normalize_symbol(symbol), "i": "d"}
-        if start is not None:
-            params["d1"] = start.strftime("%Y%m%d")
-        if end is not None:
-            params["d2"] = end.strftime("%Y%m%d")
-        async with httpx.AsyncClient(timeout=25.0, follow_redirects=True) as client:
-            resp = await client.get(self.BASE_URL, params=params)
-            resp.raise_for_status()
-            text = resp.text.strip()
+        # Stooq 404s requests without a browser User-Agent, so send one and
+        # retry on the .pl mirror if the .com host fails.
+        last_exc: Exception | None = None
+        for base in (self.BASE_URL, "https://stooq.pl/q/d/l/"):
+            try:
+                async with httpx.AsyncClient(
+                    timeout=25.0, follow_redirects=True, headers=self._headers()
+                ) as client:
+                    resp = await client.get(base, params=params)
+                    resp.raise_for_status()
+                    text = resp.text.strip()
+                break
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+        else:
+            assert last_exc is not None
+            raise last_exc
         lines = text.splitlines()
         if len(lines) < 2:
             raise ValueError(f"No data returned for {symbol}")
