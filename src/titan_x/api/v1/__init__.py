@@ -39,12 +39,13 @@ from titan_x.api.v1.global_market import router as global_market_router
 from titan_x.api.v1.health import health_router
 from titan_x.api.v1.historical_similarity import hist_sim_router
 from titan_x.api.v1.indices import router as indices_router
-from titan_x.api.v1.institutional_analysis import inst_router
+from titan_x.api.v1.institutional_analysis import router as inst_router
 from titan_x.api.v1.intraday import intraday_router
 from titan_x.api.v1.knowledge_graph import kg_router
 from titan_x.api.v1.learning import learning_router
+from titan_x.api.v1.loan_analyzers import router as loan_analyzers_router
 from titan_x.api.v1.macro import router as macro_router
-from titan_x.api.v1.market_breadth import market_breadth_router
+from titan_x.api.v1.market_breadth import router as market_breadth_router
 from titan_x.api.v1.market_data import router as market_data_router
 from titan_x.api.v1.market_data_collector import router as mdc_router
 from titan_x.api.v1.market_heatmap import router as market_heatmap_router
@@ -97,6 +98,7 @@ v1_router = APIRouter(prefix="/api/v1")
 v1_router.include_router(ai_registry_router)
 v1_router.include_router(audit_router)
 v1_router.include_router(health_router)
+v1_router.include_router(loan_analyzers_router)
 v1_router.include_router(version_router)
 v1_router.include_router(auth_router)
 v1_router.include_router(admin_router)
