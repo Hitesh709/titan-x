@@ -188,7 +188,9 @@ class YahooFinanceProvider(MarketDataProvider):
         synthetic_ok: bool = False,
     ) -> list[MarketDataPoint]:
         sym = self._normalize_symbol(symbol)
-        params: dict[str, object] = {"interval": interval, "crumb": await self._get_crumb()}
+        # Note: do NOT pass `symbol` as a query param — it is already in the
+        # URL path, and the duplicate triggers HTTP 400 from Yahoo.
+        params: dict[str, object] = {"interval": interval}
         if start or end:
             from datetime import time as dt_time
 
@@ -200,17 +202,30 @@ class YahooFinanceProvider(MarketDataProvider):
             params["range"] = "1y"
 
         last_exc: Exception | None = None
-        for base in (self.BASE_URL, "https://query2.finance.yahoo.com/v8/finance/chart"):
-            try:
-                async with self._semaphore:
-                    resp = await self._client.get(f"{base}/{sym}", params=params)
-                    resp.raise_for_status()
-                data = resp.json()
-                break
-            except Exception as exc:  # noqa: BLE001
-                last_exc = exc
-                # Crumb may have expired/been rejected; clear it and retry once.
-                self._crumb = None
+        # Try without a crumb first to avoid hammering the rate-limited crumb
+        # endpoint; only fetch one (once) if Yahoo rejects the request.
+        for attempt in range(2):
+            if attempt == 1:
+                try:
+                    params["crumb"] = await self._get_crumb()
+                except Exception as exc:  # noqa: BLE001
+                    raise last_exc or exc
+            for base in (self.BASE_URL, "https://query2.finance.yahoo.com/v8/finance/chart"):
+                try:
+                    async with self._semaphore:
+                        resp = await self._client.get(f"{base}/{sym}", params=params)
+                        resp.raise_for_status()
+                    data = resp.json()
+                    break
+                except Exception as exc:  # noqa: BLE001
+                    last_exc = exc
+                    self._crumb = None
+                    status = getattr(getattr(exc, "response", None), "status_code", None)
+                    if status == 429:
+                        await asyncio.sleep(3)
+            else:
+                continue
+            break
         else:
             assert last_exc is not None
             raise last_exc

@@ -32,7 +32,7 @@ from titan_x.services.recommendation_service import RecommendationService
 
 logger = structlog.get_logger(__name__)
 
-DEFAULT_CONCURRENCY = 12
+DEFAULT_CONCURRENCY = 5
 DEFAULT_CHUNK_SIZE = 40
 SOURCE = "yahoo-live"
 RECOMMENDATION_TYPE = "LIVE_SCAN"
