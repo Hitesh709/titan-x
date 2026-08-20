@@ -96,11 +96,11 @@ async def cross_match_documents(
 
 @router.post("/loan-summary")
 async def loan_summary(
+    user: Annotated[User, Depends(get_current_active_user)],
     bank_file: Annotated[UploadFile | None, File(None)] = None,
     bureau_file: Annotated[UploadFile | None, File(None)] = None,
     gst_file: Annotated[UploadFile | None, File(None)] = None,
     gst_bill_file: Annotated[UploadFile | None, File(None)] = None,
-    user: Annotated[User, Depends(get_current_active_user)] = None,
 ):
     bank = bureau = gst = bills = None
     if bank_file:
