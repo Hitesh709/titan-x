@@ -8,7 +8,7 @@ from titan_x.api.v1.ai_registry import router as ai_registry_router
 from titan_x.api.v1.audit import router as audit_router
 from titan_x.api.v1.auth import auth_router
 from titan_x.api.v1.automated_training import router as automated_training_router
-from titan_x.api.v1.backtest import backtest_router
+from titan_x.api.v1.backtest import router as backtest_router
 from titan_x.api.v1.broker import router as broker_router
 from titan_x.api.v1.companies import companies_router
 from titan_x.api.v1.company_research import router as company_research_router
@@ -39,10 +39,11 @@ from titan_x.api.v1.global_market import router as global_market_router
 from titan_x.api.v1.health import health_router
 from titan_x.api.v1.historical_similarity import hist_sim_router
 from titan_x.api.v1.indices import router as indices_router
-from titan_x.api.v1.institutional_analysis import inst_router
+from titan_x.api.v1.institutional_analysis import router as inst_router
 from titan_x.api.v1.intraday import intraday_router
 from titan_x.api.v1.knowledge_graph import kg_router
 from titan_x.api.v1.learning import learning_router
+from titan_x.api.v1.loan_application import router as loan_application_router
 from titan_x.api.v1.macro import router as macro_router
 from titan_x.api.v1.market_breadth import market_breadth_router
 from titan_x.api.v1.market_data import router as market_data_router
@@ -187,5 +188,6 @@ v1_router.include_router(indices_router)
 v1_router.include_router(search_router)
 v1_router.include_router(export_router)
 v1_router.include_router(top_picks_router)
+v1_router.include_router(loan_application_router)
 
 __all__ = ["v1_router"]
