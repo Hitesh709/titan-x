@@ -137,6 +137,7 @@ class YahooFinanceProvider(MarketDataProvider):
             headers={"User-Agent": YAHOO_USER_AGENT}, timeout=20.0, follow_redirects=True
         )
         self._semaphore = asyncio.Semaphore(5)
+        self._crumb: str | None = None
 
     async def _get(self, url: str, params: dict | None = None) -> dict:
         async with self._semaphore:
@@ -163,6 +164,21 @@ class YahooFinanceProvider(MarketDataProvider):
         # ".NS" suffix to resolve them on the Indian exchange.
         return f"{sym}.NS"
 
+    async def _get_crumb(self) -> str:
+        """Yahoo's chart API requires a session crumb from cloud IPs; without it
+        every request is rejected with HTTP 400. Fetch a fresh crumb (and the
+        accompanying cookie) on demand and cache it."""
+        if self._crumb:
+            return self._crumb
+        try:
+            await self._client.get("https://fc.yahoo.com")
+        except Exception:  # noqa: BLE001
+            pass
+        r = await self._client.get("https://query1.finance.yahoo.com/v1/test/getcrumb")
+        r.raise_for_status()
+        self._crumb = r.text.strip()
+        return self._crumb
+
     async def get_historical_prices(
         self,
         symbol: str,
@@ -171,19 +187,34 @@ class YahooFinanceProvider(MarketDataProvider):
         end: date | None = None,
         synthetic_ok: bool = False,
     ) -> list[MarketDataPoint]:
-        params = {"symbol": self._normalize_symbol(symbol), "interval": interval}
+        sym = self._normalize_symbol(symbol)
+        params: dict[str, object] = {"interval": interval, "crumb": await self._get_crumb()}
         if start or end:
             from datetime import time as dt_time
 
-            period1 = int(datetime.combine(start, dt_time.min).timestamp()) if start else None
-            period2 = int(datetime.combine(end, dt_time.min).timestamp()) if end else None
-            if period1:
-                params["period1"] = period1
-            if period2:
-                params["period2"] = period2
+            if start:
+                params["period1"] = int(datetime.combine(start, dt_time.min).timestamp())
+            if end:
+                params["period2"] = int(datetime.combine(end, dt_time.min).timestamp())
         else:
             params["range"] = "1y"
-        data = await self._get(f"{self.BASE_URL}/{self._normalize_symbol(symbol)}", params=params)
+
+        last_exc: Exception | None = None
+        for base in (self.BASE_URL, "https://query2.finance.yahoo.com/v8/finance/chart"):
+            try:
+                async with self._semaphore:
+                    resp = await self._client.get(f"{base}/{sym}", params=params)
+                    resp.raise_for_status()
+                data = resp.json()
+                break
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                # Crumb may have expired/been rejected; clear it and retry once.
+                self._crumb = None
+        else:
+            assert last_exc is not None
+            raise last_exc
+
         result = (data.get("chart") or {}).get("result")
         if not result:
             raise ValueError(f"No data returned for {symbol}")

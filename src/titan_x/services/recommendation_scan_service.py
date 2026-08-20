@@ -204,16 +204,16 @@ class RecommendationScanService:
                 async with sem:
                     points = None
                     try:
-                        points = await stooq.get_historical_prices(
+                        points = await yahoo.get_historical_prices(
                             symbol, interval="1d", start=date.today() - timedelta(days=400)
                         )
-                    except Exception as stooq_exc:  # noqa: BLE001
+                    except Exception as yahoo_exc:  # noqa: BLE001
                         try:
-                            points = await yahoo.get_historical_prices(
+                            points = await stooq.get_historical_prices(
                                 symbol, interval="1d", start=date.today() - timedelta(days=400)
                             )
-                        except Exception as yahoo_exc:  # noqa: BLE001
-                            errors.append(f"{symbol}: stooq={type(stooq_exc).__name__}: {stooq_exc}; yahoo={type(yahoo_exc).__name__}: {yahoo_exc}")
+                        except Exception as stooq_exc:  # noqa: BLE001
+                            errors.append(f"{symbol}: yahoo={type(yahoo_exc).__name__}: {yahoo_exc}; stooq={type(stooq_exc).__name__}: {stooq_exc}")
                             return None
                 if not points:
                     errors.append(f"{symbol}: empty result")
