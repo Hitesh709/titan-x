@@ -14,12 +14,9 @@ dependencies = [
   "bcrypt==4.3.0",
   "email-validator==2.2.0",
   "fastapi==0.116.1",
-  "openpyxl==3.1.5",
   "passlib[bcrypt]==1.7.4",
-  "pypdf==6.0.0",
   "pydantic-settings==2.10.1",
   "python-jose[cryptography]==3.3.0",
-  "python-multipart==0.0.20",
   "redis==6.4.0",
   "sqlalchemy[asyncio]==2.0.43",
   "structlog==25.4.0",
@@ -44,6 +41,8 @@ prepend_sys_path = "src"
 asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = ["smoke: smoke tests that verify a deployed instance"]
+# Always import titan_x from this repository's src/, regardless of any
+# editable install that may also be present on sys.path.
 pythonpath = ["src"]
 
 [tool.ruff]
