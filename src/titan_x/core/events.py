@@ -23,25 +23,20 @@ from titan_x.jobs import (
     prune_old_executions,
 )
 from titan_x.models import *  # noqa: F401, F403 - register all models
+from titan_x.models.loan_application import LoanApplication  # noqa: F401
 
 logger = structlog.get_logger(__name__)
 
 
 async def _sync_missing_columns(engine: AsyncEngine) -> None:
-    """Create_all only creates missing *tables*; it never adds columns to
-    pre-existing tables. Because the project relies on create_all against a
-    persistent DB, drift shows up as UndefinedColumn errors on deploy. This
-    idempotently adds any missing nullable columns to keep model/table in sync.
-    """
+    """Create_all only creates missing tables; add missing nullable columns idempotently."""
     from sqlalchemy import inspect as sa_inspect
 
     changed = 0
     async with engine.begin() as conn:
         for table in Base.metadata.sorted_tables:
             existing = await conn.run_sync(
-                lambda sync_conn, t=table: {
-                    c["name"] for c in sa_inspect(sync_conn).get_columns(t.name)
-                }
+                lambda sync_conn, t=table: {c["name"] for c in sa_inspect(sync_conn).get_columns(t.name)}
             )
             for col in table.columns:
                 if col.name in existing or col.primary_key:
@@ -67,61 +62,8 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
 
     if settings.seed_demo_on_startup:
         from titan_x.core.seed_demo import seed_all
-
         await seed_all(session_factory)
         logger.info("demo_seeded_on_startup")
-
-    try:
-        from titan_x.services.recommendation_scan_service import run_universe_load
-
-        async def _ingest_market_data_later(sf) -> None:
-            if not settings.market_data_ingest_on_startup:
-                logger.info("market_data_ingest_skipped")
-                return
-            try:
-                from titan_x.services.market_data_service import run_market_data_ingestion
-
-                async def _run() -> None:
-                    result = await run_market_data_ingestion(
-                        sf, max_symbols=settings.market_data_ingest_max_symbols
-                    )
-                    logger.info(
-                        "market_data_ingest_startup",
-                        ok=result.get("symbols_ok"),
-                        failed=result.get("symbols_failed"),
-                        inserted=result.get("inserted_total"),
-                    )
-
-                asyncio.create_task(_run())
-            except Exception:  # noqa: BLE001
-                logger.exception("market_data_ingest_startup_failed")
-
-        async def _universe_load_later() -> None:
-            try:
-                result = await run_universe_load(session_factory)
-                logger.info("nse_universe_startup", **result)
-            except Exception:  # noqa: BLE001
-                logger.exception("nse_universe_startup_failed")
-            await _ingest_market_data_later(session_factory)
-            await _ingest_news_later(session_factory)
-
-        async def _ingest_news_later(sf) -> None:
-            try:
-                from titan_x.services.news_feed import run_news_ingestion
-
-                result = await run_news_ingestion(sf)
-                logger.info(
-                    "news_ingest_startup",
-                    fetched=result.get("fetched"),
-                    created=result.get("created"),
-                )
-            except Exception:  # noqa: BLE001
-                logger.exception("news_ingest_startup_failed")
-
-        # Do not block readiness on the NSE CSV fetch (can be slow from US DCs).
-        asyncio.create_task(_universe_load_later())
-    except Exception:  # noqa: BLE001
-        logger.exception("nse_universe_startup_failed")
 
     redis: Redis | None = None
     try:
@@ -135,7 +77,6 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
     app.state.redis = redis
 
     from unittest.mock import AsyncMock
-
     if redis is not None:
         cache = RedisCache(redis)
         session_store = RedisSessionStore(redis, default_ttl=settings.session_ttl)
@@ -150,7 +91,6 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
         task_queue = TaskQueue(redis)
         app.state.task_queue = task_queue
         app.state.background_worker = None
-        logger.info("task_queue_initialized")
     else:
         app.state.task_queue = None
 
@@ -170,11 +110,8 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
         scheduler.register_job("market:process_trades", process_delayed_trades)
         app.state.scheduler = scheduler
         asyncio.create_task(scheduler.start())
-        logger.info("scheduler_initialized")
 
-        # Run the task-queue consumer in-process (no separate paid worker needed).
         if settings.run_worker_in_process and app.state.task_queue is not None:
-
             async def _handle_task(task: dict) -> None:
                 job_type = task.get("type")
                 job = scheduler._registered_jobs.get(job_type)
@@ -191,12 +128,7 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
                         result = {"status": "failed", "error": "unhandled exception"}
                 job_id = payload.get("job_id")
                 if job_id is not None:
-                    await scheduler.handle_completion(
-                        job_id,
-                        result.get("status", "failed"),
-                        result.get("duration_ms"),
-                        result.get("error"),
-                    )
+                    await scheduler.handle_completion(job_id, result.get("status", "failed"), result.get("duration_ms"), result.get("error"))
 
             worker = Worker(
                 app.state.task_queue,
@@ -207,13 +139,11 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
             )
             app.state.background_worker = worker
             asyncio.create_task(worker.start())
-            logger.info("in_process_worker_started")
     else:
         app.state.scheduler = None
 
     if settings.backup_enabled:
         from titan_x.infrastructure.backup import backup_loop
-
         asyncio.create_task(backup_loop(settings))
         logger.info("backup_loop_started", interval_hours=settings.backup_interval_hours)
 
@@ -222,25 +152,19 @@ async def on_shutdown(app: FastAPI, settings: Settings) -> None:
     scheduler: Scheduler | None = getattr(app.state, "scheduler", None)
     if scheduler is not None:
         await scheduler.stop()
-
     worker: Worker | None = getattr(app.state, "background_worker", None)
     if worker is not None:
         await worker.stop()
-
     cache: RedisCache | None = getattr(app.state, "cache", None)
     if cache is not None:
         await cache.close()
-
     session_store: RedisSessionStore | None = getattr(app.state, "session_store", None)
     if session_store is not None:
         await session_store.close()
-
     redis: Redis | None = getattr(app.state, "redis", None)
     if redis is not None:
         await redis.aclose()
-
     engine: AsyncEngine | None = getattr(app.state, "engine", None)
     if engine is not None:
         await engine.dispose()
-
     logger.info("application_stopped")
