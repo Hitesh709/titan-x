@@ -44,6 +44,8 @@ async def fetch_historical(
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Market data fetch failed: {str(e)}")
     return result
 
 
@@ -59,7 +61,10 @@ async def get_batch_quotes(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Provide 1-100 comma-separated symbols",
         )
-    return await svc.get_quotes(syms)
+    try:
+        return await svc.get_quotes(syms)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Quote fetch failed: {str(e)}")
 
 
 @router.get("/quote/{symbol}")
@@ -74,6 +79,8 @@ async def get_quote(
         return await svc.get_quote(symbol, provider_name=provider, api_key=api_key)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Quote fetch failed: {str(e)}")
 
 
 @router.get("/history/{symbol}")

@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from starlette.background import BackgroundTasks
@@ -136,9 +137,23 @@ async def trigger_scan(
             # The error is already recorded in _scan_state["last_error"].
             pass
         status = get_scan_status()
-        # Ensure we always return a proper response structure
+        # Ensure we always return a proper response structure with all required fields
+        last = status.get("last")
+        if last is None:
+            last = {
+                "started": True,
+                "universe": 0,
+                "scanned": 0,
+                "stored": 0,
+                "insufficient_data": 0,
+                "no_trade": 0,
+                "failed": 0,
+                "skipped_fresh": 0,
+                "used_fallback_universe": False,
+                "finished_at": datetime.now(timezone.utc).isoformat(),
+            }
         return {
-            "last": status.get("last"),
+            "last": last,
             "last_error": status.get("last_error"),
             "running": status.get("running", False),
         }
