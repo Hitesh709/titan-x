@@ -135,7 +135,13 @@ async def trigger_scan(
         except Exception:  # noqa: BLE001
             # The error is already recorded in _scan_state["last_error"].
             pass
-        return get_scan_status()
+        status = get_scan_status()
+        # Ensure we always return a proper response structure
+        return {
+            "last": status.get("last"),
+            "last_error": status.get("last_error"),
+            "running": status.get("running", False),
+        }
 
     async def _background() -> None:
         try:
