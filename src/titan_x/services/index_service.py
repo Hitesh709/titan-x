@@ -1,7 +1,8 @@
 import random
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import delete, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from titan_x.models.index_price import IndexDaily
@@ -119,6 +120,9 @@ class IndexService:
         return out
 
     async def list_all(self) -> list[dict]:
+        # Try to refresh stale indices (< 5 min old is considered fresh)
+        await self._refresh_stale(max_age_minutes=5)
+        
         result = await self.session.execute(
             select(IndexDaily).order_by(IndexDaily.symbol, IndexDaily.trade_date.desc())
         )
@@ -148,6 +152,81 @@ class IndexService:
                 "volume": row.volume,
             })
         return items
+
+    async def _refresh_stale(self, max_age_minutes: int = 5) -> None:
+        """Fetch fresh quotes for indices whose latest row is older than max_age_minutes."""
+        from titan_x.infrastructure.market_data_providers import YahooFinanceProvider
+        
+        # Find indices needing refresh
+        stmt = select(IndexDaily.symbol, IndexDaily.trade_date, IndexDaily.close).order_by(
+            IndexDaily.symbol, IndexDaily.trade_date.desc()
+        )
+        result = await self.session.execute(stmt)
+        rows = result.all()
+        latest: dict[str, tuple[date, float]] = {}
+        for symbol, trade_date, close in rows:
+            if symbol not in latest:
+                latest[symbol] = (trade_date, close)
+        
+        cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=max_age_minutes)
+        stale_symbols = [
+            symbol for symbol, (d, _) in latest.items()
+            if datetime.combine(d, datetime.min.time()) < cutoff
+        ]
+        
+        if not stale_symbols:
+            return
+        
+        provider = YahooFinanceProvider()
+        try:
+            for symbol in stale_symbols:
+                yahoo_ticker = YAHOO_INDEX.get(symbol)
+                if not yahoo_ticker:
+                    continue
+                try:
+                    # Fetch latest quote (range=5d gets recent days)
+                    data = await provider._get(
+                        f"{provider.BASE_URL}/{yahoo_ticker}",
+                        params={"range": "5d", "interval": "1d", "crumb": await provider._get_crumb()}
+                    )
+                    result = (data.get("chart") or {}).get("result")
+                    if not result:
+                        continue
+                    chart = result[0]
+                    timestamps = chart.get("timestamp") or []
+                    quote = (chart.get("indicators") or {}).get("quote") or [{}]
+                    quote = quote[0]
+                    closes = quote.get("close") or []
+                    if not closes:
+                        continue
+                    # Use the latest close
+                    latest_close = closes[-1]
+                    latest_ts = timestamps[-1]
+                    from datetime import datetime as dt_datetime
+                    trade_date = dt_datetime.fromtimestamp(
+                        latest_ts, tz=datetime.now().astimezone().tzinfo
+                    ).date()
+                    
+                    # Upsert
+                    from sqlalchemy.dialects.postgresql import insert
+                    from titan_x.models.index_price import IndexDaily
+                    stmt = insert(IndexDaily).values(
+                        symbol=symbol,
+                        name=next(n for s, n, *_ in INDICES if s == symbol),
+                        trade_date=trade_date,
+                        open=0, high=0, low=0,
+                        close=round(latest_close, 2),
+                        volume=0,
+                    ).on_conflict_do_update(
+                        index_elements=["symbol", "trade_date"],
+                        set_={"close": round(latest_close, 2)}
+                    )
+                    await self.session.execute(stmt)
+                except Exception:
+                    continue  # skip this index on error
+            await self.session.flush()
+        finally:
+            await provider.close()
 
     @staticmethod
     def _prev_close(symbol: str, rows: list[IndexDaily], current: IndexDaily) -> float | None:
