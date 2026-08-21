@@ -188,41 +188,53 @@ class YahooFinanceProvider(MarketDataProvider):
         synthetic_ok: bool = False,
     ) -> list[MarketDataPoint]:
         sym = self._normalize_symbol(symbol)
-        # Note: do NOT pass `symbol` as a query param — it is already in the
-        # URL path, and the duplicate triggers HTTP 400 from Yahoo.
-        params: dict[str, object] = {"interval": interval}
-        if start or end:
-            from datetime import time as dt_time
+        from datetime import time as dt_time
 
-            if start:
-                params["period1"] = int(datetime.combine(start, dt_time.min).timestamp())
-            if end:
-                params["period2"] = int(datetime.combine(end, dt_time.min).timestamp())
+        # Build multiple param strategies to try — Yahoo's API is finicky
+        # about which param combo it accepts. We try several combos.
+        base_params = {"interval": interval}
+        if start or end:
+            base_params_list = [
+                {**base_params, "period1": int(datetime.combine(start, dt_time.min).timestamp()),
+                 "period2": int(datetime.combine(end, dt_time.min).timestamp()) if end else None},
+                {**base_params, "period1": int(datetime.combine(start, dt_time.min).timestamp())},
+                {**base_params, "range": "1y"},
+            ]
         else:
-            params["range"] = "1y"
+            base_params_list = [{**base_params, "range": "1y"}]
+        # Remove None values
+        base_params_list = [{k: v for k, v in p.items() if v is not None} for p in base_params_list]
 
         last_exc: Exception | None = None
-        # Try without a crumb first to avoid hammering the rate-limited crumb
-        # endpoint; only fetch one (once) if Yahoo rejects the request.
-        for attempt in range(2):
+        for attempt in range(2):  # 0 = no crumb, 1 = with crumb
             if attempt == 1:
                 try:
-                    params["crumb"] = await self._get_crumb()
+                    crumb = await self._get_crumb()
                 except Exception as exc:  # noqa: BLE001
                     raise last_exc or exc
-            for base in (self.BASE_URL, "https://query2.finance.yahoo.com/v8/finance/chart"):
-                try:
-                    async with self._semaphore:
-                        resp = await self._client.get(f"{base}/{sym}", params=params)
-                        resp.raise_for_status()
-                    data = resp.json()
-                    break
-                except Exception as exc:  # noqa: BLE001
-                    last_exc = exc
-                    self._crumb = None
-                    status = getattr(getattr(exc, "response", None), "status_code", None)
-                    if status == 429:
-                        await asyncio.sleep(3)
+            else:
+                crumb = None
+
+            for base_params in base_params_list:
+                params = dict(base_params)
+                if crumb:
+                    params["crumb"] = crumb
+                for base in (self.BASE_URL, "https://query2.finance.yahoo.com/v8/finance/chart"):
+                    try:
+                        async with self._semaphore:
+                            resp = await self._client.get(f"{base}/{sym}", params=params)
+                            resp.raise_for_status()
+                        data = resp.json()
+                        break
+                    except Exception as exc:  # noqa: BLE001
+                        last_exc = exc
+                        self._crumb = None
+                        status = getattr(getattr(exc, "response", None), "status_code", None)
+                        if status == 429:
+                            await asyncio.sleep(3)
+                else:
+                    continue
+                break
             else:
                 continue
             break
