@@ -68,7 +68,16 @@ def get_scan_status() -> dict[str, Any]:
     return dict(_scan_state)
 
 
-def _point_to_dict(p: MarketDataPoint) -> dict[str, Any]:
+def _point_to_dict(p: MarketDataPoint | dict) -> dict[str, Any]:
+    if isinstance(p, dict):
+        return {
+            "trade_date": p.get("trade_date"),
+            "open": p.get("open"),
+            "high": p.get("high"),
+            "low": p.get("low"),
+            "close": p.get("close"),
+            "volume": p.get("volume"),
+        }
     return {
         "trade_date": p.trade_date,
         "open": p.open,
