@@ -219,10 +219,28 @@ class RecommendationScanService:
             try:
                 from titan_x.services.nse_universe_service import NSEUniverseService
                 uni_svc = NSEUniverseService(self.session)
-                await uni_svc.load_universe()
+                result = await uni_svc.load_universe()
                 await self.session.commit()
+                logger.info("universe_loaded", result=result)
             except Exception as exc:
                 logger.warning("universe_load_failed", error=str(exc))
+                # Force populate from curated list as last resort
+                from titan_x.core.seed_demo import COMPANIES
+                from datetime import datetime, timezone
+                now = datetime.now(timezone.utc)
+                for entry in COMPANIES:
+                    symbol, name, sector, industry, exchange, *_ = entry
+                    if exchange == "NSE" and symbol:
+                        self.session.add(Company(
+                            symbol=symbol,
+                            company_name=name,
+                            sector=sector,
+                            exchange="NSE",
+                            status="active",
+                            created_at=datetime.now(timezone.utc),
+                            updated_at=datetime.now(timezone.utc),
+                        ))
+                await self.session.commit()
         
         # Get active symbols from DB
         all_symbols = await self.get_active_symbols(limit=limit)

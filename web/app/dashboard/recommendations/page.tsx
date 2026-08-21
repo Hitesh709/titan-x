@@ -87,9 +87,12 @@ export default function RecommendationsPage() {
       } else {
         setScanInfo("Scan finished but returned no detail.")
       }
-      // Force refresh with a small delay to ensure DB commit is visible
-      await new Promise(r => setTimeout(r, 500))
-      await load(true)
+      // Force refresh with retries to ensure DB commit is visible
+      for (let i = 0; i < 3; i++) {
+        await new Promise(r => setTimeout(r, 800))
+        await load(true)
+        if (recommendations.length > 0) break
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Scan failed")
     } finally {
