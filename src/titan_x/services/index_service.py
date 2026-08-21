@@ -9,18 +9,18 @@ from titan_x.models.index_price import IndexDaily
 
 # (symbol, name, base, drift_pct, volatility_pct)
 INDICES = [
-    ("NIFTY", "NIFTY 50", 24500.0, 0.0006, 0.008),
-    ("SENSEX", "S&P BSE Sensex", 81500.0, 0.0006, 0.008),
-    ("BANKNIFTY", "NIFTY Bank", 52000.0, 0.0007, 0.010),
-    ("NIFTYIT", "NIFTY IT", 41000.0, 0.0004, 0.011),
-    ("NIFTYMID", "NIFTY Midcap 100", 58500.0, 0.0009, 0.010),
-    ("NIFTYSMALLCAP", "NIFTY Smallcap 100", 19500.0, 0.0011, 0.012),
-    ("NIFTYAUTO", "NIFTY Auto", 24500.0, 0.0005, 0.010),
-    ("NIFTYPHARMA", "NIFTY Pharma", 22500.0, 0.0004, 0.009),
-    ("NIFTYFMCG", "NIFTY FMCG", 59000.0, 0.0003, 0.008),
-    ("NIFTYMETAL", "NIFTY Metal", 9500.0, 0.0008, 0.012),
-    ("NIFTYENERGY", "NIFTY Energy", 39500.0, 0.0005, 0.010),
-    ("NIFTYREALTY", "NIFTY Realty", 1200.0, 0.0010, 0.014),
+    ("NIFTY", "NIFTY 50", 25000.0, 0.0006, 0.008),
+    ("SENSEX", "S&P BSE Sensex", 82000.0, 0.0006, 0.008),
+    ("BANKNIFTY", "NIFTY Bank", 53000.0, 0.0007, 0.010),
+    ("NIFTYIT", "NIFTY IT", 42000.0, 0.0004, 0.011),
+    ("NIFTYMID", "NIFTY Midcap 100", 59500.0, 0.0009, 0.010),
+    ("NIFTYSMALLCAP", "NIFTY Smallcap 100", 20000.0, 0.0011, 0.012),
+    ("NIFTYAUTO", "NIFTY Auto", 25000.0, 0.0005, 0.010),
+    ("NIFTYPHARMA", "NIFTY Pharma", 23000.0, 0.0004, 0.009),
+    ("NIFTYFMCG", "NIFTY FMCG", 60000.0, 0.0003, 0.008),
+    ("NIFTYMETAL", "NIFTY Metal", 9800.0, 0.0008, 0.012),
+    ("NIFTYENERGY", "NIFTY Energy", 40000.0, 0.0005, 0.010),
+    ("NIFTYREALTY", "NIFTY Realty", 1250.0, 0.0010, 0.014),
 ]
 
 PERIOD_DAYS = {"1W": 7, "1M": 30, "3M": 90, "6M": 180, "YTD": None, "1Y": 260}
