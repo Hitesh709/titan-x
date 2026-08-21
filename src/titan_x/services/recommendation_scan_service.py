@@ -343,9 +343,16 @@ class RecommendationScanService:
                     except Exception as exc:  # noqa: BLE001
                         failed += 1
                         logger.warning("scan_symbol_failed", symbol=symbol, error=str(exc))
+
+                # Persist this chunk immediately - create_recommendation only
+                # flushes, and without an explicit commit everything would be
+                # rolled back when the scan session closes.
+                await self.session.commit()
         except Exception as exc:  # noqa: BLE001
             scan_error = exc
             logger.exception("scan_loop_failed", error=str(exc))
+            # Keep whatever chunks already committed; discard the partial one.
+            await self.session.rollback()
         finally:
             await stooq.close()
             await yahoo.close()
