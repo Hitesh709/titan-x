@@ -131,11 +131,20 @@ async def trigger_scan(
         await run_background_scan(session_factory, max_age_minutes=max_age_minutes, limit=limit)
 
     if sync:
+        was_running = get_scan_status().get("running", False)
         try:
             await _run()
         except Exception:  # noqa: BLE001
             # The error is already recorded in _scan_state["last_error"].
             pass
+        # If another scan was already running, ours returned immediately
+        # without results - wait for that one to finish instead.
+        import asyncio as _asyncio
+
+        for _ in range(150):
+            if not get_scan_status().get("running", False):
+                break
+            await _asyncio.sleep(1)
         status = get_scan_status()
         # Ensure we always return a proper response structure with all required fields
         last = status.get("last")

@@ -222,17 +222,20 @@ class RecommendationScanService:
             # ALWAYS populate from curated list FIRST (guaranteed to work)
             logger.info("companies_table_empty_populating_from_curated")
             now = datetime.now(timezone.utc)
+            import hashlib
+
             for entry in COMPANIES:
                 symbol, name, sector, industry, exchange, *_ = entry
                 if exchange == "NSE" and symbol:
                     self.session.add(Company(
                         symbol=symbol,
                         company_name=name,
+                        isin=("IN" + hashlib.md5(symbol.encode()).hexdigest()[:10].upper()),
                         sector=sector,
                         exchange="NSE",
                         status="active",
-                        created_at=datetime.now(timezone.utc),
-                        updated_at=datetime.now(timezone.utc),
+                        created_at=now,
+                        updated_at=now,
                     ))
             await self.session.commit()
             logger.info("curated_universe_populated", count=len(COMPANIES))
