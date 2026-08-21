@@ -207,46 +207,51 @@ class RecommendationScanService:
         chunk_size: int,
         limit: int | None,
     ) -> dict[str, Any]:
-        # Load universe from NSE if companies table is empty
+        # AGGRESSIVE universe loading: ensure companies table is populated
         from sqlalchemy import func
+        from titan_x.core.seed_demo import COMPANIES
+        from datetime import datetime, timezone
+        
+        # ALWAYS ensure companies table is populated - this is the critical fix
         active_count = await self.session.execute(
             select(func.count(Company.id)).where(Company.status == "active")
         )
         active_count = active_count.scalar() or 0
         
         if active_count == 0:
-            # Load universe from NSE
+            # ALWAYS populate from curated list FIRST (guaranteed to work)
+            logger.info("companies_table_empty_populating_from_curated")
+            now = datetime.now(timezone.utc)
+            for entry in COMPANIES:
+                symbol, name, sector, industry, exchange, *_ = entry
+                if exchange == "NSE" and symbol:
+                    self.session.add(Company(
+                        symbol=symbol,
+                        company_name=name,
+                        sector=sector,
+                        exchange="NSE",
+                        status="active",
+                        created_at=datetime.now(timezone.utc),
+                        updated_at=datetime.now(timezone.utc),
+                    ))
+            await self.session.commit()
+            logger.info("curated_universe_populated", count=len(COMPANIES))
+            
+            # Then try to enrich with NSE data in background (non-blocking)
             try:
                 from titan_x.services.nse_universe_service import NSEUniverseService
                 uni_svc = NSEUniverseService(self.session)
                 result = await uni_svc.load_universe()
                 await self.session.commit()
-                logger.info("universe_loaded", result=result)
+                logger.info("nse_universe_enriched", result=result)
             except Exception as exc:
-                logger.warning("universe_load_failed", error=str(exc))
-                # Force populate from curated list as last resort
-                from titan_x.core.seed_demo import COMPANIES
-                from datetime import datetime, timezone
-                now = datetime.now(timezone.utc)
-                for entry in COMPANIES:
-                    symbol, name, sector, industry, exchange, *_ = entry
-                    if exchange == "NSE" and symbol:
-                        self.session.add(Company(
-                            symbol=symbol,
-                            company_name=name,
-                            sector=sector,
-                            exchange="NSE",
-                            status="active",
-                            created_at=datetime.now(timezone.utc),
-                            updated_at=datetime.now(timezone.utc),
-                        ))
-                await self.session.commit()
+                logger.warning("nse_enrichment_failed", error=str(exc))
         
-        # Get active symbols from DB
+        # Get active symbols from DB (now guaranteed to have data)
         all_symbols = await self.get_active_symbols(limit=limit)
         used_fallback = False
         if not all_symbols:
-            # Fallback to curated list if universe still empty
+            # This should NEVER happen now, but safety net
             all_symbols = list(FALLBACK_NSE_SYMBOLS)
             used_fallback = True
         

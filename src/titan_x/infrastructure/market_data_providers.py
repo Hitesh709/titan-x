@@ -367,6 +367,12 @@ class StooqProvider(MarketDataProvider):
         synthetic_ok: bool = False,
     ) -> list[MarketDataPoint]:
         params: dict[str, str] = {"s": self._normalize_symbol(symbol), "i": "d"}
+        # Add date params if provided
+        if start is not None:
+            params["d1"] = start.strftime("%Y%m%d")
+        if end is not None:
+            params["d2"] = end.strftime("%Y%m%d")
+        
         # Stooq 404s requests without a browser User-Agent, so send one and
         # retry on the .pl mirror if the .com host fails.
         last_exc: Exception | None = None
@@ -384,6 +390,11 @@ class StooqProvider(MarketDataProvider):
         else:
             assert last_exc is not None
             raise last_exc
+        
+        # Check if response is HTML (error page) instead of CSV
+        if text.strip().startswith("<") or "error" in text.lower()[:100]:
+            raise ValueError(f"Stooq returned error page for {symbol}")
+        
         lines = text.splitlines()
         if len(lines) < 2:
             raise ValueError(f"No data returned for {symbol}")

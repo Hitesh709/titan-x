@@ -71,7 +71,7 @@ export default function RecommendationsPage() {
           used_fallback_universe?: boolean
         }
         last_error?: string
-      }>("/recommendations/scan?sync=true&limit=30", {})
+      }>("/recommendations/scan?sync=true&limit=500", {})
       const last = res?.last
       if (last) {
         const universe = Number(last.universe ?? 0)
