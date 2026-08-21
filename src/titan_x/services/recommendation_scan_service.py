@@ -207,13 +207,31 @@ class RecommendationScanService:
         chunk_size: int,
         limit: int | None,
     ) -> dict[str, Any]:
-        # Scan a curated list of liquid NSE stocks. The persisted universe can
-        # contain invalid symbols (e.g. ingested garbage like '3BBLACKBIO')
-        # that Yahoo rejects with HTTP 400, which previously made every fetch
-        # fail and produced zero recommendations. The curated list is guaranteed
-        # to resolve on Yahoo and yield actionable signals.
-        all_symbols = list(FALLBACK_NSE_SYMBOLS)
-        used_fallback = True
+        # Load universe from NSE if companies table is empty
+        from sqlalchemy import func
+        active_count = await self.session.execute(
+            select(func.count(Company.id)).where(Company.status == "active")
+        )
+        active_count = active_count.scalar() or 0
+        
+        if active_count == 0:
+            # Load universe from NSE
+            try:
+                from titan_x.services.nse_universe_service import NSEUniverseService
+                uni_svc = NSEUniverseService(self.session)
+                await uni_svc.load_universe()
+                await self.session.commit()
+            except Exception as exc:
+                logger.warning("universe_load_failed", error=str(exc))
+        
+        # Get active symbols from DB
+        all_symbols = await self.get_active_symbols(limit=limit)
+        used_fallback = False
+        if not all_symbols:
+            # Fallback to curated list if universe still empty
+            all_symbols = list(FALLBACK_NSE_SYMBOLS)
+            used_fallback = True
+        
         sector_ctx = await self._build_sector_context()
         breadth_ctx = await self._build_breadth_context()
 
