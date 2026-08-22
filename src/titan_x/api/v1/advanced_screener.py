@@ -163,8 +163,8 @@ async def backtest_screened_symbol(
 
     try:
         filters = json.loads(screen.filters_json)
-    except (json.JSONDecodeError, TypeError):
-        raise HTTPException(status_code=400, detail="Saved screen contains invalid filter JSON")
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail="Saved screen contains invalid filter JSON") from exc
 
     # Re-run the saved screen before creating the backtest. This prevents a
     # caller from backtesting a symbol that is no longer in the screen result.
