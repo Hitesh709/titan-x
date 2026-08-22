@@ -1,11 +1,29 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { Target, Filter, Search, Save, TrendingUp, TrendingDown, Settings, Play, Trash2, RefreshCw, ChevronDown } from "lucide-react"
+import { Filter, Save, Search, Target, Trash2 } from "lucide-react"
 import Link from "next/link"
 import api from "@/lib/api"
-import { useLiveRefresh } from "@/lib/live"
-import { formatCurrency, formatPercent, getChangeColor } from "@/lib/utils"
+import { formatCurrency, getChangeColor } from "@/lib/utils"
+
+type Range = { min?: number; max?: number }
+
+type ScreenerFilters = {
+  sector?: string
+  exchange?: string
+  market_cap?: Range
+  technical?: {
+    rsi?: Range
+    macd?: "bullish" | "bearish"
+    sma_cross?: { fast: number; slow: number; type: "golden" | "death" }
+    volume_ratio?: number
+  }
+  fundamental?: {
+    pe_ratio?: Range
+    roe?: Range
+  }
+  as_of_date?: string
+}
 
 interface ScreenerResult {
   symbol: string
@@ -35,7 +53,7 @@ interface RunResult {
   skip: number
   limit: number
   results: ScreenerResult[]
-  filters_applied: string[][]
+  filters_applied: unknown[]
 }
 
 interface PaginatedResponse<T> {
@@ -45,84 +63,85 @@ interface PaginatedResponse<T> {
   limit: number
 }
 
+const today = new Date().toISOString().slice(0, 10)
+
 export default function ScreenerPage() {
   const [savedScreens, setSavedScreens] = useState<SavedScreen[]>([])
-  const [runResults, setRunResults] = useState<ScreenerResult[]>([])
-  const [loading, setLoading] = useState(true)
-  const [running, setRunning] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [totalResults, setTotalResults] = useState(0)
+  const [results, setResults] = useState<ScreenerResult[]>([])
+  const [total, setTotal] = useState(0)
   const [skip, setSkip] = useState(0)
-  const limit = 50
-
+  const [loading, setLoading] = useState(false)
+  const [loadingScreens, setLoadingScreens] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [selectedScreen, setSelectedScreen] = useState<SavedScreen | null>(null)
+  const [filters, setFilters] = useState<ScreenerFilters>({ as_of_date: today })
   const [showCreate, setShowCreate] = useState(false)
   const [creating, setCreating] = useState(false)
-  const [createForm, setCreateForm] = useState({ name: "", description: "", filters_json: "{}" })
-  const [currentFilters, setCurrentFilters] = useState({})
-
+  const [createForm, setCreateForm] = useState({ name: "", description: "" })
+  const limit = 50
   const mounted = useRef(true)
 
   const loadScreens = useCallback(async () => {
+    setLoadingScreens(true)
     try {
       const res = await api.get<PaginatedResponse<SavedScreen>>("/screener/screens?limit=100")
-      if (!mounted.current) return
-      setSavedScreens(res.items ?? [])
+      if (mounted.current) setSavedScreens(res.items ?? [])
     } catch (e) {
-      if (!mounted.current) return
-      console.error("Failed to load saved screens:", e)
+      if (mounted.current) setError(e instanceof Error ? e.message : "Failed to load saved screens")
+    } finally {
+      if (mounted.current) setLoadingScreens(false)
     }
   }, [])
 
-  const runScreen = useCallback(async (filters: Record<string, unknown>, screenId?: number) => {
-    setRunning(true)
+  const runScreen = useCallback(async (nextFilters: ScreenerFilters, nextSkip = 0) => {
+    setLoading(true)
     setError(null)
     try {
-      const endpoint = screenId ? `/screener/screens/${screenId}/run?limit=${limit}` : `/screener/run?limit=${limit}`
-      const res = await api.post<RunResult>(endpoint, filters)
+      const params = new URLSearchParams({ limit: String(limit), skip: String(nextSkip) })
+      if (nextFilters.as_of_date) params.set("as_of_date", nextFilters.as_of_date)
+      const body = { ...nextFilters }
+      delete body.as_of_date
+      const res = await api.post<RunResult>(`/screener/run?${params.toString()}`, body)
       if (!mounted.current) return
-      setRunResults(res.results ?? [])
-      setTotalResults(res.total ?? 0)
-      setSkip(0)
-      setCurrentFilters(filters)
-      if (screenId) {
-        void loadScreens()
-      }
+      setResults(nextSkip === 0 ? (res.results ?? []) : [...results, ...(res.results ?? [])])
+      setTotal(res.total ?? 0)
+      setSkip(nextSkip)
+      setFilters(nextFilters)
+      setSelectedScreen(null)
     } catch (e) {
-      if (!mounted.current) return
-      setError(e instanceof Error ? e.message : "Screen failed")
+      if (mounted.current) setError(e instanceof Error ? e.message : "Screen failed")
     } finally {
-      if (mounted.current) setRunning(false)
+      if (mounted.current) setLoading(false)
     }
-  }, [])
+  }, [results])
 
-  const handleAdhocRun = (filters: Record<string, unknown>) => {
-    runScreen(filters)
-    setSelectedScreen(null)
-  }
-
-  const handleSavedRun = (screen: SavedScreen) => {
+  const runSavedScreen = async (screen: SavedScreen) => {
     try {
-      const filters = JSON.parse(screen.filters_json)
-      runScreen(filters, screen.id)
+      const saved = JSON.parse(screen.filters_json) as ScreenerFilters
       setSelectedScreen(screen)
+      await runScreen(saved)
     } catch {
       setError("Invalid filters in saved screen")
     }
   }
 
-  const handleCreateScreen = async (e: React.FormEvent) => {
+  const updateTechnical = (patch: ScreenerFilters["technical"]) => {
+    setFilters(prev => ({ ...prev, technical: { ...prev.technical, ...patch } }))
+  }
+
+  const saveCurrentScreen = async (e: React.FormEvent) => {
     e.preventDefault()
     setCreating(true)
+    setError(null)
     try {
       await api.post("/screener/screens", {
         name: createForm.name,
-        description: createForm.description,
-        filters_json: createForm.filters_json,
+        description: createForm.description || null,
+        filters_json: JSON.stringify(filters),
       })
       setShowCreate(false)
-      setCreateForm({ name: "", description: "", filters_json: "{}" })
-      void loadScreens()
+      setCreateForm({ name: "", description: "" })
+      await loadScreens()
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save screen")
     } finally {
@@ -130,11 +149,12 @@ export default function ScreenerPage() {
     }
   }
 
-  const handleDeleteScreen = async (id: number) => {
+  const deleteScreen = async (id: number) => {
     if (!confirm("Delete this saved screen?")) return
     try {
       await api.delete(`/screener/screens/${id}`)
-      void loadScreens()
+      await loadScreens()
+      if (selectedScreen?.id === id) setSelectedScreen(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to delete screen")
     }
@@ -142,175 +162,129 @@ export default function ScreenerPage() {
 
   useEffect(() => {
     mounted.current = true
-    loadScreens()
+    void loadScreens()
     return () => { mounted.current = false }
   }, [loadScreens])
 
-  useLiveRefresh(() => { if (selectedScreen) handleSavedRun(selectedScreen) }, [selectedScreen])
-
-  const formatDate = (s: string | null) => s ? new Date(s).toLocaleString() : "—"
-  const formatMarketCap = (v: number | null) => v ? formatCurrency(v).replace("₹", "") : "—"
+  const marketCap = filters.market_cap ?? {}
+  const rsi = filters.technical?.rsi ?? {}
+  const cross = filters.technical?.sma_cross
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">Stock Screener</h1>
-          <p className="text-gray-500 text-sm mt-1">Screen thousands of stocks using custom criteria</p>
+          <p className="text-gray-500 text-sm mt-1">Build reproducible stock screens and test them historically</p>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setShowCreate(true)} className="btn-primary text-sm">
-            <Save size={14} /> Save Screen
+        <button onClick={() => setShowCreate(true)} className="btn-primary text-sm">
+          <Save size={14} /> Save Screen
+        </button>
+      </div>
+
+      {error && <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-sm text-red-300">{error}</div>}
+
+      <div className="glass-card p-5">
+        <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2"><Filter size={16} className="text-titan-400" /> Screen Builder</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <label className="text-xs text-gray-400">Exchange
+            <select value={filters.exchange ?? ""} onChange={e => setFilters(p => ({ ...p, exchange: e.target.value || undefined }))} className="mt-1 w-full bg-titan-800 border border-white/10 rounded-lg px-3 py-2 text-white">
+              <option value="">All</option><option value="NSE">NSE</option><option value="BSE">BSE</option>
+            </select>
+          </label>
+          <label className="text-xs text-gray-400">Sector
+            <select value={filters.sector ?? ""} onChange={e => setFilters(p => ({ ...p, sector: e.target.value || undefined }))} className="mt-1 w-full bg-titan-800 border border-white/10 rounded-lg px-3 py-2 text-white">
+              <option value="">All sectors</option><option value="Technology">Technology</option><option value="Financial Services">Financial Services</option><option value="Energy">Energy</option><option value="Healthcare">Healthcare</option><option value="Industrials">Industrials</option><option value="Consumer Cyclical">Consumer Cyclical</option>
+            </select>
+          </label>
+          <label className="text-xs text-gray-400">Market Cap Min (₹ Cr)
+            <input type="number" value={marketCap.min ?? ""} onChange={e => setFilters(p => ({ ...p, market_cap: { ...p.market_cap, min: e.target.value ? Number(e.target.value) : undefined } }))} className="mt-1 w-full bg-titan-800 border border-white/10 rounded-lg px-3 py-2 text-white" />
+          </label>
+          <label className="text-xs text-gray-400">Market Cap Max (₹ Cr)
+            <input type="number" value={marketCap.max ?? ""} onChange={e => setFilters(p => ({ ...p, market_cap: { ...p.market_cap, max: e.target.value ? Number(e.target.value) : undefined } }))} className="mt-1 w-full bg-titan-800 border border-white/10 rounded-lg px-3 py-2 text-white" />
+          </label>
+          <label className="text-xs text-gray-400">RSI Min
+            <input type="number" min="0" max="100" value={rsi.min ?? ""} onChange={e => updateTechnical({ rsi: { ...rsi, min: e.target.value ? Number(e.target.value) : undefined } })} className="mt-1 w-full bg-titan-800 border border-white/10 rounded-lg px-3 py-2 text-white" />
+          </label>
+          <label className="text-xs text-gray-400">RSI Max
+            <input type="number" min="0" max="100" value={rsi.max ?? ""} onChange={e => updateTechnical({ rsi: { ...rsi, max: e.target.value ? Number(e.target.value) : undefined } })} className="mt-1 w-full bg-titan-800 border border-white/10 rounded-lg px-3 py-2 text-white" />
+          </label>
+          <label className="text-xs text-gray-400">MACD
+            <select value={filters.technical?.macd ?? ""} onChange={e => updateTechnical({ macd: (e.target.value || undefined) as "bullish" | "bearish" | undefined })} className="mt-1 w-full bg-titan-800 border border-white/10 rounded-lg px-3 py-2 text-white">
+              <option value="">Any</option><option value="bullish">Bullish</option><option value="bearish">Bearish</option>
+            </select>
+          </label>
+          <label className="text-xs text-gray-400">Volume Ratio Min
+            <input type="number" min="0" step="0.1" value={filters.technical?.volume_ratio ?? ""} onChange={e => updateTechnical({ volume_ratio: e.target.value ? Number(e.target.value) : undefined })} className="mt-1 w-full bg-titan-800 border border-white/10 rounded-lg px-3 py-2 text-white" placeholder="1.5" />
+          </label>
+          <label className="text-xs text-gray-400">SMA Cross
+            <select value={cross?.type ?? ""} onChange={e => updateTechnical({ sma_cross: e.target.value ? { fast: cross?.fast ?? 20, slow: cross?.slow ?? 50, type: e.target.value as "golden" | "death" } : undefined })} className="mt-1 w-full bg-titan-800 border border-white/10 rounded-lg px-3 py-2 text-white">
+              <option value="">None</option><option value="golden">Golden Cross</option><option value="death">Death Cross</option>
+            </select>
+          </label>
+          <label className="text-xs text-gray-400">Fast SMA
+            <input type="number" min="1" value={cross?.fast ?? 20} disabled={!cross} onChange={e => cross && updateTechnical({ sma_cross: { ...cross, fast: Number(e.target.value) } })} className="mt-1 w-full bg-titan-800 border border-white/10 rounded-lg px-3 py-2 text-white disabled:opacity-40" />
+          </label>
+          <label className="text-xs text-gray-400">Slow SMA
+            <input type="number" min="2" value={cross?.slow ?? 50} disabled={!cross} onChange={e => cross && updateTechnical({ sma_cross: { ...cross, slow: Number(e.target.value) } })} className="mt-1 w-full bg-titan-800 border border-white/10 rounded-lg px-3 py-2 text-white disabled:opacity-40" />
+          </label>
+          <label className="text-xs text-gray-400">Historical As-Of Date
+            <input type="date" value={filters.as_of_date ?? today} onChange={e => setFilters(p => ({ ...p, as_of_date: e.target.value }))} className="mt-1 w-full bg-titan-800 border border-white/10 rounded-lg px-3 py-2 text-white" />
+          </label>
+        </div>
+        <div className="flex justify-end mt-5">
+          <button onClick={() => void runScreen(filters)} disabled={loading} className="btn-primary text-sm">
+            <Search size={14} /> {loading ? "Screening..." : "Run Screener"}
           </button>
         </div>
       </div>
 
-      {error && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-sm text-red-300 flex items-center justify-between">
-          <span>{error}</span>
-          <button onClick={() => setError(null)} className="text-red-500 hover:text-red-300">×</button>
-        </div>
-      )}
-
-      {/* Saved Screeners */}
       <div className="glass-card p-5">
-        <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-          <Target size={16} className="text-titan-400" /> Saved Screens
-        </h3>
-        {savedScreens.length === 0 ? (
-          <p className="text-gray-500 text-center py-8">No saved screens yet. Create one to save your filters.</p>
-        ) : (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {savedScreens.map((s) => (
-              <div key={s.id} className="glass-card p-4 hover:border-titan-600/40 cursor-pointer transition-all"
-                onClick={() => handleSavedRun(s)}>
-                <div className="flex items-start justify-between mb-2">
-                  <h3 className="text-sm font-medium text-white">{s.name}</h3>
-                  <span className="text-xs text-gray-500">{s.last_results_count ?? 0} results</span>
-                </div>
-                <p className="text-xs text-gray-500 line-clamp-2">{s.description || "No description"}</p>
-                <div className="text-[10px] text-gray-600 mt-2">Last run: {formatDate(s.last_run_at)}</div>
+        <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2"><Target size={16} className="text-titan-400" /> Saved Screens</h3>
+        {loadingScreens ? <p className="text-gray-500">Loading...</p> : savedScreens.length === 0 ? <p className="text-gray-500">No saved screens yet.</p> : (
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {savedScreens.map(screen => (
+              <div key={screen.id} className={`glass-card p-4 ${selectedScreen?.id === screen.id ? "border-titan-500" : ""}`}>
+                <button className="text-left w-full" onClick={() => void runSavedScreen(screen)}>
+                  <div className="flex justify-between"><span className="text-white font-medium">{screen.name}</span><span className="text-xs text-gray-500">{screen.last_results_count ?? 0}</span></div>
+                  <p className="text-xs text-gray-500 mt-1">{screen.description || "No description"}</p>
+                </button>
+                <button onClick={() => void deleteScreen(screen.id)} className="mt-3 text-xs text-red-400 hover:text-red-300 flex items-center gap-1"><Trash2 size={12} /> Delete</button>
               </div>
             ))}
           </div>
         )}
       </div>
 
-      {/* Quick Filter Builder */}
-      <div className="glass-card p-5">
-        <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-          <Filter size={16} className="text-titan-400" /> Quick Filters
-        </h3>
-        <div className="flex flex-wrap gap-3">
-          {[
-            { key: "sector", label: "Sector", options: ["Technology", "Financial Services", "Energy", "Consumer Cyclical", "Healthcare", "Industrials"] },
-            { key: "market_cap_min", label: "Min Market Cap (Cr)", type: "number", placeholder: "1000" },
-            { key: "technical_rsi_min", label: "Min RSI (14)", type: "number", placeholder: "60" },
-            { key: "liquidity_volume_min", label: "Min Volume", type: "number", placeholder: "1000000" },
-          ].map((f) => (
-            <div key={f.key} className="flex items-center gap-2 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm">
-              {f.options ? (
-                <select
-                  value={(currentFilters as Record<string, unknown>)[f.key] as string || ""}
-                  onChange={e => setCurrentFilters(prev => ({ ...prev, [f.key]: e.target.value || undefined }))}
-                  className="flex-1 bg-titan-800 border border-white/10 rounded-lg px-2 py-1 text-white text-sm"
-                >
-                  <option value="">All {f.label}</option>
-                  {f.options.map(o => <option key={o} value={o}>{o}</option>)}
-                </select>
-              ) : (
-                <input
-                  type={f.type || "text"}
-                  placeholder={f.placeholder}
-                  value={((currentFilters as Record<string, unknown>)[f.key] as string) || ""}
-                  onChange={e => setCurrentFilters(prev => ({ ...prev, [f.key]: e.target.value || undefined }))}
-                  className="flex-1 bg-titan-800 border border-white/10 rounded-lg px-2 py-1 text-white text-sm placeholder-gray-500"
-                />
-              )}
-            </div>
-          ))}
-          <button onClick={() => handleAdhocRun(currentFilters)} disabled={running} className="btn-primary text-sm">
-            <Search size={14} /> {running ? "Screening..." : "Run Screen"}
-          </button>
-        </div>
-      </div>
-
-      {/* Results */}
       <div className="glass-card overflow-hidden">
-        <div className="px-5 py-3 border-b border-titan-800/30 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-white">Results</h3>
-          <span className="text-xs text-gray-500">{runResults.length} of {totalResults} matches</span>
-        </div>
-        {loading && runResults.length === 0 ? (
-          <div className="p-8"><div className="space-y-3 animate-pulse">{[1,2,3,4].map(i => <div key={i} className="h-10 rounded-lg bg-white/5" />)}</div></div>
-        ) : runResults.length === 0 ? (
-          <div className="p-8 text-center text-gray-500">Run a screen to see results</div>
-        ) : (
+        <div className="px-5 py-3 border-b border-titan-800/30 flex items-center justify-between"><h3 className="text-sm font-semibold text-white">Results</h3><span className="text-xs text-gray-500">{results.length} of {total} matches</span></div>
+        {results.length === 0 && !loading ? <div className="p-10 text-center text-gray-500">Set your filters and run the screener.</div> : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-titan-800/30">
-                  <th className="text-left py-3 px-4 text-gray-500 font-medium text-xs uppercase">Symbol</th>
-                  <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs uppercase">Price</th>
-                  <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs uppercase">1M Change</th>
-                  <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs uppercase">Volume</th>
-                  <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs uppercase">Sector</th>
-                  <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs uppercase">Market Cap (Cr)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {runResults.map((s) => (
-                  <tr key={s.symbol} className="border-b border-titan-800/20 hover:bg-white/5">
-                    <td className="py-3 px-4">
-                      <Link href={`/dashboard/stocks/${s.symbol}`} className="text-white font-medium hover:text-titan-400">{s.symbol}</Link>
-                      <div className="text-[10px] text-gray-500">{s.company_name}</div>
-                    </td>
-                    <td className="py-3 px-4 text-right text-white">{s.close ? formatCurrency(s.close).replace("₹", "") : "—"}</td>
-                    <td className={`py-3 px-4 text-right font-medium ${getChangeColor(s.change_1m_pct ?? 0)}`}>
-                      {s.change_1m_pct !== null ? (s.change_1m_pct >= 0 ? "+" : "") + s.change_1m_pct.toFixed(2) + "%" : "—"}
-                    </td>
-                    <td className="py-3 px-4 text-right text-gray-400">{s.volume ? s.volume.toLocaleString() : "—"}</td>
-                    <td className="py-3 px-4 text-right text-gray-400">{s.sector || "—"}</td>
-                    <td className="py-3 px-4 text-right text-gray-400">{formatMarketCap(s.market_cap)}</td>
-                  </tr>
-                ))}
-              </tbody>
+              <thead><tr className="border-b border-titan-800/30">{["Symbol", "Price", "1M Change", "Volume", "Sector", "Market Cap (Cr)"].map(h => <th key={h} className="text-right first:text-left py-3 px-4 text-gray-500 font-medium text-xs uppercase">{h}</th>)}</tr></thead>
+              <tbody>{results.map(stock => <tr key={stock.symbol} className="border-b border-titan-800/20 hover:bg-white/5">
+                <td className="py-3 px-4"><Link href={`/dashboard/stocks/${stock.symbol}`} className="text-white font-medium hover:text-titan-400">{stock.symbol}</Link><div className="text-[10px] text-gray-500">{stock.company_name}</div></td>
+                <td className="py-3 px-4 text-right text-white">{stock.close != null ? formatCurrency(stock.close) : "—"}</td>
+                <td className={`py-3 px-4 text-right font-medium ${getChangeColor(stock.change_1m_pct ?? 0)}`}>{stock.change_1m_pct != null ? `${stock.change_1m_pct >= 0 ? "+" : ""}${stock.change_1m_pct.toFixed(2)}%` : "—"}</td>
+                <td className="py-3 px-4 text-right text-gray-400">{stock.volume?.toLocaleString() ?? "—"}</td>
+                <td className="py-3 px-4 text-right text-gray-400">{stock.sector || "—"}</td>
+                <td className="py-3 px-4 text-right text-gray-400">{stock.market_cap != null ? stock.market_cap.toLocaleString() : "—"}</td>
+              </tr>)}</tbody>
             </table>
           </div>
         )}
-        {totalResults > skip + runResults.length && (
-          <div className="p-4 border-t border-titan-800/30 text-center">
-            <button onClick={() => setSkip(s => s + limit)} disabled={loading} className="btn-secondary text-sm">Load more</button>
-          </div>
-        )}
+        {total > results.length && <div className="p-4 border-t border-titan-800/30 text-center"><button onClick={() => void runScreen(filters, results.length)} disabled={loading} className="btn-secondary text-sm">{loading ? "Loading..." : "Load more"}</button></div>}
       </div>
 
-      {/* Create Screen Modal */}
-      {showCreate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-titan-900 rounded-xl p-6 w-full max-w-md max-h-[80vh] overflow-y-auto">
-            <h2 className="text-xl font-bold text-white mb-4">Save Screen</h2>
-            <form onSubmit={handleCreateScreen} className="space-y-4">
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">Name</label>
-                <input value={createForm.name} onChange={e => setCreateForm({...createForm, name: e.target.value})} required className="w-full bg-titan-800 border border-white/10 rounded-lg px-3 py-2 text-white placeholder-gray-500" placeholder="My Screen" />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">Description</label>
-                <textarea value={createForm.description} onChange={e => setCreateForm({...createForm, description: e.target.value})} rows={2} className="w-full bg-titan-800 border border-white/10 rounded-lg px-3 py-2 text-white placeholder-gray-500" placeholder="Optional description" />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">Filters (JSON)</label>
-                <textarea value={createForm.filters_json} onChange={e => setCreateForm({...createForm, filters_json: e.target.value})} rows={6} className="w-full bg-titan-800 border border-white/10 rounded-lg px-3 py-2 text-white font-mono text-sm placeholder-gray-500" placeholder='{"sector": "Technology", "market_cap_min": 1000}' />
-              </div>
-              <div className="flex gap-2 pt-2">
-                <button type="button" onClick={() => setShowCreate(false)} className="btn-ghost flex-1">Cancel</button>
-                <button type="submit" disabled={creating} className="btn-primary flex-1">{creating ? "Saving..." : "Save Screen"}</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {showCreate && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"><div className="bg-titan-900 rounded-xl p-6 w-full max-w-md">
+        <h2 className="text-xl font-bold text-white mb-4">Save Current Screen</h2>
+        <form onSubmit={saveCurrentScreen} className="space-y-4">
+          <input required value={createForm.name} onChange={e => setCreateForm(p => ({ ...p, name: e.target.value }))} placeholder="Screen name" className="w-full bg-titan-800 border border-white/10 rounded-lg px-3 py-2 text-white" />
+          <textarea value={createForm.description} onChange={e => setCreateForm(p => ({ ...p, description: e.target.value }))} placeholder="Description" rows={3} className="w-full bg-titan-800 border border-white/10 rounded-lg px-3 py-2 text-white" />
+          <div className="text-xs text-gray-500 font-mono break-all">{JSON.stringify(filters)}</div>
+          <div className="flex gap-2"><button type="button" onClick={() => setShowCreate(false)} className="btn-ghost flex-1">Cancel</button><button type="submit" disabled={creating} className="btn-primary flex-1">{creating ? "Saving..." : "Save"}</button></div>
+        </form>
+      </div></div>}
     </div>
   )
 }
