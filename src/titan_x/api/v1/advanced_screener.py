@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from titan_x.api import deps
 from titan_x.api.schemas import PaginatedResponse
 from titan_x.models.user import User
-from titan_x.services.advanced_screener_service_v2 import ProductionScreenerService
+from titan_x.services.advanced_screener_service import AdvancedScreenerService
 
 router = APIRouter(prefix="/screener", tags=["screener"])
 
@@ -25,17 +25,6 @@ class SavedScreenUpdate(BaseModel):
     filters_json: str | None = None
 
 
-class SavedScreenResponse(BaseModel):
-    id: int
-    name: str
-    description: str | None
-    filters_json: str
-    last_run_at: str | None
-    last_results_count: int | None
-    created_at: str
-    updated_at: str
-
-
 @router.post("/run")
 async def run_adhoc_screen(
     filters: dict,
@@ -45,7 +34,7 @@ async def run_adhoc_screen(
     session: AsyncSession = Depends(deps.get_session),
     current_user: User = Depends(deps.get_current_active_user),
 ):
-    service = ProductionScreenerService(session)
+    service = AdvancedScreenerService(session)
     return await service.run_screen(
         filters, current_user.id, skip=skip, limit=limit, as_of_date=as_of_date
     )
@@ -57,9 +46,8 @@ async def create_saved_screen(
     session: AsyncSession = Depends(deps.get_session),
     current_user: User = Depends(deps.get_current_active_user),
 ):
-    service = ProductionScreenerService(session)
-    screen = await service.save_screen(current_user.id, body.name, body.filters_json, body.description)
-    return screen
+    service = AdvancedScreenerService(session)
+    return await service.save_screen(current_user.id, body.name, body.filters_json, body.description)
 
 
 @router.get("/screens")
@@ -69,7 +57,7 @@ async def list_saved_screens(
     session: AsyncSession = Depends(deps.get_session),
     current_user: User = Depends(deps.get_current_active_user),
 ):
-    service = ProductionScreenerService(session)
+    service = AdvancedScreenerService(session)
     screens, total = await service.list_screens(current_user.id, skip, limit)
     return PaginatedResponse(items=screens, total=total, skip=skip, limit=limit)
 
@@ -80,7 +68,7 @@ async def get_saved_screen(
     session: AsyncSession = Depends(deps.get_session),
     current_user: User = Depends(deps.get_current_active_user),
 ):
-    service = ProductionScreenerService(session)
+    service = AdvancedScreenerService(session)
     screen = await service.get_screen(screen_id, current_user.id)
     if screen is None:
         raise HTTPException(status_code=404, detail="Saved screen not found")
@@ -94,7 +82,7 @@ async def update_saved_screen(
     session: AsyncSession = Depends(deps.get_session),
     current_user: User = Depends(deps.get_current_active_user),
 ):
-    service = ProductionScreenerService(session)
+    service = AdvancedScreenerService(session)
     screen = await service.update_screen(
         screen_id, current_user.id,
         name=body.name, description=body.description, filters_json=body.filters_json,
@@ -110,7 +98,7 @@ async def delete_saved_screen(
     session: AsyncSession = Depends(deps.get_session),
     current_user: User = Depends(deps.get_current_active_user),
 ):
-    service = ProductionScreenerService(session)
+    service = AdvancedScreenerService(session)
     deleted = await service.delete_screen(screen_id, current_user.id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Saved screen not found")
@@ -125,7 +113,7 @@ async def run_saved_screen(
     session: AsyncSession = Depends(deps.get_session),
     current_user: User = Depends(deps.get_current_active_user),
 ):
-    service = ProductionScreenerService(session)
+    service = AdvancedScreenerService(session)
     if as_of_date is None:
         result = await service.run_saved_screen(screen_id, current_user.id, skip, limit)
     else:
