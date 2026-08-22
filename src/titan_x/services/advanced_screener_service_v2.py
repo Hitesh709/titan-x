@@ -88,10 +88,14 @@ class ProductionScreenerService(AdvancedScreenerService):
             if len(fast_values) < 2 or len(slow_values) < 2:
                 continue
 
-            latest_fast = fast_values[0][1]
-            previous_fast = fast_values[1][1]
-            latest_slow = slow_values[0][1]
-            previous_slow = slow_values[1][1]
+            latest_fast_date, latest_fast = fast_values[0]
+            previous_fast_date, previous_fast = fast_values[1]
+            latest_slow_date, latest_slow = slow_values[0]
+            previous_slow_date, previous_slow = slow_values[1]
+
+            # A crossover must compare the two SMAs on the same trading dates.
+            if latest_fast_date != latest_slow_date or previous_fast_date != previous_slow_date:
+                continue
 
             if cross_type == "golden":
                 crossed = previous_fast <= previous_slow and latest_fast > latest_slow
