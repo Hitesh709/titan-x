@@ -1,10 +1,13 @@
+from datetime import date
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from titan_x.api import deps
-from titan_x.models.user import User
 from titan_x.api.schemas import PaginatedResponse
+from titan_x.models.user import User
 from titan_x.services.advanced_screener_service_v2 import ProductionScreenerService
 
 router = APIRouter(prefix="/screener", tags=["screener"])
@@ -38,11 +41,14 @@ async def run_adhoc_screen(
     filters: dict,
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
+    as_of_date: date | None = Query(None, description="Evaluate historical data as of this date"),
     session: AsyncSession = Depends(deps.get_session),
     current_user: User = Depends(deps.get_current_active_user),
 ):
     service = ProductionScreenerService(session)
-    return await service.run_screen(filters, current_user.id, skip=skip, limit=limit)
+    return await service.run_screen(
+        filters, current_user.id, skip=skip, limit=limit, as_of_date=as_of_date
+    )
 
 
 @router.post("/screens", status_code=status.HTTP_201_CREATED)
@@ -115,11 +121,21 @@ async def run_saved_screen(
     screen_id: int,
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
+    as_of_date: date | None = Query(None, description="Evaluate historical data as of this date"),
     session: AsyncSession = Depends(deps.get_session),
     current_user: User = Depends(deps.get_current_active_user),
 ):
     service = ProductionScreenerService(session)
-    result = await service.run_saved_screen(screen_id, current_user.id, skip, limit)
+    if as_of_date is None:
+        result = await service.run_saved_screen(screen_id, current_user.id, skip, limit)
+    else:
+        screen = await service.get_screen(screen_id, current_user.id)
+        if screen is None:
+            raise HTTPException(status_code=404, detail="Saved screen not found")
+        filters = json.loads(screen.filters_json)
+        result = await service.run_screen(
+            filters, current_user.id, screen_id, skip, limit, as_of_date=as_of_date
+        )
     if result is None:
         raise HTTPException(status_code=404, detail="Saved screen not found")
     return result
