@@ -16,6 +16,7 @@ from titan_x.db.repository import BaseRepository
 from titan_x.models.backtest import Backtest, BacktestEquityPoint, BacktestReport, BacktestSignal, BacktestTrade
 from titan_x.models.user import User
 from titan_x.services.backtest_engine import BacktestEngine
+from titan_x.services.drawdown_analyzer import DrawdownAnalyzer
 
 backtest_router = APIRouter(
     prefix="/backtests",
@@ -159,7 +160,13 @@ async def get_backtest_report(
     result = await engine.get_backtest_with_report(backtest_id)
     if result is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Backtest not found")
-    return result.get("report", {})
+    report = result.get("report", {})
+    curve = await engine.get_equity_curve(backtest_id)
+    drawdown = DrawdownAnalyzer().analyze([
+        {"date": point.date, "equity": point.equity}
+        for point in curve
+    ])
+    return {**report, "drawdown_analysis": drawdown}
 
 
 @backtest_router.get("/{backtest_id}/trades")
