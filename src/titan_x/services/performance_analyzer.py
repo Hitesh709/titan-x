@@ -72,6 +72,7 @@ class PerformanceAnalyzer:
         max_drawdown = 0.0
         max_drawdown_pct = 0.0
         drawdowns: list[float] = []
+        drawdowns_pct: list[float] = []
 
         for point in equity_curve:
             eq = point["equity"]
@@ -79,15 +80,17 @@ class PerformanceAnalyzer:
                 peak = eq
             dd = peak - eq
             dd_pct = ((peak - eq) / peak * 100) if peak > 0 else 0.0
-            drawdowns.append(dd_pct)
+            drawdowns.append(dd)
+            drawdowns_pct.append(dd_pct)
             if dd > max_drawdown:
                 max_drawdown = dd
             if dd_pct > max_drawdown_pct:
                 max_drawdown_pct = dd_pct
 
         positive_drawdowns = [d for d in drawdowns if d > 0]
+        positive_drawdowns_pct = [d for d in drawdowns_pct if d > 0]
         avg_drawdown = sum(positive_drawdowns) / len(positive_drawdowns) if positive_drawdowns else 0.0
-        avg_drawdown_pct = avg_drawdown
+        avg_drawdown_pct = sum(positive_drawdowns_pct) / len(positive_drawdowns_pct) if positive_drawdowns_pct else 0.0
 
         return {
             "max_drawdown": max_drawdown,
