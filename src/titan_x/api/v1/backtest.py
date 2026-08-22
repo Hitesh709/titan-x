@@ -27,9 +27,12 @@ def _loads_json(value: str | None) -> Any:
     if value is None:
         return {}
     try:
-        return json.loads(value)
+        parsed = json.loads(value)
     except (json.JSONDecodeError, ValueError):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON in request")
+    if not isinstance(parsed, dict):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="JSON parameters must be an object")
+    return parsed
 
 
 async def get_backtest_engine(
@@ -63,8 +66,17 @@ async def create_backtest(
     config: str | None = Query(None),
     description: str | None = Query(None, max_length=1000),
 ) -> dict:
-    strategy_params_dict = _loads_json(strategy_params) if strategy_params else {}
-    config_dict = _loads_json(config) if config else {}
+    symbol = symbol.strip().upper()
+    name = name.strip()
+    if not symbol:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Symbol is required")
+    if not name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Name is required")
+    if start_date >= end_date:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="start_date must be before end_date")
+
+    strategy_params_dict = _loads_json(strategy_params)
+    config_dict = _loads_json(config)
     result = await engine.create_backtest(
         user_id=current_user.id,
         name=name,
