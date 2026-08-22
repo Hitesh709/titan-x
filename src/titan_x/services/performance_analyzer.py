@@ -37,15 +37,11 @@ class PerformanceAnalyzer:
         total_pnl_pct = sum(t.get("pnl_pct", 0.0) for t in closed)
         gross_profit = sum(t["pnl"] for t in winners) if winners else 0.0
         gross_loss = abs(sum(t["pnl"] for t in losers)) if losers else 0.0
-
         profit_factor = gross_profit / gross_loss if gross_loss > 0 else None
-
         avg_win = sum(t["pnl"] for t in winners) / winning_trades if winning_trades else None
         avg_loss = sum(t["pnl"] for t in losers) / losing_trades if losing_trades else None
-
         holding_days_list = [t["holding_days"] for t in closed if t.get("holding_days") is not None]
         avg_holding_days = sum(holding_days_list) / len(holding_days_list) if holding_days_list else None
-
         best_trade = max(closed, key=lambda t: t["pnl"])
         worst_trade = min(closed, key=lambda t: t["pnl"])
 
@@ -102,53 +98,38 @@ class PerformanceAnalyzer:
     def calculate_daily_returns(self, equity_curve: Sequence[dict[str, Any]]) -> list[float]:
         if len(equity_curve) < 2:
             return []
-
         returns: list[float] = []
         for i in range(1, len(equity_curve)):
             prev_eq = equity_curve[i - 1]["equity"]
             curr_eq = equity_curve[i]["equity"]
             if prev_eq > 0:
-                r = (curr_eq - prev_eq) / prev_eq
-                returns.append(r)
-
+                returns.append((curr_eq - prev_eq) / prev_eq)
         return returns
 
     def calculate_sharpe(self, daily_returns: list[float], risk_free_rate: float = 0.02) -> float | None:
         if len(daily_returns) < 2:
             return None
-
         mean_return = sum(daily_returns) / len(daily_returns)
         variance = sum((r - mean_return) ** 2 for r in daily_returns) / (len(daily_returns) - 1)
         std_dev = math.sqrt(variance) if variance > 0 else 0.0
-
         if std_dev == 0:
             return None
-
         daily_rf = (1 + risk_free_rate) ** (1 / 252) - 1
-        excess_returns = mean_return - daily_rf
-        annualized = (excess_returns / std_dev) * math.sqrt(252)
-        return annualized
+        return ((mean_return - daily_rf) / std_dev) * math.sqrt(252)
 
     def calculate_sortino(self, daily_returns: list[float], risk_free_rate: float = 0.02) -> float | None:
         if len(daily_returns) < 2:
             return None
-
         mean_return = sum(daily_returns) / len(daily_returns)
-
         downside_returns = [r for r in daily_returns if r < 0]
         if not downside_returns:
             return None
-
         downside_var = sum(r ** 2 for r in downside_returns) / len(daily_returns)
         downside_std = math.sqrt(downside_var) if downside_var > 0 else 0.0
-
         if downside_std == 0:
             return None
-
         daily_rf = (1 + risk_free_rate) ** (1 / 252) - 1
-        excess_returns = mean_return - daily_rf
-        annualized = (excess_returns / downside_std) * math.sqrt(252)
-        return annualized
+        return ((mean_return - daily_rf) / downside_std) * math.sqrt(252)
 
     def calculate_calmar(self, annualized_return_pct: float | None, max_drawdown_pct: float) -> float | None:
         if max_drawdown_pct == 0 or annualized_return_pct is None:
@@ -168,8 +149,7 @@ class PerformanceAnalyzer:
         years = days / 365.25
         if years <= 0:
             return None
-        annualized = (total_return ** (1 / years) - 1) * 100
-        return annualized
+        return (total_return ** (1 / years) - 1) * 100
 
     def generate_equity_curve(
         self, price_dates: Sequence[date],
@@ -177,70 +157,87 @@ class PerformanceAnalyzer:
         trades: Sequence[dict[str, Any]],
         initial_capital: float,
     ) -> list[dict[str, Any]]:
+        """Build a mark-to-market equity curve from executed trades.
+
+        Trade entry/exit prices are authoritative for cash movements. The supplied
+        close prices are used only to mark an open position to market. This keeps
+        the equity curve consistent with the actual execution model and avoids
+        silently replacing execution prices with daily closes.
+        """
+        if initial_capital <= 0 or not price_dates:
+            return []
+        if len(price_dates) != len(price_close):
+            raise ValueError("price_dates and price_close must have the same length")
+
+        price_by_date = {d: float(p) for d, p in zip(price_dates, price_close)}
+        ordered_dates = list(price_dates)
+
+        valid_trades = [
+            t for t in trades
+            if t.get("entry_date") is not None and t.get("quantity") is not None
+        ]
+        valid_trades.sort(key=lambda t: (t["entry_date"], t.get("exit_date") or date.max))
+
+        entries_by_date: dict[date, list[dict[str, Any]]] = {}
+        exits_by_date: dict[date, list[dict[str, Any]]] = {}
+        for trade in valid_trades:
+            entries_by_date.setdefault(trade["entry_date"], []).append(trade)
+            if trade.get("exit_date") is not None:
+                exits_by_date.setdefault(trade["exit_date"], []).append(trade)
+
+        cash = float(initial_capital)
+        position: dict[str, Any] | None = None
         curve: list[dict[str, Any]] = []
-        cash = initial_capital
-        position: dict[str, Any] = {"active": False, "quantity": 0.0, "entry_price": 0.0}
 
-        price_by_date: dict[date, float] = {}
-        for d, p in zip(price_dates, price_close):
-            price_by_date[d] = p
+        for current_date in ordered_dates:
+            close_price = price_by_date[current_date]
 
-        trade_entries = {(t["entry_date"], t["symbol"]): t for t in trades if t.get("entry_date")}
-        trade_exits = {(t.get("exit_date"), t["symbol"]): t for t in trades if t.get("exit_date")}
+            # Exits are processed before new entries on the same date.
+            if position is not None:
+                trade = position["trade"]
+                if trade.get("exit_date") == current_date:
+                    quantity = float(position["quantity"])
+                    exit_price = float(trade.get("exit_price") or close_price)
+                    exit_commission = float(trade.get("exit_commission", trade.get("commission_exit", 0.0)) or 0.0)
+                    cash += quantity * exit_price - exit_commission
+                    position = None
 
-        running_trades: list[dict[str, Any]] = []
+            if position is None:
+                for trade in entries_by_date.get(current_date, []):
+                    quantity = float(trade["quantity"])
+                    entry_price = float(trade.get("entry_price") or close_price)
+                    entry_commission = float(trade.get("entry_commission", trade.get("commission_entry", 0.0)) or 0.0)
+                    required_cash = quantity * entry_price + entry_commission
+                    if quantity <= 0 or required_cash > cash:
+                        continue
+                    cash -= required_cash
+                    position = {
+                        "trade": trade,
+                        "quantity": quantity,
+                        "entry_price": entry_price,
+                    }
+                    break
 
-        for i, d in enumerate(price_dates):
-            if d in price_by_date:
-                price = price_by_date[d]
+            holdings_value = 0.0
+            if position is not None:
+                holdings_value = float(position["quantity"]) * close_price
 
-                entry_key = (d, "")
-                for t in trade_entries:
-                    if t[0] == d:
-                        entry_key = t
-                        break
+            equity = cash + holdings_value
+            previous_equity = curve[-1]["equity"] if curve else initial_capital
+            returns_pct = ((equity - previous_equity) / previous_equity * 100) if previous_equity > 0 else 0.0
 
-                if entry_key in trade_entries and not position["active"]:
-                    t = trade_entries[entry_key]
-                    pos_quantity = t["quantity"]
-                    cost = pos_quantity * price
-                    if cost <= cash:
-                        cash -= cost
-                        position = {"active": True, "quantity": pos_quantity, "entry_price": price}
-                        running_trades.append(position)
+            curve.append({
+                "date": current_date,
+                "equity": equity,
+                "cash": cash,
+                "holdings_value": holdings_value,
+                "returns_pct": returns_pct,
+                "drawdown_pct": 0.0,
+            })
 
-                holdings_value = position["quantity"] * price if position["active"] else 0.0
-                equity = cash + holdings_value
-
-                exit_key = (d, "")
-                for t in trade_exits:
-                    if t[0] == d:
-                        exit_key = t
-                        break
-
-                if exit_key in trade_exits and position["active"]:
-                    t = trade_exits[exit_key]
-                    cash += t.get("exit_price", price) * position["quantity"]
-                    position = {"active": False, "quantity": 0.0, "entry_price": 0.0}
-                    holdings_value = 0.0
-                    equity = cash
-
-                prev_eq = curve[-1]["equity"] if curve else initial_capital
-                ret_pct = ((equity - prev_eq) / prev_eq * 100) if prev_eq > 0 else 0.0
-
-                curve.append({
-                    "date": d,
-                    "equity": equity,
-                    "cash": cash,
-                    "holdings_value": holdings_value,
-                    "returns_pct": ret_pct,
-                    "drawdown_pct": None,
-                })
-
-        peak = initial_capital
+        peak = float(initial_capital)
         for point in curve:
-            if point["equity"] > peak:
-                peak = point["equity"]
+            peak = max(peak, point["equity"])
             point["drawdown_pct"] = ((peak - point["equity"]) / peak * 100) if peak > 0 else 0.0
 
         return curve
@@ -261,7 +258,6 @@ class PerformanceAnalyzer:
         sortino = self.calculate_sortino(daily_returns)
         annualized_return = self.calculate_annualized_return(starting_equity, ending_equity, start_date, end_date)
         calmar = self.calculate_calmar(annualized_return, dd["max_drawdown_pct"])
-
         total_commission = sum(t.get("commission", 0.0) for t in trades)
         total_slippage = sum(t.get("slippage", 0.0) for t in trades)
 
