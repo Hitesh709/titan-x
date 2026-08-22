@@ -9,6 +9,7 @@ from titan_x.api import deps
 from titan_x.api.schemas import PaginatedResponse
 from titan_x.models.user import User
 from titan_x.services.advanced_screener_service import AdvancedScreenerService
+from titan_x.services.backtest_engine import BacktestEngine
 
 router = APIRouter(prefix="/screener", tags=["screener"])
 
@@ -23,6 +24,18 @@ class SavedScreenUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
     filters_json: str | None = None
+
+
+class ScreenerBacktestCreate(BaseModel):
+    screen_id: int
+    symbol: str
+    start_date: date
+    end_date: date
+    initial_capital: float = 10000.0
+    strategy_type: str = "sma_crossover"
+    strategy_params: dict = {}
+    config: dict = {}
+    description: str | None = None
 
 
 @router.post("/run")
@@ -127,3 +140,69 @@ async def run_saved_screen(
     if result is None:
         raise HTTPException(status_code=404, detail="Saved screen not found")
     return result
+
+
+@router.post("/screens/{screen_id}/backtest", status_code=status.HTTP_201_CREATED)
+async def backtest_screened_symbol(
+    screen_id: int,
+    body: ScreenerBacktestCreate,
+    session: AsyncSession = Depends(deps.get_session),
+    current_user: User = Depends(deps.get_current_active_user),
+):
+    if body.screen_id != screen_id:
+        raise HTTPException(status_code=400, detail="screen_id in path and body must match")
+    if body.start_date > body.end_date:
+        raise HTTPException(status_code=400, detail="start_date must be on or before end_date")
+    if body.initial_capital <= 0:
+        raise HTTPException(status_code=400, detail="initial_capital must be greater than zero")
+
+    screener = AdvancedScreenerService(session)
+    screen = await screener.get_screen(screen_id, current_user.id)
+    if screen is None:
+        raise HTTPException(status_code=404, detail="Saved screen not found")
+
+    try:
+        filters = json.loads(screen.filters_json)
+    except (json.JSONDecodeError, TypeError):
+        raise HTTPException(status_code=400, detail="Saved screen contains invalid filter JSON")
+
+    # Re-run the saved screen before creating the backtest. This prevents a
+    # caller from backtesting a symbol that is no longer in the screen result.
+    screen_result = await screener.run_screen(
+        filters, current_user.id, screen_id=screen_id, skip=0, limit=5000
+    )
+    symbol = body.symbol.strip().upper()
+    screened_symbols = {
+        str(result.get("symbol", "")).upper() for result in screen_result.get("results", [])
+    }
+    if symbol not in screened_symbols:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Symbol {symbol} is not present in the current saved-screen result",
+        )
+
+    engine = BacktestEngine(session)
+    backtest = await engine.create_backtest(
+        user_id=current_user.id,
+        name=f"{screen.name} - {symbol}",
+        symbol=symbol,
+        start_date=body.start_date,
+        end_date=body.end_date,
+        initial_capital=body.initial_capital,
+        strategy_type=body.strategy_type,
+        strategy_params=body.strategy_params,
+        config=body.config,
+        description=body.description or f"Backtest launched from saved screen {screen_id}",
+    )
+
+    try:
+        result = await engine.run_backtest(backtest["id"])
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {
+        "screen_id": screen_id,
+        "symbol": symbol,
+        "backtest": backtest,
+        "result": result,
+    }
