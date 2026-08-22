@@ -2,7 +2,6 @@
 
 from datetime import date
 
-import pytest
 from sqlalchemy import select
 
 from titan_x.api import deps
@@ -11,7 +10,6 @@ from titan_x.models.price import DailyPrice
 from titan_x.models.user import User
 
 
-@pytest.mark.asyncio
 async def test_screener_run_uses_real_api_and_service(client, app):
     """Exercise HTTP -> FastAPI dependency -> AdvancedScreenerService -> DB."""
     session_factory = app.state.session_factory
