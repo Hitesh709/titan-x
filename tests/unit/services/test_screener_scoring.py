@@ -20,12 +20,12 @@ def test_titan_score_is_transparent_and_bounded():
     assert result["reasons"]
 
 
-def test_missing_evidence_is_reported_in_coverage():
+def test_missing_evidence_is_conservative():
     result = calculate_titan_score({"rsi": 55})
 
-    assert result["score"] == 100
+    assert result["score"] == 15
     assert result["coverage_pct"] == 15
-    assert result["maximum_points"] == 15
+    assert result["maximum_points"] == 100
 
 
 def test_weak_evidence_does_not_receive_full_points():
@@ -41,4 +41,4 @@ def test_weak_evidence_does_not_receive_full_points():
         "ai_score": 20,
     })
 
-    assert result["score"] < 30
+    assert result["score"] < 10
