@@ -1,4 +1,6 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api/v1"
+const DEFAULT_API_BASE = "https://titan-x-api.onrender.com/api/v1"
+const configuredApiBase = process.env.NEXT_PUBLIC_API_URL?.trim()
+const API_BASE = (configuredApiBase || DEFAULT_API_BASE).replace(/\/+$/, "")
 
 interface RequestOptions {
   method?: string
@@ -36,7 +38,8 @@ class ApiClient {
 
     if (token) h["Authorization"] = `Bearer ${token}`
 
-    const res = await fetch(`${API_BASE}${endpoint}`, {
+    const normalizedEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`
+    const res = await fetch(`${API_BASE}${normalizedEndpoint}`, {
       method,
       headers: h,
       body: body ? JSON.stringify(body) : undefined,
@@ -44,7 +47,11 @@ class ApiClient {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }))
-      throw new Error(err.detail || "API Error")
+      const detail =
+        typeof err?.detail === "string"
+          ? err.detail
+          : `API request failed (${res.status})`
+      throw new Error(detail || "API Error")
     }
 
     return res.json()
