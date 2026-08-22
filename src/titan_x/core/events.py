@@ -23,16 +23,13 @@ from titan_x.jobs import (
     prune_old_executions,
 )
 from titan_x.models import *  # noqa: F401, F403 - register all models
+from titan_x.models.loan_application import LoanApplication  # noqa: F401
 
 logger = structlog.get_logger(__name__)
 
 
 async def _sync_missing_columns(engine: AsyncEngine) -> None:
-    """Create_all only creates missing *tables*; it never adds columns to
-    pre-existing tables. Because the project relies on create_all against a
-    persistent DB, drift shows up as UndefinedColumn errors on deploy. This
-    idempotently adds any missing nullable columns to keep model/table in sync.
-    """
+    """Create_all only creates missing tables; add missing nullable columns idempotently."""
     from sqlalchemy import inspect as sa_inspect
 
     changed = 0
@@ -118,7 +115,6 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
             except Exception:  # noqa: BLE001
                 logger.exception("news_ingest_startup_failed")
 
-        # Do not block readiness on the NSE CSV fetch (can be slow from US DCs).
         asyncio.create_task(_universe_load_later())
     except Exception:  # noqa: BLE001
         logger.exception("nse_universe_startup_failed")
@@ -172,7 +168,6 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
         asyncio.create_task(scheduler.start())
         logger.info("scheduler_initialized")
 
-        # Run the task-queue consumer in-process (no separate paid worker needed).
         if settings.run_worker_in_process and app.state.task_queue is not None:
 
             async def _handle_task(task: dict) -> None:
