@@ -2,7 +2,7 @@ from datetime import date
 import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from titan_x.api import deps
@@ -33,8 +33,8 @@ class ScreenerBacktestCreate(BaseModel):
     end_date: date
     initial_capital: float = 10000.0
     strategy_type: str = "sma_crossover"
-    strategy_params: dict = {}
-    config: dict = {}
+    strategy_params: dict = Field(default_factory=dict)
+    config: dict = Field(default_factory=dict)
     description: str | None = None
 
 
