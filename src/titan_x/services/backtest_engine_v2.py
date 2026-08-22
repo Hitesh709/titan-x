@@ -1,10 +1,8 @@
-from collections.abc import Sequence
 from datetime import date
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from titan_x.models.backtest import Backtest
 from titan_x.services.backtest_engine import BacktestEngine
 
 
@@ -104,7 +102,6 @@ class ProductionBacktestEngine(BacktestEngine):
             low_price = float(bar["low"] or open_price)
             close_price = float(bar["close"])
 
-            # Risk exits happen before a new signal at the day's open.
             if position is not None:
                 entry = position["entry_price"]
                 stop_pct = position.get("stop_loss_pct")
@@ -112,9 +109,6 @@ class ProductionBacktestEngine(BacktestEngine):
                 stop_price = entry * (1 - abs(stop_pct) / 100) if stop_pct else None
                 target_price = entry * (1 + abs(target_pct) / 100) if target_pct else None
 
-                # Gap through a stop/target: execute at the open, otherwise at
-                # the threshold price. If both are touched in one bar, use the
-                # conservative stop-first assumption.
                 if stop_price is not None and (open_price <= stop_price or low_price <= stop_price):
                     raw_exit = open_price if open_price <= stop_price else stop_price
                     close_position(bar, raw_exit, "stop_loss")
@@ -122,8 +116,6 @@ class ProductionBacktestEngine(BacktestEngine):
                     raw_exit = open_price if open_price >= target_price else target_price
                     close_position(bar, raw_exit, "take_profit")
 
-            # Execute signals generated on the previous trading bar at today's
-            # open. SELL is processed before BUY when both are scheduled.
             day_signals = scheduled.get(i, [])
             if position is not None:
                 sell_signal = next(
@@ -131,16 +123,12 @@ class ProductionBacktestEngine(BacktestEngine):
                     None,
                 )
                 if sell_signal is not None:
-                    exit_price, _ = execute_price(open_price, "sell")
                     close_position(
                         bar,
                         open_price,
                         "signal",
                         sell_signal.get("signal_type"),
                     )
-                    # ``exit_price`` is calculated above only to make the
-                    # execution model explicit; close_position applies it.
-                    _ = exit_price
 
             if position is None:
                 buy_signal = next(
@@ -189,13 +177,16 @@ class ProductionBacktestEngine(BacktestEngine):
                 "drawdown_pct": None,
             })
 
-        # Close any remaining position at the last available close so the
-        # ending equity and report include the complete test period.
         if position is not None and prices:
             close_position(prices[-1], float(prices[-1]["close"]), "end_of_backtest")
             equity_curve[-1]["cash"] = cash
             equity_curve[-1]["holdings_value"] = 0.0
             equity_curve[-1]["equity"] = cash
+            previous_equity = equity_curve[-2]["equity"] if len(equity_curve) > 1 else initial_capital
+            equity_curve[-1]["returns_pct"] = (
+                (cash - previous_equity) / previous_equity * 100
+                if previous_equity > 0 else 0.0
+            )
 
         peak = float(initial_capital)
         for point in equity_curve:
@@ -205,6 +196,3 @@ class ProductionBacktestEngine(BacktestEngine):
             )
 
         return trades, equity_curve
-
-    async def run_backtest(self, backtest_id: int) -> dict[str, Any]:
-        return await super().run_backtest(backtest_id)
