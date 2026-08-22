@@ -3,7 +3,7 @@ from datetime import date
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from titan_x.api.dependencies import (
@@ -14,8 +14,10 @@ from titan_x.api.dependencies import (
 from titan_x.api.schemas import MessageResponse, PaginatedResponse
 from titan_x.db.repository import BaseRepository
 from titan_x.models.backtest import Backtest, BacktestEquityPoint, BacktestReport, BacktestSignal, BacktestTrade
+from titan_x.models.price import DailyPrice
 from titan_x.models.user import User
 from titan_x.services.backtest_engine import BacktestEngine
+from titan_x.services.benchmark_analyzer import BenchmarkAnalyzer
 from titan_x.services.drawdown_analyzer import DrawdownAnalyzer
 
 backtest_router = APIRouter(
@@ -156,17 +158,53 @@ async def get_backtest_report(
     engine: Annotated[BacktestEngine, Depends(get_backtest_engine)],
     current_user: Annotated[User, Depends(get_current_active_user)],
     _owner: None = Depends(_require_backtest_owner),
+    benchmark_symbol: str = Query("NIFTY50", min_length=1, max_length=32),
 ) -> dict:
     result = await engine.get_backtest_with_report(backtest_id)
     if result is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Backtest not found")
-    report = result.get("report", {})
+    report = dict(result.get("report", {}))
     curve = await engine.get_equity_curve(backtest_id)
-    drawdown = DrawdownAnalyzer().analyze([
-        {"date": point.date, "equity": point.equity}
-        for point in curve
-    ])
-    return {**report, "drawdown_analysis": drawdown}
+    drawdown = DrawdownAnalyzer().analyze([{"date": p.date, "equity": p.equity} for p in curve])
+
+    benchmark_symbol = benchmark_symbol.strip().upper()
+    backtest = result.get("backtest")
+    benchmark_result: dict[str, Any] = {
+        "symbol": benchmark_symbol,
+        "available": False,
+        "strategy_return_pct": None,
+        "benchmark_return_pct": None,
+        "alpha_pct": None,
+        "benchmark_start": None,
+        "benchmark_end": None,
+        "error": None,
+    }
+    if backtest is not None and curve:
+        rows = await engine._session.execute(
+            select(DailyPrice.trade_date, DailyPrice.close)
+            .where(
+                DailyPrice.symbol == benchmark_symbol,
+                DailyPrice.trade_date >= backtest.start_date,
+                DailyPrice.trade_date <= backtest.end_date,
+            )
+            .order_by(DailyPrice.trade_date)
+        )
+        benchmark_rows = rows.all()
+        if benchmark_rows:
+            comparison = BenchmarkAnalyzer().compare(
+                [{"date": p.date, "equity": p.equity} for p in curve],
+                [row.trade_date for row in benchmark_rows],
+                [row.close for row in benchmark_rows],
+                float(backtest.initial_capital),
+            )
+            benchmark_result.update(comparison)
+            benchmark_result["available"] = True
+        else:
+            benchmark_result["error"] = f"No benchmark data available for {benchmark_symbol} in the backtest period"
+    elif not curve:
+        benchmark_result["error"] = "Equity curve is not available"
+
+    return {**report, "drawdown_analysis": drawdown, "benchmark_comparison": benchmark_result}
 
 
 @backtest_router.get("/{backtest_id}/trades")
@@ -178,22 +216,12 @@ async def get_backtest_trades(
 ) -> list[dict]:
     trades = await engine.get_trades(backtest_id)
     return [{
-        "id": t.id,
-        "trade_number": t.trade_number,
-        "symbol": t.symbol,
-        "side": t.side,
-        "status": t.status,
-        "entry_date": t.entry_date.isoformat() if t.entry_date else None,
-        "entry_price": t.entry_price,
-        "entry_signal": t.entry_signal,
-        "exit_date": t.exit_date.isoformat() if t.exit_date else None,
-        "exit_price": t.exit_price,
-        "exit_reason": t.exit_reason,
-        "exit_signal": t.exit_signal,
-        "quantity": t.quantity,
-        "pnl": t.pnl,
-        "pnl_pct": t.pnl_pct,
-        "holding_days": t.holding_days,
+        "id": t.id, "trade_number": t.trade_number, "symbol": t.symbol, "side": t.side,
+        "status": t.status, "entry_date": t.entry_date.isoformat() if t.entry_date else None,
+        "entry_price": t.entry_price, "entry_signal": t.entry_signal,
+        "exit_date": t.exit_date.isoformat() if t.exit_date else None, "exit_price": t.exit_price,
+        "exit_reason": t.exit_reason, "exit_signal": t.exit_signal, "quantity": t.quantity,
+        "pnl": t.pnl, "pnl_pct": t.pnl_pct, "holding_days": t.holding_days,
     } for t in trades]
 
 
@@ -206,12 +234,8 @@ async def get_backtest_equity_curve(
 ) -> list[dict]:
     curve = await engine.get_equity_curve(backtest_id)
     return [{
-        "date": p.date.isoformat() if p.date else None,
-        "equity": p.equity,
-        "cash": p.cash,
-        "holdings_value": p.holdings_value,
-        "returns_pct": p.returns_pct,
-        "drawdown_pct": p.drawdown_pct,
+        "date": p.date.isoformat() if p.date else None, "equity": p.equity, "cash": p.cash,
+        "holdings_value": p.holdings_value, "returns_pct": p.returns_pct, "drawdown_pct": p.drawdown_pct,
     } for p in curve]
 
 
@@ -224,15 +248,9 @@ async def get_backtest_signals(
 ) -> list[dict]:
     signals = await engine.get_signals(backtest_id)
     return [{
-        "id": s.id,
-        "signal_date": s.signal_date.isoformat() if s.signal_date else None,
-        "symbol": s.symbol,
-        "action": s.action,
-        "price": s.price,
-        "confidence": s.confidence,
-        "signal_type": s.signal_type,
-        "source": s.source,
-        "metadata_json": s.metadata_json,
+        "id": s.id, "signal_date": s.signal_date.isoformat() if s.signal_date else None,
+        "symbol": s.symbol, "action": s.action, "price": s.price, "confidence": s.confidence,
+        "signal_type": s.signal_type, "source": s.source, "metadata_json": s.metadata_json,
     } for s in signals]
 
 
