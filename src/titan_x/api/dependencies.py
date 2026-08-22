@@ -123,12 +123,12 @@ async def get_current_user(
             settings.jwt_secret_key.get_secret_value(),
             settings.jwt_algorithm,
         )
-    except ValueError:
+    except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
             headers={"WWW-Authenticate": "Bearer"},
-        )
+        ) from exc
 
     if payload.get("type") not in ("access",):
         raise HTTPException(
