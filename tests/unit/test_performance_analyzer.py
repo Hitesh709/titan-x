@@ -80,6 +80,29 @@ def test_equity_curve_uses_execution_prices_and_costs():
     assert curve[2]["returns_pct"] == pytest.approx((1095.0 - 1048.0) / 1048.0 * 100)
 
 
+def test_equity_curve_marks_open_position_to_market_at_end():
+    analyzer = PerformanceAnalyzer()
+    curve = analyzer.generate_equity_curve(
+        [date(2026, 1, 1), date(2026, 1, 2), date(2026, 1, 3)],
+        [100.0, 110.0, 120.0],
+        [
+            {
+                "symbol": "TEST",
+                "entry_date": date(2026, 1, 1),
+                "quantity": 5,
+                "entry_price": 100.0,
+                "entry_commission": 2.0,
+            }
+        ],
+        1000.0,
+    )
+
+    assert curve[-1]["cash"] == 498.0
+    assert curve[-1]["holdings_value"] == 600.0
+    assert curve[-1]["equity"] == 1098.0
+    assert curve[-1]["drawdown_pct"] == 0.0
+
+
 def test_equity_curve_does_not_execute_trade_when_cash_is_insufficient():
     analyzer = PerformanceAnalyzer()
     curve = analyzer.generate_equity_curve(
