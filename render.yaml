@@ -1,16 +1,9 @@
 # TITAN X — Render Blueprint
 # Deploys the full stack: Next.js frontend, FastAPI backend (Docker),
-# managed PostgreSQL, managed Redis, and a background worker.
-#
-# Setup:
-#   1. In Render, create a new Blueprint and point it at this repo.
-#   2. On first deploy, Render generates API_KEY / JWT_SECRET_KEY (or prompts).
-#   3. The frontend (titan-x) proxies /api/v1/* to titan-x-api via next.config.js.
+# managed PostgreSQL, managed Redis, and the API service.
 
 services:
   # ---------- Frontend (Next.js) ----------
-  # Named "titan-x" so its onrender subdomain is titan-x.onrender.com, which
-  # matches next.config.js (rewrite target) and NEXT_PUBLIC_API_URL.
   - type: web
     name: titan-x
     plan: free
@@ -22,9 +15,10 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      # Relative base -> same-origin; next.config.js rewrites /api/v1/* to the API service.
+      # Use the API service directly. This avoids relying on a same-origin
+      # Next.js rewrite for authentication and API requests in production.
       - key: NEXT_PUBLIC_API_URL
-        value: https://titan-x.onrender.com/api/v1
+        value: https://titan-x-api.onrender.com/api/v1
 
   # ---------- Backend API (FastAPI, Docker) ----------
   - type: web
@@ -40,22 +34,16 @@ services:
         value: "false"
       - key: UVICORN_WORKERS
         value: "1"
-      # Keep pool within free-tier Postgres connection limits.
       - key: DB_POOL_SIZE
         value: "5"
       - key: DB_MAX_OVERFLOW
         value: "10"
       - key: CORS_ORIGINS
         value: https://titan-x.onrender.com
-      # Seed the demo NSE universe + synthetic price history on every start so
-      # symbol search and paper trades always have data (free-tier Postgres can
-      # reset between deploys, which otherwise leaves an empty companies table).
       - key: SEED_DEMO_ON_STARTUP
         value: "true"
       - key: PAPER_DEMO_PRICES
         value: "true"
-      # Render Postgres provides postgres://...; the entrypoint rewrites it to
-      # postgresql+asyncpg:// for SQLAlchemy's async engine.
       - key: DATABASE_URL
         fromDatabase:
           name: titan-x-db
@@ -65,12 +53,10 @@ services:
           type: redis
           name: titan-x-redis
           property: connectionString
-      # Secrets: generated once by Render (>=32 chars, satisfies validators).
       - key: API_KEY
         generateValue: true
       - key: JWT_SECRET_KEY
         generateValue: true
-      # Database backups: disabled until configured (S3-compatible: AWS S3 / R2).
       - key: BACKUP_ENABLED
         value: "false"
       - key: BACKUP_INTERVAL_HOURS
@@ -87,11 +73,6 @@ services:
         sync: false
       - key: BACKUP_S3_SECRET_KEY
         sync: false
-
-  # ---------- Background jobs ----------
-  # Render background workers are NOT free (they'd force a $7 Starter instance),
-  # so scheduled/background jobs are consumed IN-PROCESS by the API service
-  # (run_worker_in_process=true). The stack stays fully free; no worker service.
 
   # ---------- Redis (managed) ----------
   - type: redis
