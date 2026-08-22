@@ -14,7 +14,7 @@ from titan_x.api.schemas import MessageResponse, PaginatedResponse
 from titan_x.db.repository import BaseRepository
 from titan_x.models.backtest import Backtest
 from titan_x.models.user import User
-from titan_x.services.backtest_engine_v2 import ProductionBacktestEngine
+from titan_x.services.backtest_engine import BacktestEngine
 
 backtest_router = APIRouter(
     prefix="/backtests",
@@ -32,15 +32,15 @@ def _loads_json(value: str | None) -> Any:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON in request")
 
 
-async def get_production_backtest_engine(
+async def get_backtest_engine(
     session: Annotated[AsyncSession, Depends(request_session)],
-) -> ProductionBacktestEngine:
-    return ProductionBacktestEngine(session)
+) -> BacktestEngine:
+    return BacktestEngine(session)
 
 
 async def _require_backtest_owner(
     backtest_id: int,
-    engine: Annotated[ProductionBacktestEngine, Depends(get_production_backtest_engine)],
+    engine: Annotated[BacktestEngine, Depends(get_backtest_engine)],
     current_user: Annotated[User, Depends(get_current_active_user)],
 ) -> None:
     repo = BaseRepository(engine._session, Backtest)
@@ -51,7 +51,7 @@ async def _require_backtest_owner(
 
 @backtest_router.post("", status_code=status.HTTP_201_CREATED)
 async def create_backtest(
-    engine: Annotated[ProductionBacktestEngine, Depends(get_production_backtest_engine)],
+    engine: Annotated[BacktestEngine, Depends(get_backtest_engine)],
     current_user: Annotated[User, Depends(get_current_active_user)],
     name: str = Query(..., min_length=1, max_length=256),
     symbol: str = Query(..., min_length=1, max_length=16),
@@ -83,7 +83,7 @@ async def create_backtest(
 @backtest_router.post("/{backtest_id}/run")
 async def run_backtest(
     backtest_id: int,
-    engine: Annotated[ProductionBacktestEngine, Depends(get_production_backtest_engine)],
+    engine: Annotated[BacktestEngine, Depends(get_backtest_engine)],
     current_user: Annotated[User, Depends(get_current_active_user)],
     _owner: None = Depends(_require_backtest_owner),
 ) -> dict:
@@ -96,7 +96,7 @@ async def run_backtest(
 
 @backtest_router.get("")
 async def list_backtests(
-    engine: Annotated[ProductionBacktestEngine, Depends(get_production_backtest_engine)],
+    engine: Annotated[BacktestEngine, Depends(get_backtest_engine)],
     current_user: Annotated[User, Depends(get_current_active_user)],
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
@@ -116,7 +116,7 @@ async def list_backtests(
 @backtest_router.get("/{backtest_id}")
 async def get_backtest(
     backtest_id: int,
-    engine: Annotated[ProductionBacktestEngine, Depends(get_production_backtest_engine)],
+    engine: Annotated[BacktestEngine, Depends(get_backtest_engine)],
     current_user: Annotated[User, Depends(get_current_active_user)],
     _owner: None = Depends(_require_backtest_owner),
 ) -> dict:
@@ -129,7 +129,7 @@ async def get_backtest(
 @backtest_router.get("/{backtest_id}/report")
 async def get_backtest_report(
     backtest_id: int,
-    engine: Annotated[ProductionBacktestEngine, Depends(get_production_backtest_engine)],
+    engine: Annotated[BacktestEngine, Depends(get_backtest_engine)],
     current_user: Annotated[User, Depends(get_current_active_user)],
     _owner: None = Depends(_require_backtest_owner),
 ) -> dict:
@@ -142,7 +142,7 @@ async def get_backtest_report(
 @backtest_router.get("/{backtest_id}/trades")
 async def get_backtest_trades(
     backtest_id: int,
-    engine: Annotated[ProductionBacktestEngine, Depends(get_production_backtest_engine)],
+    engine: Annotated[BacktestEngine, Depends(get_backtest_engine)],
     current_user: Annotated[User, Depends(get_current_active_user)],
     _owner: None = Depends(_require_backtest_owner),
 ) -> list[dict]:
@@ -170,7 +170,7 @@ async def get_backtest_trades(
 @backtest_router.get("/{backtest_id}/equity-curve")
 async def get_backtest_equity_curve(
     backtest_id: int,
-    engine: Annotated[ProductionBacktestEngine, Depends(get_production_backtest_engine)],
+    engine: Annotated[BacktestEngine, Depends(get_backtest_engine)],
     current_user: Annotated[User, Depends(get_current_active_user)],
     _owner: None = Depends(_require_backtest_owner),
 ) -> list[dict]:
@@ -188,7 +188,7 @@ async def get_backtest_equity_curve(
 @backtest_router.get("/{backtest_id}/signals")
 async def get_backtest_signals(
     backtest_id: int,
-    engine: Annotated[ProductionBacktestEngine, Depends(get_production_backtest_engine)],
+    engine: Annotated[BacktestEngine, Depends(get_backtest_engine)],
     current_user: Annotated[User, Depends(get_current_active_user)],
     _owner: None = Depends(_require_backtest_owner),
 ) -> list[dict]:
@@ -209,7 +209,7 @@ async def get_backtest_signals(
 @backtest_router.delete("/{backtest_id}", response_model=MessageResponse)
 async def delete_backtest(
     backtest_id: int,
-    engine: Annotated[ProductionBacktestEngine, Depends(get_production_backtest_engine)],
+    engine: Annotated[BacktestEngine, Depends(get_backtest_engine)],
     current_user: Annotated[User, Depends(get_current_active_user)],
     _owner: None = Depends(_require_backtest_owner),
 ) -> MessageResponse:
