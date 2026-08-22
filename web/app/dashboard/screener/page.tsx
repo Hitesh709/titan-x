@@ -261,7 +261,7 @@ export default function ScreenerPage() {
         {results.length === 0 && !loading ? <div className="p-10 text-center text-gray-500">Set your filters and run the screener.</div> : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead><tr className="border-b border-titan-800/30">{["Symbol", "Price", "1M Change", "Volume", "Sector", "Market Cap (Cr)"].map(h => <th key={h} className="text-right first:text-left py-3 px-4 text-gray-500 font-medium text-xs uppercase">{h}</th>)}</tr></thead>
+              <thead><tr className="border-b border-titan-800/30">{["Symbol", "Price", "1M Change", "Volume", "Sector", "Market Cap (Cr)", "Action"].map(h => <th key={h} className="text-right first:text-left py-3 px-4 text-gray-500 font-medium text-xs uppercase">{h}</th>)}</tr></thead>
               <tbody>{results.map(stock => <tr key={stock.symbol} className="border-b border-titan-800/20 hover:bg-white/5">
                 <td className="py-3 px-4"><Link href={`/dashboard/stocks/${stock.symbol}`} className="text-white font-medium hover:text-titan-400">{stock.symbol}</Link><div className="text-[10px] text-gray-500">{stock.company_name}</div></td>
                 <td className="py-3 px-4 text-right text-white">{stock.close != null ? formatCurrency(stock.close) : "—"}</td>
@@ -269,6 +269,7 @@ export default function ScreenerPage() {
                 <td className="py-3 px-4 text-right text-gray-400">{stock.volume?.toLocaleString() ?? "—"}</td>
                 <td className="py-3 px-4 text-right text-gray-400">{stock.sector || "—"}</td>
                 <td className="py-3 px-4 text-right text-gray-400">{stock.market_cap != null ? stock.market_cap.toLocaleString() : "—"}</td>
+                <td className="py-3 px-4 text-right"><Link href={`/dashboard/backtest?symbol=${encodeURIComponent(stock.symbol)}`} className="btn-secondary text-xs inline-flex">Backtest</Link></td>
               </tr>)}</tbody>
             </table>
           </div>
