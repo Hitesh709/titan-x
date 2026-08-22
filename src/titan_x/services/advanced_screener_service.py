@@ -1,6 +1,6 @@
 import json
 from collections.abc import Sequence
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Any
 
 import structlog
@@ -118,8 +118,6 @@ class AdvancedScreenerService:
         as_of = tech.get("as_of_date") or date.today()
         sets: list[set[str]] = []
 
-        # Fetch the latest RSI observation per symbol in one query. The old
-        # implementation performed one additional query for every symbol.
         rsi = tech.get("rsi")
         if rsi:
             rows = await self._session.execute(
@@ -167,9 +165,6 @@ class AdvancedScreenerService:
             elif macd == "bearish":
                 sets.append({s for s, (value, signal) in latest_macd.items() if value < signal})
 
-        # A Golden/Death Cross is an EVENT, not simply the current ordering
-        # of two moving averages. We therefore need the latest two observations
-        # for both periods and require their dates to match.
         sma_cross = tech.get("sma_cross")
         if sma_cross:
             fast_sma = int(sma_cross.get("fast", 20))
@@ -265,10 +260,15 @@ class AdvancedScreenerService:
             metric_filters["QUALITY_SCORE"] = fund["quality_score"]
         metric_filters.update(fund.get("custom_metrics", {}))
 
+        as_of = fund.get("as_of_date")
         if not metric_filters:
-            rows = await self._session.execute(
-                select(FundamentalMetric.symbol).where(FundamentalMetric.period_type == "annual").limit(1)
-            )
+            stmt = select(FundamentalMetric.symbol).where(FundamentalMetric.period_type == "annual")
+            if as_of is not None:
+                stmt = stmt.where(
+                    FundamentalMetric.published_at.isnot(None),
+                    FundamentalMetric.published_at <= datetime.combine(as_of, time.max),
+                )
+            rows = await self._session.execute(stmt.limit(1))
             if rows.first():
                 return set(await self._get_all_active_symbols())
             return set()
@@ -278,18 +278,34 @@ class AdvancedScreenerService:
             constraint_min = constraint.get("min") if isinstance(constraint, dict) else None
             constraint_max = constraint.get("max") if isinstance(constraint, dict) else None
 
-            rows = await self._session.execute(
-                select(FundamentalMetric.symbol, FundamentalMetric.value)
-                .where(
-                    FundamentalMetric.metric_name == metric_name,
-                    FundamentalMetric.period_type == "annual",
-                    FundamentalMetric.value.isnot(None),
+            stmt = select(
+                FundamentalMetric.symbol,
+                FundamentalMetric.value,
+                FundamentalMetric.fiscal_year,
+                FundamentalMetric.fiscal_period,
+                FundamentalMetric.published_at,
+            ).where(
+                FundamentalMetric.metric_name == metric_name,
+                FundamentalMetric.period_type == "annual",
+                FundamentalMetric.value.isnot(None),
+            )
+            if as_of is not None:
+                stmt = stmt.where(
+                    FundamentalMetric.published_at.isnot(None),
+                    FundamentalMetric.published_at <= datetime.combine(as_of, time.max),
                 )
-                .order_by(FundamentalMetric.fiscal_year.desc())
+
+            rows = await self._session.execute(
+                stmt.order_by(
+                    FundamentalMetric.symbol,
+                    desc(FundamentalMetric.published_at),
+                    desc(FundamentalMetric.fiscal_year),
+                    desc(FundamentalMetric.fiscal_period),
+                )
             )
 
             latest_by_symbol: dict[str, float] = {}
-            for symbol, value in rows.all():
+            for symbol, value, _fy, _fp, _published_at in rows.all():
                 if symbol not in latest_by_symbol:
                     latest_by_symbol[symbol] = float(value)
 
@@ -445,6 +461,85 @@ class AdvancedScreenerService:
             if symbol not in prev_prices:
                 prev_prices[symbol] = close
 
+        # Collect the latest point-in-time technical evidence for the result.
+        technical_rows = await self._session.execute(
+            select(
+                TechnicalIndicator.symbol,
+                TechnicalIndicator.indicator,
+                TechnicalIndicator.period,
+                TechnicalIndicator.trade_date,
+                TechnicalIndicator.value,
+                TechnicalIndicator.value_secondary,
+            )
+            .where(
+                TechnicalIndicator.symbol.in_(symbols),
+                TechnicalIndicator.trade_date <= now,
+            )
+            .order_by(
+                TechnicalIndicator.symbol,
+                TechnicalIndicator.indicator,
+                TechnicalIndicator.period,
+                desc(TechnicalIndicator.trade_date),
+            )
+        )
+        technical: dict[str, dict[tuple[str, int | None], tuple[float | None, float | None]]] = {}
+        for symbol, indicator, period, _trade_date, value, secondary in technical_rows.all():
+            key = (indicator, int(period) if period is not None else None)
+            by_key = technical.setdefault(symbol, {})
+            if key not in by_key:
+                by_key[key] = (
+                    float(value) if value is not None else None,
+                    float(secondary) if secondary is not None else None,
+                )
+
+        # Point-in-time fundamental evidence. Rows without published_at are
+        # intentionally excluded for historical screens because their actual
+        # market availability cannot be established safely.
+        fundamental_rows = await self._session.execute(
+            select(
+                FundamentalMetric.symbol,
+                FundamentalMetric.metric_name,
+                FundamentalMetric.value,
+                FundamentalMetric.published_at,
+                FundamentalMetric.fiscal_year,
+                FundamentalMetric.fiscal_period,
+            )
+            .where(
+                FundamentalMetric.symbol.in_(symbols),
+                FundamentalMetric.period_type == "annual",
+                FundamentalMetric.value.isnot(None),
+                FundamentalMetric.published_at.isnot(None),
+                FundamentalMetric.published_at <= datetime.combine(now, time.max),
+            )
+            .order_by(
+                FundamentalMetric.symbol,
+                FundamentalMetric.metric_name,
+                desc(FundamentalMetric.published_at),
+                desc(FundamentalMetric.fiscal_year),
+                desc(FundamentalMetric.fiscal_period),
+            )
+        )
+        fundamentals: dict[str, dict[str, float]] = {}
+        fundamental_dates: dict[str, dict[str, datetime]] = {}
+        for symbol, metric_name, value, published_at, _fy, _fp in fundamental_rows.all():
+            by_metric = fundamentals.setdefault(symbol, {})
+            if metric_name not in by_metric:
+                by_metric[metric_name] = float(value)
+                fundamental_dates.setdefault(symbol, {})[metric_name] = published_at
+
+        ai_rows = await self._session.execute(
+            select(DynamicAIScore)
+            .where(
+                DynamicAIScore.symbol.in_(symbols),
+                DynamicAIScore.as_of_date <= now,
+            )
+            .order_by(DynamicAIScore.symbol, desc(DynamicAIScore.as_of_date))
+        )
+        ai_latest: dict[str, DynamicAIScore] = {}
+        for row in ai_rows.scalars().all():
+            if row.symbol not in ai_latest:
+                ai_latest[row.symbol] = row
+
         results = []
         for symbol in symbols:
             company = companies.get(symbol)
@@ -452,6 +547,57 @@ class AdvancedScreenerService:
             close = price.get("close")
             prev_close = prev_prices.get(symbol)
             change_pct = round((close - prev_close) / prev_close * 100, 2) if close and prev_close and prev_close > 0 else None
+
+            tech_values = technical.get(symbol, {})
+            rsi = tech_values.get(("rsi", None), (None, None))[0]
+            macd_value, macd_signal = tech_values.get(("macd", None), (None, None))
+            sma20 = tech_values.get(("sma", 20), (None, None))[0]
+            sma50 = tech_values.get(("sma", 50), (None, None))[0]
+            sma200 = tech_values.get(("sma", 200), (None, None))[0]
+
+            fund_values = fundamentals.get(symbol, {})
+            pe = fund_values.get("PE_RATIO")
+            roe = fund_values.get("ROE")
+            quality = fund_values.get("QUALITY_SCORE")
+            ai_row = ai_latest.get(symbol)
+            ai_score = float(ai_row.combined_score) if ai_row and ai_row.combined_score is not None else None
+
+            trend_points = 0.0
+            trend_reasons: list[str] = []
+            for value, label, points in ((sma20, "price/SMA20", 10), (sma50, "price/SMA50", 10), (sma200, "price/SMA200", 10)):
+                if close is not None and value is not None and close > value:
+                    trend_points += points
+                    trend_reasons.append(f"Price above {label}")
+
+            momentum_points = 0.0
+            momentum_reasons: list[str] = []
+            if rsi is not None:
+                momentum_points += 15 if 50 <= rsi <= 70 else 7 if 40 <= rsi < 50 or 70 < rsi <= 75 else 0
+                if 50 <= rsi <= 70:
+                    momentum_reasons.append(f"RSI {rsi:.1f} in bullish range")
+            if macd_value is not None and macd_signal is not None and macd_value > macd_signal:
+                momentum_points += 10
+                momentum_reasons.append("MACD bullish")
+
+            fundamental_points = 0.0
+            fundamental_reasons: list[str] = []
+            if roe is not None:
+                fundamental_points += 10 if roe >= 15 else 5 if roe >= 10 else 0
+                if roe >= 15:
+                    fundamental_reasons.append(f"ROE {roe:.1f}")
+            if pe is not None and pe > 0:
+                fundamental_points += 10 if pe <= 30 else 5 if pe <= 50 else 0
+                if pe <= 30:
+                    fundamental_reasons.append(f"PE {pe:.1f}")
+            elif quality is not None:
+                fundamental_points += max(0.0, min(20.0, quality / 5.0))
+
+            ai_points = max(0.0, min(10.0, ai_score / 10.0)) if ai_score is not None else 0.0
+            score = round(max(0.0, min(100.0, trend_points + momentum_points + fundamental_points + ai_points)), 2)
+            reasons = trend_reasons + momentum_reasons + fundamental_reasons
+            if ai_score is not None:
+                reasons.append(f"AI score {ai_score:.1f}")
+
             results.append({
                 "symbol": symbol,
                 "company_name": company.company_name if company else None,
@@ -463,6 +609,31 @@ class AdvancedScreenerService:
                 "volume": price.get("volume"),
                 "change_1m_pct": change_pct,
                 "as_of_date": price.get("trade_date"),
+                "technical": {
+                    "rsi": rsi,
+                    "macd": macd_value,
+                    "macd_signal": macd_signal,
+                    "sma20": sma20,
+                    "sma50": sma50,
+                    "sma200": sma200,
+                },
+                "fundamental": {
+                    "pe_ratio": pe,
+                    "roe": roe,
+                    "quality_score": quality,
+                    "published_at": {
+                        key: value.isoformat() for key, value in fundamental_dates.get(symbol, {}).items()
+                    },
+                },
+                "ai_score": ai_score,
+                "titan_x_score": score,
+                "score_breakdown": {
+                    "trend": round(trend_points, 2),
+                    "momentum": round(momentum_points, 2),
+                    "fundamental": round(fundamental_points, 2),
+                    "ai": round(ai_points, 2),
+                },
+                "why_passed": reasons,
             })
         return results
 
