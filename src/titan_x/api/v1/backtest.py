@@ -3,6 +3,7 @@ from datetime import date
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from titan_x.api.dependencies import (
@@ -12,7 +13,7 @@ from titan_x.api.dependencies import (
 )
 from titan_x.api.schemas import MessageResponse, PaginatedResponse
 from titan_x.db.repository import BaseRepository
-from titan_x.models.backtest import Backtest
+from titan_x.models.backtest import Backtest, BacktestEquityPoint, BacktestReport, BacktestSignal, BacktestTrade
 from titan_x.models.user import User
 from titan_x.services.backtest_engine import BacktestEngine
 
@@ -50,6 +51,15 @@ async def _require_backtest_owner(
     bt = await repo.get(backtest_id)
     if bt is None or bt.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Backtest not found")
+
+
+async def _clear_previous_results(session: AsyncSession, backtest_id: int) -> None:
+    """Make rerunning a backtest idempotent by removing generated results first."""
+    await session.execute(delete(BacktestSignal).where(BacktestSignal.backtest_id == backtest_id))
+    await session.execute(delete(BacktestTrade).where(BacktestTrade.backtest_id == backtest_id))
+    await session.execute(delete(BacktestEquityPoint).where(BacktestEquityPoint.backtest_id == backtest_id))
+    await session.execute(delete(BacktestReport).where(BacktestReport.backtest_id == backtest_id))
+    await session.flush()
 
 
 @backtest_router.post("", status_code=status.HTTP_201_CREATED)
@@ -100,6 +110,7 @@ async def run_backtest(
     _owner: None = Depends(_require_backtest_owner),
 ) -> dict:
     try:
+        await _clear_previous_results(engine._session, backtest_id)
         result = await engine.run_backtest(backtest_id)
         return result
     except ValueError as e:
