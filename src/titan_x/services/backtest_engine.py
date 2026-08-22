@@ -12,6 +12,7 @@ from sqlalchemy.orm import selectinload
 from titan_x.db.repository import BaseRepository
 from titan_x.models.backtest import Backtest, BacktestEquityPoint, BacktestReport, BacktestSignal, BacktestTrade
 from titan_x.models.price import DailyPrice
+from titan_x.services.historical_data_validator import HistoricalDataValidator
 from titan_x.services.performance_analyzer import PerformanceAnalyzer
 
 logger = structlog.get_logger(__name__)
@@ -75,8 +76,7 @@ class BacktestEngine:
             raise ValueError("execution_delay_bars must be at least 1 to prevent same-bar look-ahead")
 
         prices = await self._load_price_data(symbol, start, end)
-        if len(prices) < 30:
-            raise ValueError(f"Insufficient price data for {symbol}: {len(prices)} bars (minimum 30)")
+        HistoricalDataValidator.validate(prices, symbol, start, end, minimum_bars=30)
         indicators = self._compute_indicators(prices, backtest.strategy_type, strategy_params)
         signals = self._generate_signals(prices, indicators, backtest.strategy_type, strategy_params)
         trades, equity_curve = self._simulate_trades(
@@ -148,11 +148,8 @@ class BacktestEngine:
         signal_by_date: dict[date, list[dict[str, Any]]] = {}
         for s in signals: signal_by_date.setdefault(s["signal_date"], []).append(s)
         pending: dict[int, list[dict[str, Any]]] = {}
-
         for i, bar in enumerate(prices):
             d, open_price, price = bar["date"], bar["open"], bar["close"]
-            # Signals are created from the prior bar's completed information and are
-            # executed only after the configured delay, using the current open.
             executable = pending.pop(i, [])
             for s in executable:
                 action = s["action"]
@@ -160,13 +157,7 @@ class BacktestEngine:
                     exit_price = open_price * (1 - slippage_pct)
                     commission = exit_price * position["quantity"] * commission_pct
                     actual_pnl = (exit_price - position["entry_price"]) * position["quantity"] - commission - position.get("commission", 0)
-                    trades.append({"trade_number": trade_number, "symbol": position["symbol"], "side": "long", "status": "closed",
-                                   "entry_date": position["entry_date"], "entry_price": position["entry_price"], "entry_signal": position.get("entry_signal"),
-                                   "exit_date": d, "exit_price": exit_price, "exit_reason": s.get("signal_type", "signal"),
-                                   "exit_signal": s.get("signal_type", "signal"), "quantity": position["quantity"],
-                                   "commission": commission + position.get("commission", 0), "slippage": open_price * slippage_pct + position.get("slippage", 0),
-                                   "pnl": actual_pnl, "pnl_pct": ((exit_price - position["entry_price"]) / position["entry_price"]) * 100,
-                                   "holding_days": (d - position["entry_date"]).days})
+                    trades.append({"trade_number": trade_number, "symbol": position["symbol"], "side": "long", "status": "closed", "entry_date": position["entry_date"], "entry_price": position["entry_price"], "entry_signal": position.get("entry_signal"), "exit_date": d, "exit_price": exit_price, "exit_reason": s.get("signal_type", "signal"), "exit_signal": s.get("signal_type", "signal"), "quantity": position["quantity"], "commission": commission + position.get("commission", 0), "slippage": open_price * slippage_pct + position.get("slippage", 0), "pnl": actual_pnl, "pnl_pct": ((exit_price - position["entry_price"]) / position["entry_price"]) * 100, "holding_days": (d - position["entry_date"]).days})
                     trade_number += 1
                     cash += exit_price * position["quantity"] - commission
                     position = None
@@ -177,38 +168,23 @@ class BacktestEngine:
                     commission = entry_price * quantity * commission_pct
                     if quantity > 0 and position_value > 0 and entry_price * quantity + commission <= cash:
                         cash -= entry_price * quantity + commission
-                        position = {"symbol": s.get("symbol", ""), "entry_date": d, "entry_price": entry_price,
-                                    "quantity": quantity, "commission": commission, "slippage": open_price * slippage_pct,
-                                    "entry_signal": s.get("signal_type"), "stop_loss_pct": s.get("stop_loss_pct"),
-                                    "take_profit_pct": s.get("take_profit_pct")}
-
+                        position = {"symbol": s.get("symbol", ""), "entry_date": d, "entry_price": entry_price, "quantity": quantity, "commission": commission, "slippage": open_price * slippage_pct, "entry_signal": s.get("signal_type"), "stop_loss_pct": s.get("stop_loss_pct"), "take_profit_pct": s.get("take_profit_pct")}
             if position is not None:
-                pnl_pct = ((price - position["entry_price"]) / position["entry_price"]) * 100
                 triggered = False
                 if position.get("stop_loss_pct") is not None and ((bar["low"] - position["entry_price"]) / position["entry_price"]) * 100 <= -abs(position["stop_loss_pct"]): triggered = True
                 if position.get("take_profit_pct") is not None and ((bar["high"] - position["entry_price"]) / position["entry_price"]) * 100 >= abs(position["take_profit_pct"]): triggered = True
-                if triggered and i + execution_delay_bars < len(prices):
-                    pending.setdefault(i + execution_delay_bars, []).append({"action": "exit", "signal_type": "risk_exit"})
-
+                if triggered and i + execution_delay_bars < len(prices): pending.setdefault(i + execution_delay_bars, []).append({"action": "exit", "signal_type": "risk_exit"})
             for s in signal_by_date.get(d, []):
                 target = i + execution_delay_bars
                 if target < len(prices): pending.setdefault(target, []).append(s)
-
             holdings_value = position["quantity"] * price if position else 0.0
             equity = cash + holdings_value
             prev_eq = equity_curve[-1]["equity"] if equity_curve else initial_capital
-            equity_curve.append({"date": d, "equity": equity, "cash": cash, "holdings_value": holdings_value,
-                                 "returns_pct": ((equity - prev_eq) / prev_eq * 100) if prev_eq > 0 else 0.0, "drawdown_pct": None})
-
+            equity_curve.append({"date": d, "equity": equity, "cash": cash, "holdings_value": holdings_value, "returns_pct": ((equity - prev_eq) / prev_eq * 100) if prev_eq > 0 else 0.0, "drawdown_pct": None})
         if position is not None:
             last_price = prices[-1]["close"]
             pnl = (last_price - position["entry_price"]) * position["quantity"]
-            trades.append({"trade_number": trade_number, "symbol": position["symbol"], "side": "long", "status": "open",
-                           "entry_date": position["entry_date"], "entry_price": position["entry_price"], "entry_signal": position.get("entry_signal"),
-                           "exit_date": None, "exit_price": None, "exit_reason": "end_of_backtest", "exit_signal": None,
-                           "quantity": position["quantity"], "commission": position.get("commission", 0), "slippage": position.get("slippage", 0),
-                           "pnl": pnl, "pnl_pct": ((last_price - position["entry_price"]) / position["entry_price"]) * 100,
-                           "holding_days": (prices[-1]["date"] - position["entry_date"]).days})
+            trades.append({"trade_number": trade_number, "symbol": position["symbol"], "side": "long", "status": "open", "entry_date": position["entry_date"], "entry_price": position["entry_price"], "entry_signal": position.get("entry_signal"), "exit_date": None, "exit_price": None, "exit_reason": "end_of_backtest", "exit_signal": None, "quantity": position["quantity"], "commission": position.get("commission", 0), "slippage": position.get("slippage", 0), "pnl": pnl, "pnl_pct": ((last_price - position["entry_price"]) / position["entry_price"]) * 100, "holding_days": (prices[-1]["date"] - position["entry_date"]).days})
         peak = initial_capital
         for point in equity_curve:
             peak = max(peak, point["equity"])
