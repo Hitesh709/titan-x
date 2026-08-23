@@ -44,6 +44,7 @@ from titan_x.api.v1.institutional_analysis import inst_router
 from titan_x.api.v1.intraday import intraday_router
 from titan_x.api.v1.knowledge_graph import kg_router
 from titan_x.api.v1.learning import learning_router
+from titan_x.api.v1.live_market_data import router as live_market_router
 from titan_x.api.v1.macro import router as macro_router
 from titan_x.api.v1.market_breadth import market_breadth_router
 from titan_x.api.v1.market_data import router as market_data_router
@@ -143,6 +144,7 @@ v1_router.include_router(strategy_router)
 v1_router.include_router(trading_calendar_router)
 v1_router.include_router(timescaledb_router)
 v1_router.include_router(market_data_router)
+v1_router.include_router(live_market_router)
 v1_router.include_router(correlation_router)
 v1_router.include_router(datalake_router)
 v1_router.include_router(global_market_router)
