@@ -90,6 +90,7 @@ from titan_x.api.v1.timescaledb import router as timescaledb_router
 from titan_x.api.v1.top_picks import router as top_picks_router
 from titan_x.api.v1.trade_journal import router as trade_journal_router
 from titan_x.api.v1.trading_calendar import router as trading_calendar_router
+from titan_x.api.v1.trading_portfolio import router as trading_portfolio_router
 from titan_x.api.v1.users import users_router
 from titan_x.api.v1.valuation import router as valuation_router
 from titan_x.api.v1.version import version_router
@@ -130,6 +131,7 @@ v1_router.include_router(reports_router)
 v1_router.include_router(ensemble_router)
 v1_router.include_router(explainability_router)
 v1_router.include_router(portfolio_router)
+v1_router.include_router(trading_portfolio_router)
 v1_router.include_router(prefs_router)
 v1_router.include_router(decision_router)
 v1_router.include_router(sector_router)
