@@ -110,14 +110,12 @@ class OrderService:
         qty = fill_quantity if fill_quantity is not None else order.quantity
         if qty <= 0:
             raise ValueError("fill_quantity must be positive")
-
         remaining = order.quantity - order.filled_quantity
         if qty > remaining:
             raise ValueError(f"fill_quantity {qty} exceeds remaining {remaining}")
 
         comm = commission if commission is not None else Decimal("0")
         is_sell = order.side == "sell"
-
         fill = OrderFill(
             order_id=order.id,
             symbol=order.symbol,
@@ -126,14 +124,12 @@ class OrderService:
             price=fill_price,
             commission=comm,
         )
+        # Persist the fill in the same transaction as the position update.
+        self.session.add(fill)
 
         order.filled_quantity += qty
-        if order.filled_quantity >= order.quantity:
-            order.status = "filled"
-        else:
-            order.status = "partial"
+        order.status = "filled" if order.filled_quantity >= order.quantity else "partial"
 
-        pos = None
         result = await self.session.execute(
             select(Position).where(
                 Position.user_id == order.user_id,
@@ -141,7 +137,6 @@ class OrderService:
             )
         )
         pos = result.scalar_one_or_none()
-
         if pos is None:
             pos = Position(
                 user_id=order.user_id,
@@ -152,6 +147,7 @@ class OrderService:
                 realized_pnl=Decimal("0"),
                 unrealized_pnl=Decimal("0"),
             )
+            self.session.add(pos)
 
         if is_sell:
             if pos.quantity < qty:
@@ -175,12 +171,11 @@ class OrderService:
             fill.realized_pnl = None
 
         pos.current_price = fill_price
-        pos.unrealized_pnl = (pos.current_price - pos.average_price) * pos.quantity if pos.quantity > 0 else Decimal("0")
-
-        if pos.id is None:
-            self.session.add(pos)
+        pos.unrealized_pnl = (
+            (pos.current_price - pos.average_price) * pos.quantity
+            if pos.quantity > 0 else Decimal("0")
+        )
         await self.session.flush()
-
         return order, fill, pos
 
     async def get_positions(self, user_id: int) -> list[Position]:
