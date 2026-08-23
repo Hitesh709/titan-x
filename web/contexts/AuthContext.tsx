@@ -33,19 +33,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const token = api.getToken()
-    if (token) {
+    const refreshToken = api.getRefreshToken()
+
+    if (token || refreshToken) {
       api.get<User>("/auth/me")
         .then((u) => setUser(u))
-        .catch(() => api.setToken(null))
+        .catch(() => {
+          api.clearTokens()
+          setUser(null)
+        })
         .finally(() => setLoading(false))
     } else {
       setLoading(false)
     }
   }, [])
 
+  // Keep the short-lived access token alive while the user is actively using
+  // TitanX. The API client also refreshes automatically on any 401 response.
+  useEffect(() => {
+    if (!user) return
+
+    const refresh = () => {
+      if (api.getRefreshToken()) {
+        void api.refreshAccessToken()
+      }
+    }
+
+    const interval = window.setInterval(refresh, 10 * 60 * 1000)
+    return () => window.clearInterval(interval)
+  }, [user])
+
   const login = useCallback(async (email: string, password: string, _remember = true) => {
     const data: AuthResponse = await api.post("/auth/login", { email, password })
     api.setToken(data.access_token)
+    api.setRefreshToken(data.refresh_token)
     const me = await api.get<User>("/auth/me")
     setUser(me)
     router.push("/dashboard")
@@ -57,7 +78,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [login])
 
   const logout = useCallback(() => {
-    api.setToken(null)
+    const refreshToken = api.getRefreshToken()
+    if (refreshToken) {
+      // Best-effort server-side revocation. Local credentials are cleared
+      // immediately so logout never depends on network availability.
+      void api.post("/auth/logout", { refresh_token: refreshToken })
+    }
+    api.clearTokens()
     setUser(null)
     router.push("/")
   }, [router])
