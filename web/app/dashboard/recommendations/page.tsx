@@ -8,6 +8,7 @@ import type { StockRecommendation } from "@/types"
 import { WidgetLoading, WidgetError, RefreshButton } from "@/components/dashboard/widget"
 import { StatCard, RecommendationCard } from "./components"
 import { SymbolAnalyzer } from "./analyzer"
+import { IntradayRecommendations } from "./intraday"
 
 type SortKey = "confidence" | "return" | "symbol"
 type SortDir = "asc" | "desc"
@@ -22,6 +23,7 @@ export default function RecommendationsPage() {
   const [sortKey, setSortKey] = useState<SortKey>("confidence")
   const [sortDir, setSortDir] = useState<SortDir>("desc")
   const [scanInfo, setScanInfo] = useState<string | null>(null)
+  const [mode, setMode] = useState<"delivery" | "intraday">("delivery")
   const mounted = useRef(true)
 
   const load = useCallback(async (silent = false) => {
@@ -58,8 +60,6 @@ export default function RecommendationsPage() {
     setError(null)
     setScanInfo(null)
     try {
-      // Run the scan synchronously and read the result straight from the
-      // response so we don't depend on background tasks or polling.
       const res = await api.post<{
         last?: {
           universe?: number
@@ -87,11 +87,9 @@ export default function RecommendationsPage() {
       } else {
         setScanInfo("Scan finished but returned no detail.")
       }
-      // Force refresh with retries to ensure DB commit is visible
       for (let i = 0; i < 3; i++) {
         await new Promise(r => setTimeout(r, 800))
         await load(true)
-        if (recommendations.length > 0) break
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Scan failed")
@@ -116,10 +114,8 @@ export default function RecommendationsPage() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toUpperCase()
-    const list = q
-      ? recommendations.filter((r) => r.symbol.toUpperCase().includes(q))
-      : recommendations
-    const sorted = [...list].sort((a, b) => {
+    const list = q ? recommendations.filter((r) => r.symbol.toUpperCase().includes(q)) : recommendations
+    return [...list].sort((a, b) => {
       let av: number | string
       let bv: number | string
       if (sortKey === "symbol") {
@@ -136,123 +132,88 @@ export default function RecommendationsPage() {
       if (av > bv) return sortDir === "asc" ? 1 : -1
       return 0
     })
-    return sorted
   }, [recommendations, query, sortKey, sortDir])
 
   const buyCount = recommendations.filter((r) => r.direction === "BUY").length
   const sellCount = recommendations.filter((r) => r.direction === "SELL").length
   const neutralCount = recommendations.length - buyCount - sellCount
-  const avgConfidence =
-    recommendations.length === 0
-      ? 0
-      : Math.round(
-          recommendations.reduce((s, r) => s + (r.confidence ?? 0), 0) / recommendations.length,
-        )
+  const avgConfidence = recommendations.length === 0 ? 0 : Math.round(recommendations.reduce((s, r) => s + (r.confidence ?? 0), 0) / recommendations.length)
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">Recommendations</h1>
-          <p className="text-gray-500 text-sm mt-1">
-            AI-generated trading ideas across NSE &amp; BSE
-          </p>
+          <p className="text-gray-500 text-sm mt-1">Delivery/short-term ideas and separate intraday trading opportunities</p>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleScan}
-            disabled={scanning}
-            className="btn-secondary text-sm inline-flex items-center gap-2 disabled:opacity-50"
-          >
-            {scanning ? <RefreshCw size={14} className="animate-spin" /> : <Play size={14} />}
-            {scanning ? "Scanning…" : "Run Scan"}
-          </button>
-          <RefreshButton onClick={handleRefresh} spinning={refreshing} />
-        </div>
+        {mode === "delivery" && (
+          <div className="flex items-center gap-2">
+            <button onClick={handleScan} disabled={scanning} className="btn-secondary text-sm inline-flex items-center gap-2 disabled:opacity-50">
+              {scanning ? <RefreshCw size={14} className="animate-spin" /> : <Play size={14} />}
+              {scanning ? "Scanning…" : "Run Scan"}
+            </button>
+            <RefreshButton onClick={handleRefresh} spinning={refreshing} />
+          </div>
+        )}
       </div>
 
-      {error && <WidgetError message={error} onRetry={() => load(false)} />}
+      <div className="glass-card p-2 flex gap-2 border border-titan-500/10">
+        <button onClick={() => setMode("delivery")} className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition ${mode === "delivery" ? "bg-titan-600 text-white" : "text-gray-400 hover:text-white hover:bg-white/[0.03]"}`}>
+          Delivery / Short Term
+        </button>
+        <button onClick={() => setMode("intraday")} className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition ${mode === "intraday" ? "bg-titan-600 text-white" : "text-gray-400 hover:text-white hover:bg-white/[0.03]"}`}>
+          Intraday
+        </button>
+      </div>
 
-      {scanInfo && (
-        <div className="glass-card p-3 text-sm text-titan-300 border border-titan-500/20">{scanInfo}</div>
-      )}
-
-      <SymbolAnalyzer />
-
-      {loading ? (
-        <div className="grid md:grid-cols-3 gap-4">
-          <div className="glass-card p-5">
-            <WidgetLoading lines={2} />
-          </div>
-          <div className="glass-card p-5">
-            <WidgetLoading lines={2} />
-          </div>
-          <div className="glass-card p-5">
-            <WidgetLoading lines={2} />
-          </div>
-        </div>
+      {mode === "intraday" ? (
+        <IntradayRecommendations />
       ) : (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <StatCard label="Buy signals" value={buyCount} tone="text-emerald-400" icon={<TrendingUp size={16} />} />
-            <StatCard label="Sell signals" value={sellCount} tone="text-red-400" icon={<TrendingDown size={16} />} />
-            <StatCard label="Neutral" value={neutralCount} tone="text-gray-400" icon={<Minus size={16} />} />
-            <StatCard label="Avg confidence" value={avgConfidence} tone="text-titan-400" icon={<Zap size={16} />} />
-          </div>
+          {error && <WidgetError message={error} onRetry={() => load(false)} />}
+          {scanInfo && <div className="glass-card p-3 text-sm text-titan-300 border border-titan-500/20">{scanInfo}</div>}
+          <SymbolAnalyzer />
 
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="relative w-full sm:w-64">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Filter by symbol…"
-                className="input-field w-full text-sm pl-9"
-              />
-            </div>
-            <div className="flex items-center gap-2 text-xs text-gray-500">
-              <span>Sort:</span>
-              <button
-                onClick={() => toggleSort("confidence")}
-                className={`px-2 py-1 rounded border ${
-                  sortKey === "confidence" ? "border-titan-500 text-titan-300" : "border-white/10 text-gray-400"
-                }`}
-              >
-                Confidence {sortKey === "confidence" ? (sortDir === "asc" ? <ArrowUp size={11} className="inline" /> : <ArrowDown size={11} className="inline" />) : null}
-              </button>
-              <button
-                onClick={() => toggleSort("return")}
-                className={`px-2 py-1 rounded border ${
-                  sortKey === "return" ? "border-titan-500 text-titan-300" : "border-white/10 text-gray-400"
-                }`}
-              >
-                Return {sortKey === "return" ? (sortDir === "asc" ? <ArrowUp size={11} className="inline" /> : <ArrowDown size={11} className="inline" />) : null}
-              </button>
-              <button
-                onClick={() => toggleSort("symbol")}
-                className={`px-2 py-1 rounded border ${
-                  sortKey === "symbol" ? "border-titan-500 text-titan-300" : "border-white/10 text-gray-400"
-                }`}
-              >
-                Symbol {sortKey === "symbol" ? (sortDir === "asc" ? <ArrowUp size={11} className="inline" /> : <ArrowDown size={11} className="inline" />) : null}
-              </button>
-            </div>
-          </div>
-
-          {filtered.length === 0 ? (
-            <div className="glass-card p-10 text-center">
-              <Brain size={28} className="mx-auto text-titan-500/60 mb-3" />
-              <p className="text-gray-400">No recommendations yet.</p>
-              <button onClick={handleScan} className="btn-primary mt-4 text-sm inline-flex items-center gap-2">
-                <Play size={14} /> Run your first scan
-              </button>
+          {loading ? (
+            <div className="grid md:grid-cols-3 gap-4">
+              <div className="glass-card p-5"><WidgetLoading lines={2} /></div>
+              <div className="glass-card p-5"><WidgetLoading lines={2} /></div>
+              <div className="glass-card p-5"><WidgetLoading lines={2} /></div>
             </div>
           ) : (
-            <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {filtered.map((rec) => (
-                <RecommendationCard key={rec.id} rec={rec} />
-              ))}
-            </div>
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <StatCard label="Buy signals" value={buyCount} tone="text-emerald-400" icon={<TrendingUp size={16} />} />
+                <StatCard label="Sell signals" value={sellCount} tone="text-red-400" icon={<TrendingDown size={16} />} />
+                <StatCard label="Neutral" value={neutralCount} tone="text-gray-400" icon={<Minus size={16} />} />
+                <StatCard label="Avg confidence" value={avgConfidence} tone="text-titan-400" icon={<Zap size={16} />} />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="relative w-full sm:w-64">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                  <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter by symbol…" className="input-field w-full text-sm pl-9" />
+                </div>
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <span>Sort:</span>
+                  <button onClick={() => toggleSort("confidence")} className={`px-2 py-1 rounded border ${sortKey === "confidence" ? "border-titan-500 text-titan-300" : "border-white/10 text-gray-400"}`}>Confidence {sortKey === "confidence" ? (sortDir === "asc" ? <ArrowUp size={11} className="inline" /> : <ArrowDown size={11} className="inline" />) : null}</button>
+                  <button onClick={() => toggleSort("return")} className={`px-2 py-1 rounded border ${sortKey === "return" ? "border-titan-500 text-titan-300" : "border-white/10 text-gray-400"}`}>Return {sortKey === "return" ? (sortDir === "asc" ? <ArrowUp size={11} className="inline" /> : <ArrowDown size={11} className="inline" />) : null}</button>
+                  <button onClick={() => toggleSort("symbol")} className={`px-2 py-1 rounded border ${sortKey === "symbol" ? "border-titan-500 text-titan-300" : "border-white/10 text-gray-400"}`}>Symbol {sortKey === "symbol" ? (sortDir === "asc" ? <ArrowUp size={11} className="inline" /> : <ArrowDown size={11} className="inline" />) : null}</button>
+                </div>
+              </div>
+
+              {filtered.length === 0 ? (
+                <div className="glass-card p-10 text-center">
+                  <Brain size={28} className="mx-auto text-titan-500/60 mb-3" />
+                  <p className="text-gray-400">No recommendations yet.</p>
+                  <button onClick={handleScan} className="btn-primary mt-4 text-sm inline-flex items-center gap-2"><Play size={14} /> Run your first scan</button>
+                </div>
+              ) : (
+                <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {filtered.map((rec) => <RecommendationCard key={rec.id} rec={rec} />)}
+                </div>
+              )}
+            </>
           )}
         </>
       )}
