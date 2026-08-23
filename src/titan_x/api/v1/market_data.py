@@ -1,11 +1,14 @@
 from datetime import date
 from typing import Annotated
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from titan_x.api.dependencies import get_current_active_user, request_session
 from titan_x.infrastructure.market_data_providers import YahooFinanceProvider
+from titan_x.models.company import Company
 from titan_x.models.user import User
 from titan_x.services.market_data_service import MarketDataService
 
@@ -63,6 +66,53 @@ async def get_batch_quotes(
         return await svc.get_quotes(syms)
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Quote fetch failed: {str(e)}")
+
+
+@router.get("/market-caps")
+async def get_batch_market_caps(
+    symbols: str,
+    user: Annotated[User, Depends(get_current_active_user)],
+    session: Annotated[AsyncSession, Depends(request_session)],
+):
+    """Return market capitalisation in INR for up to 100 NSE symbols.
+
+    Yahoo's batch quote endpoint is used when available. Local Company values
+    are retained as a fallback. The endpoint never fabricates a market cap.
+    """
+    syms = [s.strip().upper().replace(".NS", "") for s in symbols.split(",") if s.strip()]
+    syms = list(dict.fromkeys(syms))
+    if not syms or len(syms) > 100:
+        raise HTTPException(status_code=400, detail="Provide 1-100 comma-separated symbols")
+
+    local_rows = await session.execute(select(Company.symbol, Company.market_cap).where(Company.symbol.in_(syms)))
+    caps: dict[str, float | None] = {symbol.upper(): value for symbol, value in local_rows.all()}
+
+    yahoo_symbols = ",".join(f"{symbol}.NS" for symbol in syms)
+    headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/126 Safari/537.36"}
+    try:
+        async with httpx.AsyncClient(timeout=8.0, follow_redirects=True, headers=headers) as client:
+            response = await client.get(
+                "https://query1.finance.yahoo.com/v7/finance/quote",
+                params={"symbols": yahoo_symbols},
+            )
+            response.raise_for_status()
+            payload = response.json()
+            rows = ((payload.get("quoteResponse") or {}).get("result") or [])
+            for row in rows:
+                yahoo_symbol = str(row.get("symbol", ""))
+                symbol = yahoo_symbol.replace(".NS", "").replace(".BO", "").upper()
+                market_cap = row.get("marketCap")
+                if symbol in caps and isinstance(market_cap, (int, float)) and market_cap > 0:
+                    caps[symbol] = float(market_cap)
+    except Exception:
+        # Local values remain the only fallback; no synthetic market caps.
+        pass
+
+    return {
+        "caps": [{"symbol": symbol, "market_cap": caps.get(symbol)} for symbol in syms],
+        "currency": "INR",
+        "source": "yahoo_finance_or_local_company",
+    }
 
 
 @router.get("/quote/{symbol}")
