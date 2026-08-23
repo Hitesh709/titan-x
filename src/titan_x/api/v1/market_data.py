@@ -10,6 +10,7 @@ from titan_x.api.dependencies import get_current_active_user, request_session
 from titan_x.infrastructure.market_data_providers import YahooFinanceProvider
 from titan_x.models.company import Company
 from titan_x.models.user import User
+from titan_x.services.candle_service import CandleService
 from titan_x.services.market_data_service import MarketDataService
 
 router = APIRouter(prefix="/market-data", tags=["market-data"])
@@ -74,11 +75,7 @@ async def get_batch_market_caps(
     user: Annotated[User, Depends(get_current_active_user)],
     session: Annotated[AsyncSession, Depends(request_session)],
 ):
-    """Return market capitalisation in INR for up to 100 NSE symbols.
-
-    Yahoo's batch quote endpoint is used when available. Local Company values
-    are retained as a fallback. The endpoint never fabricates a market cap.
-    """
+    """Return market capitalisation in INR for up to 100 NSE symbols."""
     syms = [s.strip().upper().replace(".NS", "") for s in symbols.split(",") if s.strip()]
     syms = list(dict.fromkeys(syms))
     if not syms or len(syms) > 100:
@@ -105,13 +102,40 @@ async def get_batch_market_caps(
                 if symbol in caps and isinstance(market_cap, (int, float)) and market_cap > 0:
                     caps[symbol] = float(market_cap)
     except Exception:
-        # Local values remain the only fallback; no synthetic market caps.
         pass
 
     return {
         "caps": [{"symbol": symbol, "market_cap": caps.get(symbol)} for symbol in syms],
         "currency": "INR",
         "source": "yahoo_finance_or_local_company",
+    }
+
+
+@router.get("/candles/{symbol}")
+async def get_candles(
+    symbol: str,
+    interval: str = Query("1d", description="5m, 15m, 30m, 1h, 4h, 1d, 1w, 1mo"),
+    period: str = Query("max", description="1d, 5d, 1mo, 3mo, 6mo, ytd, 1y, 5y, 10y, max"),
+    user: Annotated[User, Depends(get_current_active_user)] = None,
+):
+    """Return real OHLCV candles for the selected interval and history window."""
+    service = CandleService()
+    try:
+        source_interval = "60m" if interval == "4h" else interval
+        candles = await service.get_candles(symbol, source_interval, period)
+        if interval == "4h":
+            candles = service.resample_4h(candles)
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Candle data unavailable for {symbol.upper()}: {exc}") from exc
+
+    return {
+        "symbol": service.normalize_symbol(symbol),
+        "interval": interval,
+        "period": period,
+        "source": "yahoo_finance",
+        "candles": candles,
     }
 
 
@@ -136,7 +160,7 @@ async def get_stock_history(
     symbol: str,
     user: Annotated[User, Depends(get_current_active_user)],
 ):
-    """Return real historical prices for analysis; never demo/synthetic prices."""
+    """Return real historical daily prices; never demo/synthetic prices."""
     provider = YahooFinanceProvider()
     try:
         points = await provider.get_historical_prices(symbol.upper(), synthetic_ok=False)
