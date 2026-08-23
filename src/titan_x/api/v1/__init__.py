@@ -9,9 +9,9 @@ from fastapi import APIRouter
 
 logger = logging.getLogger(__name__)
 
-# Explicit module/router pairs. The preferred attribute is the router exported
-# by the module. If a module changes its router variable, discovery falls back
-# to module-level APIRouter objects so startup is not broken by naming drift.
+# Module/router exports. Keep explicit names so a typo is caught during CI,
+# while fallback discovery prevents harmless router-variable renames from
+# taking the whole API down.
 _ROUTER_SPECS: tuple[tuple[str, str | None], ...] = (
     ("analytics_dashboard", "router"), ("adaptive_stop_loss", "router"), ("admin", "admin_router"),
     ("advanced_screener", "router"), ("ai_ranking_v2", "router"), ("ai_registry", "router"),
@@ -58,10 +58,7 @@ def _resolve_module_routers(module_name: str, preferred: str | None) -> list[API
         selected = getattr(module, preferred, None)
         if isinstance(selected, APIRouter):
             return [selected]
-        candidates = _router_candidates(module)
-        if candidates:
-            logger.warning("Router attribute %s.%s missing; using discovered APIRouter", module_name, preferred)
-        return candidates
+        return _router_candidates(module)
     return _router_candidates(module)
 
 
@@ -82,7 +79,7 @@ def _build_router() -> APIRouter:
         except Exception as exc:
             failures.append(f"{module_name}: {type(exc).__name__}: {exc}")
     if failures:
-        logger.error("API v1 router registration warnings: %s", " | ".join(failures))
+        logger.error("API v1 router registration failures: %s", " | ".join(failures))
     return api_router
 
 
