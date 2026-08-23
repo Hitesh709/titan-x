@@ -38,7 +38,6 @@
 
   body {
     @apply bg-titan-950 text-gray-100 antialiased;
-    /* Align digits in financial figures (prices, percentages, volumes) */
     font-variant-numeric: tabular-nums;
     text-rendering: optimizeLegibility;
   }
@@ -47,8 +46,6 @@
     @apply bg-titan-500/30 text-white;
   }
 
-  /* Visible, consistent keyboard focus for accessibility.
-     :where keeps specificity at 0 so .input-field's focus:ring still wins on form controls. */
   :where(a, button, [role="button"], summary, input, select, textarea):focus-visible {
     outline: 2px solid #60a5fa;
     outline-offset: 2px;
@@ -96,6 +93,34 @@
   .sidebar-link-active {
     @apply flex items-center gap-3 px-3 py-2.5 rounded-lg bg-titan-600/20 text-titan-400 border border-titan-600/30;
   }
+
+  /* XeCaps company branding */
+  .xecaps-brand-icon {
+    background-image: url('/xecaps-icon.svg');
+    background-size: contain;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-color: transparent !important;
+    box-shadow: none !important;
+  }
+}
+
+/* Replace the old TX square marks with the XeCaps company icon. */
+nav a[href="/"] > div:first-child,
+aside a[href="/dashboard"] > div:first-child,
+.min-h-screen > div:first-child a[href="/"] > div:first-child {
+  background-image: url('/xecaps-icon.svg');
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-color: transparent !important;
+  box-shadow: none !important;
+}
+
+nav a[href="/"] > div:first-child > span,
+aside a[href="/dashboard"] > div:first-child > span,
+.min-h-screen > div:first-child a[href="/"] > div:first-child > span {
+  opacity: 0;
 }
 
 @keyframes float {
@@ -116,7 +141,6 @@
   animation: pulse-glow 3s ease-in-out infinite;
 }
 
-/* Respect users who prefer reduced motion: disable non-essential animation/transition. */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.001ms !important;
