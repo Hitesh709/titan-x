@@ -28,11 +28,7 @@ logger = structlog.get_logger(__name__)
 
 
 async def _sync_missing_columns(engine: AsyncEngine) -> None:
-    """Create_all only creates missing *tables*; it never adds columns to
-    pre-existing tables. Because the project relies on create_all against a
-    persistent DB, drift shows up as UndefinedColumn errors on deploy. This
-    idempotently adds any missing nullable columns to keep model/table in sync.
-    """
+    """Create missing tables/columns without destructive schema changes."""
     from sqlalchemy import inspect as sa_inspect
 
     changed = 0
@@ -82,15 +78,32 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
                 from titan_x.services.market_data_service import run_market_data_ingestion
 
                 async def _run() -> None:
-                    result = await run_market_data_ingestion(
-                        sf, max_symbols=settings.market_data_ingest_max_symbols
-                    )
-                    logger.info(
-                        "market_data_ingest_startup",
-                        ok=result.get("symbols_ok"),
-                        failed=result.get("symbols_failed"),
-                        inserted=result.get("inserted_total"),
-                    )
+                    try:
+                        result = await run_market_data_ingestion(
+                            sf, max_symbols=settings.market_data_ingest_max_symbols
+                        )
+                        errors = result.get("errors") or []
+                        logger.info(
+                            "market_data_ingest_startup",
+                            provider=result.get("provider"),
+                            requested=result.get("symbols_requested"),
+                            ok=result.get("symbols_ok"),
+                            failed=result.get("symbols_failed"),
+                            inserted=result.get("inserted_total"),
+                        )
+                        # Always expose per-symbol failures. This is critical on
+                        # Render because the aggregate counter alone cannot tell
+                        # us whether a provider, ticker, network, or parsing issue
+                        # caused the failure.
+                        for error in errors:
+                            logger.error(
+                                "market_data_symbol_failed",
+                                symbol=error.get("symbol"),
+                                provider=error.get("provider"),
+                                error=error.get("error"),
+                            )
+                    except Exception:  # noqa: BLE001
+                        logger.exception("market_data_ingest_run_failed")
 
                 asyncio.create_task(_run())
             except Exception:  # noqa: BLE001
@@ -172,7 +185,6 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
         asyncio.create_task(scheduler.start())
         logger.info("scheduler_initialized")
 
-        # Run the task-queue consumer in-process (no separate paid worker needed).
         if settings.run_worker_in_process and app.state.task_queue is not None:
 
             async def _handle_task(task: dict) -> None:
