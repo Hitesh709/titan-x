@@ -64,7 +64,7 @@ from titan_x.api.v1.opportunity_rejection import router as opportunity_rejection
 from titan_x.api.v1.order import router as order_router
 from titan_x.api.v1.paper_trading import router as paper_trading_router
 from titan_x.api.v1.pattern_library import router as pattern_library_router
-from titan_x.api.v1.pattern_recognition import router as pattern_router
+from titan_x.api.v1.pattern_recognition import pattern_router
 from titan_x.api.v1.pattern_search import router as pattern_search_router
 from titan_x.api.v1.performance_measurement import router as performance_measurement_router
 from titan_x.api.v1.portfolio import portfolio_router
