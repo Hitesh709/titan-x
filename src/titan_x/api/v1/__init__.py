@@ -25,7 +25,7 @@ from titan_x.api.v1.datalake import router as datalake_router
 from titan_x.api.v1.decision import decision_router
 from titan_x.api.v1.drift_detection import router as drift_detection_router
 from titan_x.api.v1.dynamic_ai_score import router as dynamic_ai_score_router
-from titan_x.api.v1.ensemble_ai import router as ensemble_router
+from titan_x.api.v1.ensemble_ai import ensemble_router
 from titan_x.api.v1.event_intelligence import router as event_intelligence_router
 from titan_x.api.v1.experiment_manager import router as experiment_manager_router
 from titan_x.api.v1.explainability import explainability_router
@@ -97,101 +97,29 @@ from titan_x.api.v1.version import version_router
 from titan_x.api.v1.watchlists import router as watchlist_router
 
 v1_router = APIRouter(prefix="/api/v1")
-v1_router.include_router(analytics_dashboard_router)
-v1_router.include_router(ai_registry_router)
-v1_router.include_router(audit_router)
-v1_router.include_router(health_router)
-v1_router.include_router(version_router)
-v1_router.include_router(auth_router)
-v1_router.include_router(admin_router)
-v1_router.include_router(users_router)
-v1_router.include_router(scheduler_router)
-v1_router.include_router(monitoring_router)
-v1_router.include_router(cad_router)
-v1_router.include_router(fa_router)
-v1_router.include_router(inst_router)
-v1_router.include_router(corporate_reminders_router)
-v1_router.include_router(corp_track_router)
-v1_router.include_router(data_io_router)
-v1_router.include_router(data_validation_router)
-v1_router.include_router(companies_router)
-v1_router.include_router(prices_router)
-v1_router.include_router(corp_actions_router)
-v1_router.include_router(news_router)
-v1_router.include_router(news_nlp_router)
-v1_router.include_router(intraday_router)
-v1_router.include_router(kg_router)
-v1_router.include_router(fin_stmt_router)
-v1_router.include_router(market_breadth_router)
-v1_router.include_router(pattern_router)
-v1_router.include_router(hist_sim_router)
-v1_router.include_router(risk_router)
-v1_router.include_router(prediction_router)
-v1_router.include_router(reports_router)
-v1_router.include_router(ensemble_router)
-v1_router.include_router(explainability_router)
-v1_router.include_router(portfolio_router)
-v1_router.include_router(trading_portfolio_router)
-v1_router.include_router(prefs_router)
-v1_router.include_router(decision_router)
-v1_router.include_router(sector_router)
-v1_router.include_router(fund_router)
-v1_router.include_router(tech_ind_router)
-v1_router.include_router(ca_engine_router)
-v1_router.include_router(backtest_router)
-v1_router.include_router(broker_router)
-v1_router.include_router(watchlist_router)
-v1_router.include_router(order_router)
-v1_router.include_router(strategy_router)
-v1_router.include_router(trading_calendar_router)
-v1_router.include_router(timescaledb_router)
-v1_router.include_router(market_data_router)
-v1_router.include_router(correlation_router)
-v1_router.include_router(datalake_router)
-v1_router.include_router(global_market_router)
-v1_router.include_router(learning_router)
-v1_router.include_router(fundamental_scanner_router)
-v1_router.include_router(news_scanner_router)
-v1_router.include_router(market_scanner_router)
-v1_router.include_router(macro_router)
-v1_router.include_router(master_decision_router)
-v1_router.include_router(feature_engineering_router)
-v1_router.include_router(mdc_router)
-v1_router.include_router(microstructure_router)
-v1_router.include_router(regime_router)
-v1_router.include_router(valuation_router)
-v1_router.include_router(adaptive_stop_loss_router)
-v1_router.include_router(opportunity_rejection_router)
-v1_router.include_router(price_target_router)
-v1_router.include_router(event_intelligence_router)
-v1_router.include_router(pattern_library_router)
-v1_router.include_router(pattern_search_router)
-v1_router.include_router(ai_ranking_v2_router)
-v1_router.include_router(ranking_router)
-v1_router.include_router(portfolio_optimizer_router)
-v1_router.include_router(professional_report_router)
-v1_router.include_router(company_research_router)
-v1_router.include_router(trade_journal_router)
-v1_router.include_router(performance_measurement_router)
-v1_router.include_router(nightly_evaluation_router)
-v1_router.include_router(model_registry_router)
-v1_router.include_router(automated_training_router)
-v1_router.include_router(feature_store_router)
-v1_router.include_router(experiment_manager_router)
-v1_router.include_router(model_evaluation_router)
-v1_router.include_router(drift_detection_router)
-v1_router.include_router(recommendation_router)
-v1_router.include_router(research_router)
-v1_router.include_router(dynamic_ai_score_router)
-v1_router.include_router(market_heatmap_router)
-v1_router.include_router(sector_rotation_router)
-v1_router.include_router(advanced_screener_router)
-v1_router.include_router(paper_trading_router)
-v1_router.include_router(dashboard_router)
-v1_router.include_router(indices_router)
-v1_router.include_router(search_router)
-v1_router.include_router(export_router)
-v1_router.include_router(top_picks_router)
-v1_router.include_router(live_market_websocket_router)
+for _router in [
+    analytics_dashboard_router, ai_registry_router, audit_router, health_router, version_router,
+    auth_router, admin_router, users_router, scheduler_router, monitoring_router, cad_router,
+    fa_router, inst_router, corporate_reminders_router, corp_track_router, data_io_router,
+    data_validation_router, companies_router, prices_router, corp_actions_router, news_router,
+    news_nlp_router, intraday_router, kg_router, fin_stmt_router, market_breadth_router,
+    pattern_router, hist_sim_router, risk_router, prediction_router, reports_router, ensemble_router,
+    explainability_router, portfolio_router, trading_portfolio_router, prefs_router, decision_router,
+    sector_router, fund_router, tech_ind_router, ca_engine_router, backtest_router, broker_router,
+    watchlist_router, order_router, strategy_router, trading_calendar_router, timescaledb_router,
+    market_data_router, correlation_router, datalake_router, global_market_router, learning_router,
+    fundamental_scanner_router, news_scanner_router, market_scanner_router, macro_router,
+    master_decision_router, feature_engineering_router, mdc_router, microstructure_router,
+    regime_router, valuation_router, adaptive_stop_loss_router, opportunity_rejection_router,
+    price_target_router, event_intelligence_router, pattern_library_router, pattern_search_router,
+    ai_ranking_v2_router, ranking_router, portfolio_optimizer_router, professional_report_router,
+    company_research_router, trade_journal_router, performance_measurement_router,
+    nightly_evaluation_router, model_registry_router, automated_training_router, feature_store_router,
+    experiment_manager_router, model_evaluation_router, drift_detection_router, recommendation_router,
+    research_router, dynamic_ai_score_router, market_heatmap_router, sector_rotation_router,
+    advanced_screener_router, paper_trading_router, dashboard_router, indices_router, search_router,
+    export_router, top_picks_router, live_market_websocket_router,
+]:
+    v1_router.include_router(_router)
 
 __all__ = ["v1_router"]
