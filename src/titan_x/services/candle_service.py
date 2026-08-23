@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 import httpx
 
@@ -8,8 +8,10 @@ import httpx
 class CandleService:
     """Real OHLCV candles from Yahoo Finance's public chart endpoint.
 
-    Intraday history is limited by Yahoo's retention windows. The service never
-    creates synthetic candles; an unavailable interval/range returns an error.
+    Yahoo's chart API is inconsistent for some range/interval combinations.
+    This service therefore retries with an explicit epoch window and the
+    alternate Yahoo host before reporting an error. It never creates
+    synthetic candles.
     """
 
     BASES = (
@@ -44,6 +46,33 @@ class CandleService:
         aliases = {"1h": "60m", "1w": "1wk", "1m": "1mo"}
         return aliases.get(value, value)
 
+    @staticmethod
+    def _period_days(period: str) -> int | None:
+        return {
+            "1d": 1,
+            "5d": 5,
+            "1mo": 31,
+            "3mo": 93,
+            "6mo": 186,
+            "ytd": None,
+            "1y": 366,
+            "5y": 365 * 5 + 2,
+            "10y": 365 * 10 + 3,
+            "max": None,
+        }.get(period)
+
+    @staticmethod
+    def _epoch_window(period: str) -> tuple[int, int] | None:
+        now = datetime.now(timezone.utc)
+        if period == "ytd":
+            start = datetime(now.year, 1, 1, tzinfo=timezone.utc)
+        else:
+            days = CandleService._period_days(period)
+            if days is None:
+                return None
+            start = now - timedelta(days=days)
+        return int(start.timestamp()), int(now.timestamp())
+
     async def get_candles(
         self,
         symbol: str,
@@ -61,8 +90,7 @@ class CandleService:
         if period not in allowed_periods:
             raise ValueError(f"Unsupported candle period: {period}")
 
-        # Yahoo does not provide useful max history for intraday intervals.
-        # Use the largest valid retention window for the selected interval.
+        # Yahoo's retention limits for intraday intervals.
         if interval in {"5m", "15m", "30m"}:
             max_period = self.RANGE_BY_INTERVAL[interval]
             if period in {"max", "10y", "5y", "1y", "6mo", "3mo"}:
@@ -71,52 +99,70 @@ class CandleService:
             period = "1y"
 
         sym = self.normalize_symbol(symbol)
-        params = {"range": period, "interval": interval, "events": "history", "includeAdjustedClose": "true"}
         headers = {"User-Agent": self.USER_AGENT}
         last_error: Exception | None = None
 
+        # First try Yahoo's normal range API. If it rejects a particular
+        # interval/range pair, retry with an explicit epoch window.
+        range_params = {
+            "range": period,
+            "interval": interval,
+            "events": "history",
+            "includeAdjustedClose": "true",
+        }
+        epoch_window = self._epoch_window(period)
+        epoch_params = None
+        if epoch_window:
+            epoch_params = {
+                "period1": epoch_window[0],
+                "period2": epoch_window[1],
+                "interval": interval,
+                "events": "history",
+                "includeAdjustedClose": "true",
+            }
+
         async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers=headers) as client:
             for base in self.BASES:
-                try:
-                    response = await client.get(f"{base}/{sym}", params=params)
-                    response.raise_for_status()
-                    payload = response.json()
-                    result = ((payload.get("chart") or {}).get("result") or [])
-                    if not result:
-                        raise ValueError(f"No candle data returned for {sym}")
-                    chart = result[0]
-                    timestamps = chart.get("timestamp") or []
-                    quote = ((chart.get("indicators") or {}).get("quote") or [{}])[0]
-                    opens = quote.get("open") or []
-                    highs = quote.get("high") or []
-                    lows = quote.get("low") or []
-                    closes = quote.get("close") or []
-                    volumes = quote.get("volume") or []
-                    candles: list[dict] = []
-                    for i, ts in enumerate(timestamps):
-                        o = opens[i] if i < len(opens) else None
-                        h = highs[i] if i < len(highs) else None
-                        l = lows[i] if i < len(lows) else None
-                        c = closes[i] if i < len(closes) else None
-                        if None in (o, h, l, c):
-                            continue
-                        candles.append({
-                            "time": datetime.fromtimestamp(ts, tz=timezone.utc).isoformat(),
-                            "open": float(o),
-                            "high": float(h),
-                            "low": float(l),
-                            "close": float(c),
-                            "volume": int(volumes[i]) if i < len(volumes) and volumes[i] else 0,
-                        })
-                    if not candles:
-                        raise ValueError(f"No parseable candle data returned for {sym}")
-                    if interval == "60m" and str(self._interval("1h")) == "60m":
-                        # Keep native 60m data for 1h; 4h is resampled below in
-                        # the endpoint/service caller.
-                        pass
-                    return candles
-                except Exception as exc:  # noqa: BLE001
-                    last_error = exc
+                for params in (range_params, epoch_params):
+                    if params is None:
+                        continue
+                    try:
+                        response = await client.get(f"{base}/{sym}", params=params)
+                        response.raise_for_status()
+                        payload = response.json()
+                        chart = (((payload.get("chart") or {}).get("result") or [None])[0])
+                        if not chart:
+                            error = ((payload.get("chart") or {}).get("error") or {})
+                            raise ValueError(error.get("description") or f"No candle data returned for {sym}")
+
+                        timestamps = chart.get("timestamp") or []
+                        quote = ((chart.get("indicators") or {}).get("quote") or [{}])[0]
+                        opens = quote.get("open") or []
+                        highs = quote.get("high") or []
+                        lows = quote.get("low") or []
+                        closes = quote.get("close") or []
+                        volumes = quote.get("volume") or []
+                        candles: list[dict] = []
+                        for i, ts in enumerate(timestamps):
+                            o = opens[i] if i < len(opens) else None
+                            h = highs[i] if i < len(highs) else None
+                            l = lows[i] if i < len(lows) else None
+                            c = closes[i] if i < len(closes) else None
+                            if None in (o, h, l, c):
+                                continue
+                            candles.append({
+                                "time": datetime.fromtimestamp(ts, tz=timezone.utc).isoformat(),
+                                "open": float(o),
+                                "high": float(h),
+                                "low": float(l),
+                                "close": float(c),
+                                "volume": int(volumes[i]) if i < len(volumes) and volumes[i] else 0,
+                            })
+                        if not candles:
+                            raise ValueError(f"No parseable candle data returned for {sym}")
+                        return candles
+                    except Exception as exc:  # noqa: BLE001
+                        last_error = exc
 
         raise ValueError(f"Live candle data unavailable for {sym}: {last_error}")
 
@@ -126,13 +172,10 @@ class CandleService:
             return []
         result: list[dict] = []
         bucket: list[dict] = []
-        last_day = None
         block = None
         for candle in candles:
             dt = datetime.fromisoformat(candle["time"].replace("Z", "+00:00"))
-            day = dt.date()
-            hour_block = dt.hour // 4
-            key = (day, hour_block)
+            key = (dt.date(), dt.hour // 4)
             if block is None:
                 block = key
             if key != block:
@@ -141,7 +184,6 @@ class CandleService:
                 bucket = []
                 block = key
             bucket.append(candle)
-            last_day = day
         if bucket:
             result.append(CandleService._aggregate(bucket))
         return result
