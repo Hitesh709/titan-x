@@ -93,9 +93,9 @@ async def get_batch_market_caps(
 @router.get("/candles/{symbol}")
 async def get_candles(
     symbol: str,
+    user: Annotated[User, Depends(get_current_active_user)],
     interval: str = Query("1d", description="5m, 15m, 30m, 1h, 4h, 1d, 1w, 1mo"),
     period: str = Query("max", description="1d, 5d, 1mo, 3mo, 6mo, ytd, 1y, 5y, 10y, max"),
-    user: Annotated[User, Depends(get_current_active_user)],
 ):
     """Real OHLCV candles. No synthetic/demo candle fallback."""
     service = CandleService()
