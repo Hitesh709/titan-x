@@ -25,7 +25,7 @@ from titan_x.api.v1.datalake import router as datalake_router
 from titan_x.api.v1.decision import decision_router
 from titan_x.api.v1.drift_detection import router as drift_detection_router
 from titan_x.api.v1.dynamic_ai_score import router as dynamic_ai_score_router
-from titan_x.api.v1.ensemble_ai import router as ensemble_router
+from titan_x.api.v1.ensemble_ai import ensemble_router
 from titan_x.api.v1.event_intelligence import router as event_intelligence_router
 from titan_x.api.v1.experiment_manager import router as experiment_manager_router
 from titan_x.api.v1.explainability import explainability_router
@@ -35,7 +35,7 @@ from titan_x.api.v1.feature_store import router as feature_store_router
 from titan_x.api.v1.financial_analysis import router as fa_router
 from titan_x.api.v1.financial_statements import fin_stmt_router
 from titan_x.api.v1.fundamental_scanner import router as fundamental_scanner_router
-from titan_x.api.v1.fundamentals import fund_router
+from titan_x.api.v1.fundamentals import router as fund_router
 from titan_x.api.v1.global_market import router as global_market_router
 from titan_x.api.v1.health import health_router
 from titan_x.api.v1.historical_similarity import hist_sim_router
