@@ -35,6 +35,8 @@ interface ScreenerResult {
   close: number | null
   volume: number | null
   change_1m_pct: number | null
+  live_quote?: boolean
+  quote_source?: string | null
 }
 
 interface SavedScreen {
@@ -63,6 +65,16 @@ interface PaginatedResponse<T> {
   limit: number
 }
 
+type Quote = {
+  symbol: string
+  last_price: number | null
+  volume: number | null
+  change: number | null
+  change_percent: number | null
+  name?: string | null
+  source?: string | null
+}
+
 const today = new Date().toISOString().slice(0, 10)
 
 export default function ScreenerPage() {
@@ -71,6 +83,8 @@ export default function ScreenerPage() {
   const [total, setTotal] = useState(0)
   const [skip, setSkip] = useState(0)
   const [loading, setLoading] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [loadingQuotes, setLoadingQuotes] = useState(false)
   const [loadingScreens, setLoadingScreens] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedScreen, setSelectedScreen] = useState<SavedScreen | null>(null)
@@ -93,8 +107,39 @@ export default function ScreenerPage() {
     }
   }, [])
 
+  const enrichLiveQuotes = useCallback(async (page: ScreenerResult[]) => {
+    if (!mounted.current || !page.length) return
+    const symbols = page.map((row) => row.symbol).filter(Boolean)
+    if (!symbols.length) return
+    setLoadingQuotes(true)
+    try {
+      // API accepts at most 100 symbols. Keep this independent from the
+      // screener pagination request so Load More never waits for quotes.
+      const res = await api.get<{ quotes: Quote[] }>(`/market-data/quotes?symbols=${encodeURIComponent(symbols.join(","))}`)
+      const quoteMap = new Map((res.quotes ?? []).map((q) => [q.symbol.replace(/\.(NS|BO)$/i, "").toUpperCase(), q]))
+      if (!mounted.current) return
+      setResults((current) => current.map((row) => {
+        const q = quoteMap.get(row.symbol.toUpperCase())
+        if (!q) return row
+        return {
+          ...row,
+          close: q.last_price != null && q.last_price > 0 ? q.last_price : row.close,
+          volume: q.volume != null && q.volume >= 0 ? q.volume : row.volume,
+          live_quote: q.last_price != null,
+          quote_source: q.source ?? "live_market_feed",
+        }
+      }))
+    } catch {
+      // Keep database values when live quote enrichment is unavailable.
+    } finally {
+      if (mounted.current) setLoadingQuotes(false)
+    }
+  }, [])
+
   const runScreen = useCallback(async (nextFilters: ScreenerFilters, nextSkip = 0) => {
-    setLoading(true)
+    const isMore = nextSkip > 0
+    if (isMore) setLoadingMore(true)
+    else setLoading(true)
     setError(null)
     try {
       const params = new URLSearchParams({ limit: String(limit), skip: String(nextSkip) })
@@ -103,17 +148,30 @@ export default function ScreenerPage() {
       delete body.as_of_date
       const res = await api.post<RunResult>(`/screener/run?${params.toString()}`, body)
       if (!mounted.current) return
-      setResults(nextSkip === 0 ? (res.results ?? []) : [...results, ...(res.results ?? [])])
+
+      const page = res.results ?? []
+      setResults((current) => nextSkip === 0 ? page : [...current, ...page])
       setTotal(res.total ?? 0)
       setSkip(nextSkip)
       setFilters(nextFilters)
       setSelectedScreen(null)
+
+      // Enrich after the page is rendered; never block pagination on live data.
+      void enrichLiveQuotes(page)
     } catch (e) {
       if (mounted.current) setError(e instanceof Error ? e.message : "Screen failed")
     } finally {
-      if (mounted.current) setLoading(false)
+      if (mounted.current) {
+        setLoading(false)
+        setLoadingMore(false)
+      }
     }
-  }, [results])
+  }, [enrichLiveQuotes])
+
+  const loadMore = () => {
+    if (loading || loadingMore || results.length >= total) return
+    void runScreen(filters, results.length)
+  }
 
   const runSavedScreen = async (screen: SavedScreen) => {
     try {
@@ -233,7 +291,7 @@ export default function ScreenerPage() {
           </label>
         </div>
         <div className="flex justify-end mt-5">
-          <button onClick={() => void runScreen(filters)} disabled={loading} className="btn-primary text-sm">
+          <button onClick={() => void runScreen(filters)} disabled={loading || loadingMore} className="btn-primary text-sm">
             <Search size={14} /> {loading ? "Screening..." : "Run Screener"}
           </button>
         </div>
@@ -264,17 +322,25 @@ export default function ScreenerPage() {
               <thead><tr className="border-b border-titan-800/30">{["Symbol", "Price", "1M Change", "Volume", "Sector", "Market Cap (Cr)", "Action"].map(h => <th key={h} className="text-right first:text-left py-3 px-4 text-gray-500 font-medium text-xs uppercase">{h}</th>)}</tr></thead>
               <tbody>{results.map(stock => <tr key={stock.symbol} className="border-b border-titan-800/20 hover:bg-white/5">
                 <td className="py-3 px-4"><Link href={`/dashboard/stocks/${stock.symbol}`} className="text-white font-medium hover:text-titan-400">{stock.symbol}</Link><div className="text-[10px] text-gray-500">{stock.company_name}</div></td>
-                <td className="py-3 px-4 text-right text-white">{stock.close != null ? formatCurrency(stock.close) : "—"}</td>
+                <td className="py-3 px-4 text-right text-white">{stock.close != null ? formatCurrency(stock.close) : <span className="text-gray-600">Loading…</span>}</td>
                 <td className={`py-3 px-4 text-right font-medium ${getChangeColor(stock.change_1m_pct ?? 0)}`}>{stock.change_1m_pct != null ? `${stock.change_1m_pct >= 0 ? "+" : ""}${stock.change_1m_pct.toFixed(2)}%` : "—"}</td>
-                <td className="py-3 px-4 text-right text-gray-400">{stock.volume?.toLocaleString() ?? "—"}</td>
+                <td className="py-3 px-4 text-right text-gray-400">{stock.volume != null ? stock.volume.toLocaleString("en-IN") : <span className="text-gray-600">Loading…</span>}</td>
                 <td className="py-3 px-4 text-right text-gray-400">{stock.sector || "—"}</td>
-                <td className="py-3 px-4 text-right text-gray-400">{stock.market_cap != null ? stock.market_cap.toLocaleString() : "—"}</td>
+                <td className="py-3 px-4 text-right text-gray-400">{stock.market_cap != null ? `₹${stock.market_cap.toLocaleString("en-IN")}` : <span className="text-gray-600">Unavailable</span>}</td>
                 <td className="py-3 px-4 text-right"><Link href={`/dashboard/backtest?symbol=${encodeURIComponent(stock.symbol)}`} className="btn-secondary text-xs inline-flex">Backtest</Link></td>
               </tr>)}</tbody>
             </table>
           </div>
         )}
-        {total > results.length && <div className="p-4 border-t border-titan-800/30 text-center"><button onClick={() => void runScreen(filters, results.length)} disabled={loading} className="btn-secondary text-sm">{loading ? "Loading..." : "Load more"}</button></div>}
+        {total > results.length && (
+          <div className="p-4 border-t border-titan-800/30 text-center">
+            <button onClick={loadMore} disabled={loading || loadingMore} className="btn-secondary text-sm min-w-32">
+              {loadingMore ? "Loading more…" : `Load more (${Math.min(limit, total - results.length)} stocks)`}
+            </button>
+            {loadingQuotes && <div className="text-[11px] text-gray-600 mt-2">Updating live prices and volume…</div>}
+          </div>
+        )}
+        {total > 0 && results.length >= total && loadingQuotes && <div className="p-3 text-center text-[11px] text-gray-600">Updating live prices and volume…</div>}
       </div>
 
       {showCreate && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"><div className="bg-titan-900 rounded-xl p-6 w-full max-w-md">
