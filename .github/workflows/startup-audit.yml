@@ -1,0 +1,26 @@
+name: Startup Audit
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  import-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install package
+        run: python -m pip install --upgrade pip && python -m pip install -e .
+
+      - name: Verify FastAPI startup import
+        env:
+          APP_ENV: test
+        run: python -c "from titan_x.main import app; print(f'STARTUP OK: {len(app.routes)} routes registered')"
