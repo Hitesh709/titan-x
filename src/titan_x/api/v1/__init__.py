@@ -35,12 +35,12 @@ from titan_x.api.v1.feature_store import router as feature_store_router
 from titan_x.api.v1.financial_analysis import router as fa_router
 from titan_x.api.v1.financial_statements import fin_stmt_router
 from titan_x.api.v1.fundamental_scanner import router as fundamental_scanner_router
-from titan_x.api.v1.fundamentals import router as fund_router
+from titan_x.api.v1.fundamentals import fund_router
 from titan_x.api.v1.global_market import router as global_market_router
 from titan_x.api.v1.health import health_router
 from titan_x.api.v1.historical_similarity import hist_sim_router
 from titan_x.api.v1.indices import router as indices_router
-from titan_x.api.v1.institutional_analysis import inst_router
+from titan_x.api.v1.institutional_analysis import router as inst_router
 from titan_x.api.v1.intraday import intraday_router
 from titan_x.api.v1.intraday_recommendation import router as intraday_recommendation_router
 from titan_x.api.v1.knowledge_graph import kg_router
