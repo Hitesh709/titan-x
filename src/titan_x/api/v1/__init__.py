@@ -69,7 +69,7 @@ from titan_x.api.v1.pattern_search import router as pattern_search_router
 from titan_x.api.v1.performance_measurement import router as performance_measurement_router
 from titan_x.api.v1.portfolio import portfolio_router
 from titan_x.api.v1.portfolio_optimizer import router as portfolio_optimizer_router
-from titan_x.api.v1.prediction import router as prediction_router
+from titan_x.api.v1.prediction import prediction_router
 from titan_x.api.v1.preferences import router as prefs_router
 from titan_x.api.v1.price_target import router as price_target_router
 from titan_x.api.v1.prices import corp_actions_router, prices_router
