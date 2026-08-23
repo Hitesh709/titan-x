@@ -85,7 +85,7 @@ from titan_x.api.v1.search import router as search_router
 from titan_x.api.v1.sector_rotation import router as sector_rotation_router
 from titan_x.api.v1.sectors import sector_router
 from titan_x.api.v1.strategy import strategy_router
-from titan_x.api.v1.technical_indicators import router as tech_ind_router
+from titan_x.api.v1.technical_indicators import tech_ind_router
 from titan_x.api.v1.timescaledb import router as timescaledb_router
 from titan_x.api.v1.top_picks import router as top_picks_router
 from titan_x.api.v1.trade_journal import router as trade_journal_router
