@@ -9,7 +9,9 @@ from fastapi import APIRouter
 
 logger = logging.getLogger(__name__)
 
-# Explicit module/router pairs. None means discover module-level APIRouter(s).
+# Explicit module/router pairs. The preferred attribute is the router exported
+# by the module. If a module changes its router variable, discovery falls back
+# to module-level APIRouter objects so startup is not broken by naming drift.
 _ROUTER_SPECS: tuple[tuple[str, str | None], ...] = (
     ("analytics_dashboard", "router"), ("adaptive_stop_loss", "router"), ("admin", "admin_router"),
     ("advanced_screener", "router"), ("ai_ranking_v2", "router"), ("ai_registry", "router"),
@@ -28,21 +30,21 @@ _ROUTER_SPECS: tuple[tuple[str, str | None], ...] = (
     ("institutional_analysis", "inst_router"), ("intraday", "intraday_router"),
     ("intraday_recommendation", "router"), ("knowledge_graph", "kg_router"), ("learning", "learning_router"),
     ("live_market_websocket", "router"), ("macro", "router"), ("market_breadth", "market_breadth_router"),
-    ("market_data", "router"), ("market_data_collector", None), ("market_heatmap", "router"),
+    ("market_data", "router"), ("market_data_collector", "router"), ("market_heatmap", "router"),
     ("market_scanner", "router"), ("master_decision", "router"), ("microstructure", "router"),
     ("model_evaluation", "router"), ("model_registry", "router"), ("monitoring", "router"),
     ("news", "news_router"), ("news_nlp", "news_nlp_router"), ("news_scanner", "router"),
-    ("nightly_evaluation", "router"), ("opportunity_rejection", "router"), ("order", None),
-    ("paper_trading", None), ("pattern_library", "router"), ("pattern_recognition", "pattern_router"),
+    ("nightly_evaluation", "router"), ("opportunity_rejection", "router"), ("order", "router"),
+    ("paper_trading", "router"), ("pattern_library", "router"), ("pattern_recognition", "pattern_router"),
     ("pattern_search", "router"), ("performance_measurement", "router"), ("portfolio", "portfolio_router"),
-    ("portfolio_optimizer", "router"), ("prediction", None), ("preferences", "router"),
+    ("portfolio_optimizer", "router"), ("prediction", "router"), ("preferences", "router"),
     ("price_target", "router"), ("prices", None), ("professional_report", "router"), ("ranking", "router"),
-    ("recommendation", None), ("research", None), ("regime_detection", "router"), ("reports", None),
+    ("recommendation", "router"), ("research", "router"), ("regime_detection", "router"), ("reports", "router"),
     ("risk", "risk_router"), ("scheduler", "scheduler_router"), ("search", "router"),
     ("sector_rotation", "router"), ("sectors", "sector_router"), ("strategy", "strategy_router"),
     ("technical_indicators", "tech_ind_router"), ("timescaledb", "router"), ("top_picks", "router"),
-    ("trade_journal", None), ("trading_calendar", None), ("trading_portfolio", None),
-    ("users", "users_router"), ("valuation", "router"), ("version", "version_router"), ("watchlists", None),
+    ("trade_journal", "router"), ("trading_calendar", "router"), ("trading_portfolio", "router"),
+    ("users", "users_router"), ("valuation", "router"), ("version", "version_router"), ("watchlists", "router"),
 )
 
 
