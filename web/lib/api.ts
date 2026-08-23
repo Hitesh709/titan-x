@@ -6,16 +6,33 @@ interface RequestOptions {
   method?: string
   body?: unknown
   headers?: Record<string, string>
+  skipAuthRefresh?: boolean
+}
+
+interface RefreshResponse {
+  access_token: string
+  refresh_token: string
+  token_type?: string
 }
 
 class ApiClient {
   private token: string | null = null
+  private refreshToken: string | null = null
+  private refreshPromise: Promise<string | null> | null = null
 
   setToken(token: string | null) {
     this.token = token
     if (typeof window !== "undefined") {
       if (token) localStorage.setItem("titan_token", token)
       else localStorage.removeItem("titan_token")
+    }
+  }
+
+  setRefreshToken(token: string | null) {
+    this.refreshToken = token
+    if (typeof window !== "undefined") {
+      if (token) localStorage.setItem("titan_refresh_token", token)
+      else localStorage.removeItem("titan_refresh_token")
     }
   }
 
@@ -27,8 +44,69 @@ class ApiClient {
     return this.token
   }
 
+  getRefreshToken(): string | null {
+    if (this.refreshToken) return this.refreshToken
+    if (typeof window !== "undefined") {
+      this.refreshToken = localStorage.getItem("titan_refresh_token")
+    }
+    return this.refreshToken
+  }
+
+  clearTokens() {
+    this.token = null
+    this.refreshToken = null
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("titan_token")
+      localStorage.removeItem("titan_refresh_token")
+    }
+  }
+
+  /**
+   * Rotate the refresh token and replace both credentials atomically.
+   * Concurrent requests share the same refresh operation, preventing a
+   * refresh-token rotation race when several API calls receive 401 together.
+   */
+  async refreshAccessToken(): Promise<string | null> {
+    const storedRefresh = this.getRefreshToken()
+    if (!storedRefresh) return null
+    if (this.refreshPromise) return this.refreshPromise
+
+    this.refreshPromise = (async () => {
+      try {
+        const response = await fetch(`${API_BASE}/auth/refresh`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refresh_token: storedRefresh }),
+        })
+
+        if (!response.ok) {
+          this.clearTokens()
+          return null
+        }
+
+        const data = (await response.json()) as RefreshResponse
+        if (!data.access_token || !data.refresh_token) {
+          this.clearTokens()
+          return null
+        }
+
+        this.setToken(data.access_token)
+        this.setRefreshToken(data.refresh_token)
+        return data.access_token
+      } catch {
+        // Do not destroy a valid refresh token on a transient network error.
+        // The next API request can retry the refresh operation.
+        return null
+      } finally {
+        this.refreshPromise = null
+      }
+    })()
+
+    return this.refreshPromise
+  }
+
   async request<T = unknown>(endpoint: string, options: RequestOptions = {}): Promise<T> {
-    const { method = "GET", body, headers = {} } = options
+    const { method = "GET", body, headers = {}, skipAuthRefresh = false } = options
     const token = this.getToken()
 
     const h: Record<string, string> = {
@@ -44,6 +122,15 @@ class ApiClient {
       headers: h,
       body: body ? JSON.stringify(body) : undefined,
     })
+
+    // Access tokens are intentionally short-lived. If one expires, rotate
+    // the refresh token automatically and retry the original request once.
+    if (res.status === 401 && !skipAuthRefresh && normalizedEndpoint !== "/auth/refresh") {
+      const newToken = await this.refreshAccessToken()
+      if (newToken) {
+        return this.request<T>(endpoint, { ...options, skipAuthRefresh: true })
+      }
+    }
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }))
