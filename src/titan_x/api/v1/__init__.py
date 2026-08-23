@@ -25,7 +25,7 @@ from titan_x.api.v1.datalake import router as datalake_router
 from titan_x.api.v1.decision import decision_router
 from titan_x.api.v1.drift_detection import router as drift_detection_router
 from titan_x.api.v1.dynamic_ai_score import router as dynamic_ai_score_router
-from titan_x.api.v1.ensemble_ai import ensemble_router
+from titan_x.api.v1.ensemble_ai import router as ensemble_router
 from titan_x.api.v1.event_intelligence import router as event_intelligence_router
 from titan_x.api.v1.experiment_manager import router as experiment_manager_router
 from titan_x.api.v1.explainability import explainability_router
@@ -42,6 +42,7 @@ from titan_x.api.v1.historical_similarity import hist_sim_router
 from titan_x.api.v1.indices import router as indices_router
 from titan_x.api.v1.institutional_analysis import inst_router
 from titan_x.api.v1.intraday import intraday_router
+from titan_x.api.v1.intraday_recommendation import router as intraday_recommendation_router
 from titan_x.api.v1.knowledge_graph import kg_router
 from titan_x.api.v1.learning import learning_router
 from titan_x.api.v1.live_market_websocket import router as live_market_websocket_router
@@ -102,23 +103,24 @@ for _router in [
     auth_router, admin_router, users_router, scheduler_router, monitoring_router, cad_router,
     fa_router, inst_router, corporate_reminders_router, corp_track_router, data_io_router,
     data_validation_router, companies_router, prices_router, corp_actions_router, news_router,
-    news_nlp_router, intraday_router, kg_router, fin_stmt_router, market_breadth_router,
-    pattern_router, hist_sim_router, risk_router, prediction_router, reports_router, ensemble_router,
-    explainability_router, portfolio_router, trading_portfolio_router, prefs_router, decision_router,
-    sector_router, fund_router, tech_ind_router, ca_engine_router, backtest_router, broker_router,
-    watchlist_router, order_router, strategy_router, trading_calendar_router, timescaledb_router,
-    market_data_router, correlation_router, datalake_router, global_market_router, learning_router,
-    fundamental_scanner_router, news_scanner_router, market_scanner_router, macro_router,
-    master_decision_router, feature_engineering_router, mdc_router, microstructure_router,
-    regime_router, valuation_router, adaptive_stop_loss_router, opportunity_rejection_router,
-    price_target_router, event_intelligence_router, pattern_library_router, pattern_search_router,
-    ai_ranking_v2_router, ranking_router, portfolio_optimizer_router, professional_report_router,
-    company_research_router, trade_journal_router, performance_measurement_router,
-    nightly_evaluation_router, model_registry_router, automated_training_router, feature_store_router,
-    experiment_manager_router, model_evaluation_router, drift_detection_router, recommendation_router,
-    research_router, dynamic_ai_score_router, market_heatmap_router, sector_rotation_router,
-    advanced_screener_router, paper_trading_router, dashboard_router, indices_router, search_router,
-    export_router, top_picks_router, live_market_websocket_router,
+    news_nlp_router, intraday_router, intraday_recommendation_router, kg_router, fin_stmt_router,
+    market_breadth_router, pattern_router, hist_sim_router, risk_router, prediction_router,
+    reports_router, ensemble_router, explainability_router, portfolio_router, trading_portfolio_router,
+    prefs_router, decision_router, sector_router, fund_router, tech_ind_router, ca_engine_router,
+    backtest_router, broker_router, watchlist_router, order_router, strategy_router,
+    trading_calendar_router, timescaledb_router, market_data_router, correlation_router,
+    datalake_router, global_market_router, learning_router, fundamental_scanner_router,
+    news_scanner_router, market_scanner_router, macro_router, master_decision_router,
+    feature_engineering_router, mdc_router, microstructure_router, regime_router, valuation_router,
+    adaptive_stop_loss_router, opportunity_rejection_router, price_target_router,
+    event_intelligence_router, pattern_library_router, pattern_search_router, ai_ranking_v2_router,
+    ranking_router, portfolio_optimizer_router, professional_report_router, company_research_router,
+    trade_journal_router, performance_measurement_router, nightly_evaluation_router,
+    model_registry_router, automated_training_router, feature_store_router, experiment_manager_router,
+    model_evaluation_router, drift_detection_router, recommendation_router, research_router,
+    dynamic_ai_score_router, market_heatmap_router, sector_rotation_router, advanced_screener_router,
+    paper_trading_router, dashboard_router, indices_router, search_router, export_router,
+    top_picks_router, live_market_websocket_router,
 ]:
     v1_router.include_router(_router)
 
