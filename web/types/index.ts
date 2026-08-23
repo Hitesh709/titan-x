@@ -500,3 +500,39 @@ export interface RecommendationsPage {
   items: StockRecommendation[]
   total?: number
 }
+
+export interface IntradayRecommendation {
+  symbol: string
+  segment: "equity" | "fno"
+  instrument: "EQUITY" | "FUTURES" | "OPTIONS"
+  direction: "BUY" | "SELL" | "HOLD"
+  signal: string
+  score: number
+  confidence: number
+  current_price: number
+  entry_price: number
+  target_price: number
+  stop_price: number
+  risk_reward: number
+  expected_return_pct: number
+  volume_ratio: number
+  rsi: number | null
+  ema20: number | null
+  ema50: number | null
+  momentum_pct: number
+  option_bias?: "CALL" | "PUT" | "NONE"
+  option_strike?: number | null
+  timeframe: string
+  generated_at: string
+  evidence: string[]
+  caution: string[]
+}
+
+export interface IntradayRecommendationsResponse {
+  segment: "equity" | "fno"
+  generated_at: string
+  market_open: boolean
+  universe_size: number
+  scanned: number
+  recommendations: IntradayRecommendation[]
+}
