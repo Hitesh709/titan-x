@@ -1,46 +1,139 @@
+import asyncio
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from titan_x.api.dependencies import get_current_active_user, get_db
+from titan_x.api.dependencies import get_current_active_user
+from titan_x.infrastructure.market_data_providers import YahooFinanceProvider
 from titan_x.models.user import User
-from titan_x.services.index_service import IndexService
-from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/indices", tags=["indices"])
+
+INDEXES = [
+    ("NIFTY", "NIFTY 50", "^NSEI"),
+    ("SENSEX", "S&P BSE Sensex", "^BSESN"),
+    ("BANKNIFTY", "NIFTY Bank", "^NSEBANK"),
+    ("NIFTYIT", "NIFTY IT", "^CNXIT"),
+    ("NIFTYMID", "NIFTY Midcap 100", "^NSEMDCP50"),
+    ("NIFTYSMALLCAP", "NIFTY Smallcap 100", "^NSMIDCP"),
+    ("NIFTYAUTO", "NIFTY Auto", "^CNXAUTO"),
+    ("NIFTYPHARMA", "NIFTY Pharma", "^CNXPHARMA"),
+    ("NIFTYFMCG", "NIFTY FMCG", "^CNXFMCG"),
+    ("NIFTYMETAL", "NIFTY Metal", "^CNXMETAL"),
+    ("NIFTYENERGY", "NIFTY Energy", "^CNXENERGY"),
+    ("NIFTYREALTY", "NIFTY Realty", "^CNXREALTY"),
+]
+
+RANGES = {"1W": "5d", "1M": "1mo", "3M": "3mo", "6M": "6mo", "YTD": "ytd", "1Y": "1y"}
+
+
+async def _fetch_index(provider: YahooFinanceProvider, symbol: str, name: str, ticker: str, range_name: str = "5d") -> list[dict]:
+    data = await provider._get(
+        f"{provider.BASE_URL}/{ticker}",
+        params={"range": RANGES.get(range_name, "5d"), "interval": "1d"},
+    )
+    result = (data.get("chart") or {}).get("result")
+    if not result:
+        return []
+    chart = result[0]
+    timestamps = chart.get("timestamp") or []
+    quote = ((chart.get("indicators") or {}).get("quote") or [{}])[0]
+    rows = []
+    for i, ts in enumerate(timestamps):
+        close = quote.get("close", [])[i] if i < len(quote.get("close", [])) else None
+        if close is None:
+            continue
+        rows.append({
+            "trade_date": datetime.fromtimestamp(ts, tz=datetime.now().astimezone().tzinfo).date().isoformat(),
+            "open": float(quote.get("open", [close])[i] or close),
+            "high": float(quote.get("high", [close])[i] or close),
+            "low": float(quote.get("low", [close])[i] or close),
+            "close": float(close),
+            "volume": int(quote.get("volume", [0])[i] or 0),
+        })
+    return rows
 
 
 @router.get("")
 async def list_indices(
-    db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_active_user)],
+    _: Annotated[User, Depends(get_current_active_user)],
 ):
-    svc = IndexService(db)
-    return {"items": await svc.list_all()}
+    """Return live index data only. Synthetic/demo index values are never used."""
+    provider = YahooFinanceProvider()
+    try:
+        results = await asyncio.gather(
+            *[_fetch_index(provider, symbol, name, ticker) for symbol, name, ticker in INDEXES],
+            return_exceptions=True,
+        )
+    finally:
+        await provider.close()
+
+    items = []
+    for (symbol, name, _), result in zip(INDEXES, results):
+        if isinstance(result, Exception) or not result:
+            continue
+        current = result[-1]
+        previous = result[-2] if len(result) > 1 else None
+        prev_close = previous["close"] if previous else None
+        change = current["close"] - prev_close if prev_close else 0.0
+        change_pct = (change / prev_close * 100) if prev_close else 0.0
+        items.append({
+            "symbol": symbol,
+            "name": name,
+            **current,
+            "prev_close": prev_close,
+            "change": round(change, 2),
+            "change_pct": round(change_pct, 2),
+            "source": "yahoo_finance",
+        })
+
+    if not items:
+        raise HTTPException(503, "Live index data is temporarily unavailable. Synthetic index data has been disabled.")
+    return {"items": items}
 
 
 @router.get("/{symbol}/history")
 async def get_index_history(
     symbol: str,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_active_user)],
+    _: Annotated[User, Depends(get_current_active_user)],
     range: str = Query("3M", pattern=r"^(1W|1M|3M|6M|YTD|1Y)$"),
 ):
-    svc = IndexService(db)
-    points = await svc.get_history(symbol, range)
+    item = next((x for x in INDEXES if x[0] == symbol.upper()), None)
+    if item is None:
+        raise HTTPException(404, f"No history for index {symbol.upper()}")
+    provider = YahooFinanceProvider()
+    try:
+        points = await _fetch_index(provider, item[0], item[1], item[2], range)
+    except Exception as exc:
+        raise HTTPException(503, f"Live index history unavailable: {exc}")
+    finally:
+        await provider.close()
     if not points:
-        raise HTTPException(404, f"No history for index {symbol}")
-    return {"symbol": symbol.upper(), "range": range, "points": points}
+        raise HTTPException(404, f"No live history for index {symbol.upper()}")
+    return {"symbol": item[0], "range": range, "source": "yahoo_finance", "points": points}
 
 
 @router.get("/{symbol}/performance")
 async def get_index_performance(
     symbol: str,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_active_user)],
+    _: Annotated[User, Depends(get_current_active_user)],
 ):
-    svc = IndexService(db)
-    result = await svc.get_performance(symbol)
-    if not result:
-        raise HTTPException(404, f"No data for index {symbol}")
-    return result
+    item = next((x for x in INDEXES if x[0] == symbol.upper()), None)
+    if item is None:
+        raise HTTPException(404, f"No data for index {symbol.upper()}")
+    provider = YahooFinanceProvider()
+    try:
+        points = await _fetch_index(provider, item[0], item[1], item[2], "1y")
+    except Exception as exc:
+        raise HTTPException(503, f"Live index performance unavailable: {exc}")
+    finally:
+        await provider.close()
+    if len(points) < 2:
+        raise HTTPException(404, f"No data for index {symbol.upper()}")
+    last = points[-1]["close"]
+    periods = {}
+    for label, days in (("1W", 5), ("1M", 21), ("3M", 63), ("6M", 126), ("1Y", 252)):
+        if len(points) > days and points[-days - 1]["close"]:
+            periods[label] = round((last - points[-days - 1]["close"]) / points[-days - 1]["close"] * 100, 2)
+    return {"symbol": item[0], "trade_date": points[-1]["trade_date"], "close": last, "periods": periods, "source": "yahoo_finance"}
