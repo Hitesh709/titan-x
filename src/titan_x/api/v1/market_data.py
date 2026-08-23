@@ -2,11 +2,12 @@ from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from titan_x.api.dependencies import get_current_active_user, request_session
+from titan_x.infrastructure.market_data_providers import YahooFinanceProvider
 from titan_x.models.user import User
 from titan_x.services.market_data_service import MarketDataService
-from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/market-data", tags=["market-data"])
 
@@ -57,10 +58,7 @@ async def get_batch_quotes(
 ):
     syms = [s.strip().upper() for s in symbols.split(",") if s.strip()]
     if not syms or len(syms) > 100:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Provide 1-100 comma-separated symbols",
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Provide 1-100 comma-separated symbols")
     try:
         return await svc.get_quotes(syms)
     except Exception as e:
@@ -87,14 +85,37 @@ async def get_quote(
 async def get_stock_history(
     symbol: str,
     user: Annotated[User, Depends(get_current_active_user)],
-    svc: Annotated[MarketDataService, Depends(get_market_data_service)],
-    provider: str = Query(None),
-    api_key: str | None = Query(None),
 ):
+    """Return real historical prices for analysis; never demo/synthetic prices."""
+    provider = YahooFinanceProvider()
     try:
-        return await svc.get_history(symbol, provider_name=provider, api_key=api_key)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        points = await provider.get_historical_prices(symbol.upper(), synthetic_ok=False)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Live historical market data unavailable for {symbol.upper()}: {exc}",
+        )
+    finally:
+        await provider.close()
+
+    if not points:
+        raise HTTPException(status_code=404, detail=f"No real historical data available for {symbol.upper()}")
+
+    return {
+        "symbol": symbol.upper(),
+        "source": "yahoo_finance",
+        "points": [
+            {
+                "trade_date": p.trade_date.isoformat(),
+                "open": p.open,
+                "high": p.high,
+                "low": p.low,
+                "close": p.close,
+                "volume": p.volume,
+            }
+            for p in points
+        ],
+    }
 
 
 @router.get("/profile/{symbol}")
