@@ -7,6 +7,8 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable
 
+from titan_x.services.market_data_normalization_service import MarketDataNormalizationService
+
 
 @dataclass(frozen=True, slots=True)
 class LiveQuote:
@@ -30,52 +32,37 @@ QuoteSubscriber = Callable[[LiveQuote], Awaitable[None] | None]
 
 
 class LiveMarketDataEngine:
-    """Provider-neutral live quote engine.
+    """Provider-neutral live quote engine with canonical validation."""
 
-    Responsibilities are deliberately limited to quote polling, normalization,
-    freshness, deduplication and subscriber delivery. Broker/WebSocket transport
-    belongs to the next Sprint 4 items.
-    """
-
-    def __init__(self, fetch_quote: QuoteFetcher, *, stale_after_seconds: float = 15.0):
+    def __init__(
+        self,
+        fetch_quote: QuoteFetcher,
+        *,
+        stale_after_seconds: float = 15.0,
+        normalizer: MarketDataNormalizationService | None = None,
+    ):
         if stale_after_seconds <= 0:
             raise ValueError("stale_after_seconds must be positive")
         self._fetch_quote = fetch_quote
         self.stale_after_seconds = stale_after_seconds
+        self._normalizer = normalizer or MarketDataNormalizationService()
         self._latest: dict[str, LiveQuote] = {}
         self._sequence: dict[str, int] = {}
         self._subscribers: set[QuoteSubscriber] = set()
         self._stop_event = asyncio.Event()
 
-    @staticmethod
-    def normalize(symbol: str, payload: dict[str, Any], sequence: int) -> LiveQuote:
-        symbol = symbol.strip().upper()
-        price = payload.get("last_price", payload.get("price", payload.get("ltp")))
-        if not symbol:
-            raise ValueError("symbol cannot be empty")
-        if price is None:
-            raise ValueError(f"missing last price for {symbol}")
-        price = float(price)
-        if price <= 0:
-            raise ValueError(f"last price must be positive for {symbol}")
-        raw_ts = payload.get("timestamp") or payload.get("ts")
-        if isinstance(raw_ts, datetime):
-            timestamp = raw_ts.astimezone(timezone.utc).isoformat()
-        elif raw_ts:
-            timestamp = str(raw_ts)
-        else:
-            timestamp = datetime.now(timezone.utc).isoformat()
-        volume = payload.get("volume")
+    def normalize(self, symbol: str, payload: dict[str, Any], sequence: int) -> LiveQuote:
+        canonical = self._normalizer.normalize(symbol, payload)
         return LiveQuote(
-            symbol=symbol,
-            last_price=price,
-            change=float(payload["change"]) if payload.get("change") is not None else None,
-            change_percent=(float(payload["change_percent"]) if payload.get("change_percent") is not None else None),
-            volume=volume,
-            exchange=payload.get("exchange"),
-            currency=payload.get("currency", "INR"),
-            source=str(payload.get("source", "live")),
-            timestamp=timestamp,
+            symbol=canonical["symbol"],
+            last_price=canonical["last_price"],
+            change=canonical["change"],
+            change_percent=canonical["change_percent"],
+            volume=canonical["volume"],
+            exchange=canonical["exchange"],
+            currency=canonical["currency"],
+            source=canonical["source"],
+            timestamp=canonical["timestamp"],
             sequence=sequence,
         )
 
@@ -98,7 +85,7 @@ class LiveMarketDataEngine:
         try:
             timestamp = datetime.fromisoformat(quote.timestamp.replace("Z", "+00:00"))
             age = (datetime.now(timezone.utc) - timestamp.astimezone(timezone.utc)).total_seconds()
-        except ValueError:
+        except (TypeError, ValueError):
             return True
         return age > self.stale_after_seconds
 
@@ -122,8 +109,6 @@ class LiveMarketDataEngine:
 
     async def _fetch_one(self, symbol: str) -> LiveQuote:
         payload = await self._fetch_quote(symbol)
-        if not isinstance(payload, dict):
-            raise ValueError(f"invalid quote payload for {symbol}")
         sequence = self._sequence.get(symbol, 0) + 1
         quote = self.normalize(symbol, payload, sequence)
         self._sequence[symbol] = sequence
@@ -138,7 +123,6 @@ class LiveMarketDataEngine:
                 if inspect.isawaitable(result):
                     await result
             except Exception:
-                # One consumer must never stop market-data ingestion for all others.
                 continue
 
     async def run(self, symbols: list[str], interval_seconds: float = 2.0) -> None:
