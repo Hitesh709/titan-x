@@ -10,6 +10,7 @@ from titan_x.api.schemas import PaginatedResponse
 from titan_x.models.user import User
 from titan_x.services.advanced_screener_service import AdvancedScreenerService
 from titan_x.services.backtest_engine import BacktestEngine
+from titan_x.services.market_data_service import MarketDataService
 
 router = APIRouter(prefix="/screener", tags=["screener"])
 
@@ -38,6 +39,56 @@ class ScreenerBacktestCreate(BaseModel):
     description: str | None = None
 
 
+async def _enrich_current_market_data(
+    session: AsyncSession,
+    results: list[dict],
+    as_of_date: date | None,
+) -> list[dict]:
+    """Overlay live quote price/volume for current screens.
+
+    Historical/as-of screens must remain point-in-time and therefore keep the
+    database price. For a current screen, however, a missing/stale DailyPrice
+    row must never be displayed as if it were today's live quote.
+    """
+    if not results:
+        return results
+    if as_of_date is not None and as_of_date < date.today():
+        return results
+
+    symbols = [str(row.get("symbol", "")).upper() for row in results if row.get("symbol")]
+    if not symbols:
+        return results
+
+    try:
+        quotes = await MarketDataService(session).get_quotes(symbols)
+    except Exception:
+        return results
+
+    by_symbol = {
+        str(q.get("symbol", "")).upper(): q
+        for q in (quotes.get("quotes") or [])
+        if isinstance(q, dict)
+    }
+
+    enriched: list[dict] = []
+    for row in results:
+        item = dict(row)
+        q = by_symbol.get(str(item.get("symbol", "")).upper())
+        if q:
+            live_price = q.get("last_price")
+            live_volume = q.get("volume")
+            if isinstance(live_price, (int, float)) and live_price > 0:
+                item["close"] = live_price
+            if isinstance(live_volume, (int, float)) and live_volume >= 0:
+                item["volume"] = int(live_volume)
+            item["live_quote"] = True
+            item["quote_source"] = q.get("source") or "live_market_feed"
+        else:
+            item["live_quote"] = False
+        enriched.append(item)
+    return enriched
+
+
 @router.post("/run")
 async def run_adhoc_screen(
     filters: dict,
@@ -48,9 +99,11 @@ async def run_adhoc_screen(
     current_user: User = Depends(deps.get_current_active_user),
 ):
     service = AdvancedScreenerService(session)
-    return await service.run_screen(
+    result = await service.run_screen(
         filters, current_user.id, skip=skip, limit=limit, as_of_date=as_of_date
     )
+    result["results"] = await _enrich_current_market_data(session, result.get("results", []), as_of_date)
+    return result
 
 
 @router.post("/screens", status_code=status.HTTP_201_CREATED)
@@ -139,6 +192,7 @@ async def run_saved_screen(
         )
     if result is None:
         raise HTTPException(status_code=404, detail="Saved screen not found")
+    result["results"] = await _enrich_current_market_data(session, result.get("results", []), as_of_date)
     return result
 
 
@@ -166,8 +220,6 @@ async def backtest_screened_symbol(
     except (json.JSONDecodeError, TypeError) as exc:
         raise HTTPException(status_code=400, detail="Saved screen contains invalid filter JSON") from exc
 
-    # Re-run the saved screen before creating the backtest. This prevents a
-    # caller from backtesting a symbol that is no longer in the screen result.
     screen_result = await screener.run_screen(
         filters, current_user.id, screen_id=screen_id, skip=0, limit=5000
     )
