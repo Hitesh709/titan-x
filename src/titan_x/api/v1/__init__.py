@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from titan_x.api.v1.analytics_dashboard import router as analytics_dashboard_router
 from titan_x.api.v1.adaptive_stop_loss import router as adaptive_stop_loss_router
 from titan_x.api.v1.admin import admin_router
 from titan_x.api.v1.advanced_screener import router as advanced_screener_router
@@ -24,7 +25,7 @@ from titan_x.api.v1.datalake import router as datalake_router
 from titan_x.api.v1.decision import decision_router
 from titan_x.api.v1.drift_detection import router as drift_detection_router
 from titan_x.api.v1.dynamic_ai_score import router as dynamic_ai_score_router
-from titan_x.api.v1.ensemble_ai import ensemble_router
+from titan_x.api.v1.ensemble_ai import router as ensemble_router
 from titan_x.api.v1.event_intelligence import router as event_intelligence_router
 from titan_x.api.v1.experiment_manager import router as experiment_manager_router
 from titan_x.api.v1.explainability import explainability_router
@@ -62,12 +63,12 @@ from titan_x.api.v1.opportunity_rejection import router as opportunity_rejection
 from titan_x.api.v1.order import router as order_router
 from titan_x.api.v1.paper_trading import router as paper_trading_router
 from titan_x.api.v1.pattern_library import router as pattern_library_router
-from titan_x.api.v1.pattern_recognition import pattern_router
+from titan_x.api.v1.pattern_recognition import router as pattern_router
 from titan_x.api.v1.pattern_search import router as pattern_search_router
 from titan_x.api.v1.performance_measurement import router as performance_measurement_router
 from titan_x.api.v1.portfolio import portfolio_router
 from titan_x.api.v1.portfolio_optimizer import router as portfolio_optimizer_router
-from titan_x.api.v1.prediction import prediction_router
+from titan_x.api.v1.prediction import router as prediction_router
 from titan_x.api.v1.preferences import router as prefs_router
 from titan_x.api.v1.price_target import router as price_target_router
 from titan_x.api.v1.prices import corp_actions_router, prices_router
@@ -83,7 +84,7 @@ from titan_x.api.v1.search import router as search_router
 from titan_x.api.v1.sector_rotation import router as sector_rotation_router
 from titan_x.api.v1.sectors import sector_router
 from titan_x.api.v1.strategy import strategy_router
-from titan_x.api.v1.technical_indicators import tech_ind_router
+from titan_x.api.v1.technical_indicators import router as tech_ind_router
 from titan_x.api.v1.timescaledb import router as timescaledb_router
 from titan_x.api.v1.top_picks import router as top_picks_router
 from titan_x.api.v1.trade_journal import router as trade_journal_router
@@ -94,6 +95,7 @@ from titan_x.api.v1.version import version_router
 from titan_x.api.v1.watchlists import router as watchlist_router
 
 v1_router = APIRouter(prefix="/api/v1")
+v1_router.include_router(analytics_dashboard_router)
 v1_router.include_router(ai_registry_router)
 v1_router.include_router(audit_router)
 v1_router.include_router(health_router)
