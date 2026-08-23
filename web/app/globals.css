@@ -32,9 +32,7 @@
     scroll-behavior: smooth;
   }
 
-  * {
-    @apply border-gray-800;
-  }
+  * { @apply border-gray-800; }
 
   body {
     @apply bg-titan-950 text-gray-100 antialiased;
@@ -42,9 +40,7 @@
     text-rendering: optimizeLegibility;
   }
 
-  ::selection {
-    @apply bg-titan-500/30 text-white;
-  }
+  ::selection { @apply bg-titan-500/30 text-white; }
 
   :where(a, button, [role="button"], summary, input, select, textarea):focus-visible {
     outline: 2px solid #60a5fa;
@@ -54,92 +50,56 @@
 }
 
 @layer components {
-  .glass {
-    @apply bg-white/5 backdrop-blur-xl border border-white/10;
-  }
-  .glass-card {
-    @apply bg-titan-900/50 backdrop-blur-xl border border-titan-700/30 rounded-xl;
-  }
-  .btn-primary {
-    @apply px-6 py-2.5 bg-titan-600 hover:bg-titan-500 text-white font-medium rounded-lg transition-all duration-200 inline-flex items-center justify-center gap-2;
-  }
-  .btn-secondary {
-    @apply px-6 py-2.5 bg-white/5 hover:bg-white/10 text-gray-200 font-medium rounded-lg border border-white/10 transition-all duration-200 inline-flex items-center justify-center gap-2;
-  }
-  .btn-ghost {
-    @apply px-4 py-2 hover:bg-white/5 text-gray-400 hover:text-gray-200 rounded-lg transition-all duration-200 inline-flex items-center justify-center gap-2;
-  }
-  .input-field {
-    @apply w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-titan-500 focus:border-transparent transition-all duration-200;
-  }
-  .badge {
-    @apply px-2.5 py-0.5 rounded-full text-xs font-medium;
-  }
-  .badge-green {
-    @apply badge bg-emerald-500/10 text-emerald-400 border border-emerald-500/20;
-  }
-  .badge-red {
-    @apply badge bg-red-500/10 text-red-400 border border-red-500/20;
-  }
-  .badge-blue {
-    @apply badge bg-titan-500/10 text-titan-400 border border-titan-500/20;
-  }
-  .badge-yellow {
-    @apply badge bg-yellow-500/10 text-yellow-400 border border-yellow-500/20;
-  }
-  .sidebar-link {
-    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-400 hover:text-gray-100 hover:bg-white/5 transition-all duration-200;
-  }
-  .sidebar-link-active {
-    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg bg-titan-600/20 text-titan-400 border border-titan-600/30;
-  }
-
-  /* XeCaps company branding */
-  .xecaps-brand-icon {
-    background-image: url('/xecaps-icon.svg');
-    background-size: contain;
-    background-position: center;
-    background-repeat: no-repeat;
-    background-color: transparent !important;
-    box-shadow: none !important;
-  }
+  .glass { @apply bg-white/5 backdrop-blur-xl border border-white/10; }
+  .glass-card { @apply bg-titan-900/50 backdrop-blur-xl border border-titan-700/30 rounded-xl; }
+  .btn-primary { @apply px-6 py-2.5 bg-titan-600 hover:bg-titan-500 text-white font-medium rounded-lg transition-all duration-200 inline-flex items-center justify-center gap-2; }
+  .btn-secondary { @apply px-6 py-2.5 bg-white/5 hover:bg-white/10 text-gray-200 font-medium rounded-lg border border-white/10 transition-all duration-200 inline-flex items-center justify-center gap-2; }
+  .btn-ghost { @apply px-4 py-2 hover:bg-white/5 text-gray-400 hover:text-gray-200 rounded-lg transition-all duration-200 inline-flex items-center justify-center gap-2; }
+  .input-field { @apply w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-titan-500 focus:border-transparent transition-all duration-200; }
+  .badge { @apply px-2.5 py-0.5 rounded-full text-xs font-medium; }
+  .badge-green { @apply badge bg-emerald-500/10 text-emerald-400 border border-emerald-500/20; }
+  .badge-red { @apply badge bg-red-500/10 text-red-400 border border-red-500/20; }
+  .badge-blue { @apply badge bg-titan-500/10 text-titan-400 border border-titan-500/20; }
+  .badge-yellow { @apply badge bg-yellow-500/10 text-yellow-400 border border-yellow-500/20; }
+  .sidebar-link { @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-400 hover:text-gray-100 hover:bg-white/5 transition-all duration-200; }
+  .sidebar-link-active { @apply flex items-center gap-3 px-3 py-2.5 rounded-lg bg-titan-600/20 text-titan-400 border border-titan-600/30; }
 }
 
-/* Replace the old TX square marks with the XeCaps company icon. */
-nav a[href="/"] > div:first-child,
-aside a[href="/dashboard"] > div:first-child,
-.min-h-screen > div:first-child a[href="/"] > div:first-child {
-  background-image: url('/xecaps-icon.svg');
-  background-size: contain;
-  background-position: center;
-  background-repeat: no-repeat;
+/* XeCaps company branding */
+nav a[href="/"] {
+  width: 150px;
+  height: 48px;
+  background: url('/xecaps-logo.svg') center / contain no-repeat;
+  flex-shrink: 0;
+}
+nav a[href="/"] > * { opacity: 0; }
+
+/* Login/register brand */
+.min-h-screen > div:first-child a[href="/"] {
+  width: 170px;
+  height: 62px;
+  background: url('/xecaps-logo.svg') center / contain no-repeat;
+}
+.min-h-screen > div:first-child a[href="/"] > * { opacity: 0; }
+
+/* Dashboard brand: icon plus existing TITAN X wordmark. */
+aside a[href="/dashboard"] > div:first-child {
+  background: url('/xecaps-icon.svg') center / contain no-repeat;
   background-color: transparent !important;
   box-shadow: none !important;
 }
-
-nav a[href="/"] > div:first-child > span,
-aside a[href="/dashboard"] > div:first-child > span,
-.min-h-screen > div:first-child a[href="/"] > div:first-child > span {
-  opacity: 0;
-}
+aside a[href="/dashboard"] > div:first-child > span { opacity: 0; }
 
 @keyframes float {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-20px); }
 }
-
 @keyframes pulse-glow {
   0%, 100% { opacity: 0.4; }
   50% { opacity: 0.8; }
 }
-
-.animate-float {
-  animation: float 6s ease-in-out infinite;
-}
-
-.animate-pulse-glow {
-  animation: pulse-glow 3s ease-in-out infinite;
-}
+.animate-float { animation: float 6s ease-in-out infinite; }
+.animate-pulse-glow { animation: pulse-glow 3s ease-in-out infinite; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
@@ -150,16 +110,7 @@ aside a[href="/dashboard"] > div:first-child > span,
   }
 }
 
-::-webkit-scrollbar {
-  width: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.1);
-  border-radius: 3px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(255,255,255,0.2);
-}
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
