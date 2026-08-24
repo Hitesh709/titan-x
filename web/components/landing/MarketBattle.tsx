@@ -56,16 +56,16 @@ export default function MarketBattle() {
         <div className="battle-score"><span>AI SCORE</span><strong>{Math.round(numericScore)}</strong></div>
       </div>
 
-      <div className={`battle-stage ${dragging ? "is-dragging" : ""} ${pulse ? "battle-pulse" : ""}`} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
+      <div className={`battle-stage ${dragging ? "is-dragging" : ""}`} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
         <div className="battle-grid" /><div className="battle-ring battle-ring-one" /><div className="battle-ring battle-ring-two" />
         <div className={`battle-impact ${winner !== "neutral" ? "is-active" : ""}`} />
 
         <div className="battle-beast battle-bull" style={{ transform: bullTransform }}>
-          <img src="/titanx-3d-bull.svg" alt="3D TITAN X bull" draggable={false} />
+          <img className={winner === "bull" ? "battle-hit-bull" : ""} src="/titanx-3d-bull.svg" alt="3D TITAN X bull" draggable={false} />
           {winner === "bull" && <div className="winner-tag"><Target size={12} /> WIN</div>}
         </div>
         <div className="battle-beast battle-bear" style={{ transform: bearTransform }}>
-          <img src="/titanx-3d-bear.svg" alt="3D TITAN X bear" draggable={false} />
+          <img className={winner === "bear" ? "battle-hit-bear" : ""} src="/titanx-3d-bear.svg" alt="3D TITAN X bear" draggable={false} />
           {winner === "bear" && <div className="winner-tag"><Target size={12} /> WIN</div>}
         </div>
 
