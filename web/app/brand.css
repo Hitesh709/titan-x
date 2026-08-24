@@ -1,32 +1,5 @@
 /* TITAN X master brand treatment */
-.titan-brand{gap:0 !important;align-items:center !important;}
-.titan-brand .titan-brand-mark{
-  width:190px !important;
-  height:58px !important;
-  display:block !important;
-  flex:none !important;
-  background:url('/titan-x-logo.svg') center/contain no-repeat !important;
-  background-color:transparent !important;
-  clip-path:none !important;
-  box-shadow:none !important;
-  font-size:0 !important;
-  color:transparent !important;
-}
-.titan-brand > span:nth-child(2){display:none !important;}
-
-/* The market battle must remain visually dominant on phones. */
-.titan-webgl-canvas{min-height:430px !important;overflow:hidden !important;background:radial-gradient(circle at 50% 58%,rgba(30,144,255,.12),transparent 45%),linear-gradient(180deg,#020714,#030916) !important;}
-.titan-webgl-host{position:absolute !important;inset:0 !important;z-index:1 !important;}
-.titan-webgl-host canvas{display:block !important;width:100% !important;height:100% !important;filter:brightness(1.65) contrast(1.18) saturate(1.35) !important;}
-.titan-webgl-canvas .battle-hud,.titan-webgl-canvas .titan-rotate,.titan-webgl-canvas .titan-winner,.titan-webgl-canvas .titan-impact,.titan-webgl-canvas .titan-attack-line{z-index:4 !important;}
-.titan-webgl-canvas:after{content:'BULL  ◀────────  ▶  BEAR';position:absolute;left:50%;bottom:54px;transform:translateX(-50%);z-index:3;white-space:nowrap;color:rgba(224,242,254,.72);font:700 9px/1 'JetBrains Mono',monospace;letter-spacing:.18em;text-shadow:0 0 14px rgba(94,231,255,.65);pointer-events:none;}
-
-@media (max-width:900px){
-  .titan-brand .titan-brand-mark{width:174px !important;height:52px !important;}
-  .titan-webgl-canvas{min-height:390px !important;}
-}
-@media (max-width:520px){
-  .titan-brand .titan-brand-mark{width:158px !important;height:48px !important;}
-  .titan-webgl-canvas{min-height:410px !important;}
-  .titan-webgl-canvas:after{font-size:8px;bottom:52px;letter-spacing:.1em;}
-}
+.titan-brand{gap:0 !important;align-items:center !important}.titan-brand .titan-brand-mark{width:190px !important;height:63px !important;display:block !important;flex:none !important;background:url('/titan-x-logo.svg') center/contain no-repeat !important;background-color:transparent !important;clip-path:none !important;box-shadow:none !important;font-size:0 !important;color:transparent !important}.titan-brand > span:nth-child(2){display:none !important}
+.titan-webgl-canvas{min-height:520px !important;height:520px !important;overflow:hidden !important;background:radial-gradient(circle at 50% 58%,rgba(30,144,255,.12),transparent 45%),linear-gradient(180deg,#020714,#030916) !important}.titan-webgl-host{position:absolute !important;inset:0 !important;z-index:1 !important}.titan-webgl-host canvas{display:block !important;width:100% !important;height:100% !important;filter:brightness(1.35) contrast(1.18) saturate(1.35) !important}.titan-webgl-canvas .battle-hud,.titan-webgl-canvas .titan-rotate,.titan-webgl-canvas .titan-winner,.titan-webgl-canvas .titan-impact,.titan-webgl-canvas .titan-attack-line,.titan-webgl-canvas .beast-label{z-index:6 !important}.titan-webgl-canvas:after{content:'BULL  ◀────────  ▶  BEAR';position:absolute;left:50%;bottom:54px;transform:translateX(-50%);z-index:3;white-space:nowrap;color:rgba(224,242,254,.72);font:700 9px/1 'JetBrains Mono',monospace;letter-spacing:.18em;text-shadow:0 0 14px rgba(94,231,255,.65);pointer-events:none}
+@media (max-width:900px){.titan-brand .titan-brand-mark{width:174px !important;height:58px !important}.titan-webgl-canvas{min-height:560px !important;height:560px !important}}
+@media (max-width:520px){.titan-brand .titan-brand-mark{width:166px !important;height:55px !important}.titan-webgl-canvas{min-height:520px !important;height:520px !important}.titan-webgl-canvas:after{font-size:8px;bottom:52px;letter-spacing:.1em}}
