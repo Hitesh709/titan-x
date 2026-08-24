@@ -27,147 +27,113 @@ class MarketDataService:
     def _is_mock(self, provider_name: str) -> bool:
         return provider_name.lower() == "mock"
 
-    async def fetch_and_store_historical(
-        self,
-        symbol: str,
-        provider_name: str | None = None,
-        api_key: str | None = None,
-        start: date | None = None,
-        end: date | None = None,
-    ) -> dict:
+    async def fetch_and_store_historical(self, symbol: str, provider_name: str | None = None, api_key: str | None = None, start: date | None = None, end: date | None = None) -> dict:
         provider_name = self._resolve_provider(provider_name)
         provider = get_market_data_provider(provider_name, api_key)
         try:
-            points = await provider.get_historical_prices(
-                symbol, start=start, end=end, synthetic_ok=self._is_mock(provider_name)
-            )
+            points = await provider.get_historical_prices(symbol, start=start, end=end, synthetic_ok=self._is_mock(provider_name))
         finally:
             if hasattr(provider, "close"):
                 await provider.close()
-
         symbol = symbol.upper()
         company_result = await self.session.execute(select(Company).where(Company.symbol == symbol))
         company = company_result.scalar_one_or_none()
-
-        inserted = 0
-        skipped = 0
+        inserted = skipped = 0
         for point in points:
-            existing_result = await self.session.execute(
-                select(DailyPrice).where(
-                    DailyPrice.symbol == symbol,
-                    DailyPrice.trade_date == point.trade_date,
-                )
-            )
+            existing_result = await self.session.execute(select(DailyPrice).where(DailyPrice.symbol == symbol, DailyPrice.trade_date == point.trade_date))
             if existing_result.scalar_one_or_none() is not None:
                 skipped += 1
                 continue
-
-            self.session.add(DailyPrice(
-                symbol=symbol,
-                trade_date=point.trade_date,
-                open=point.open,
-                high=point.high,
-                low=point.low,
-                close=point.close,
-                volume=point.volume,
-            ))
+            self.session.add(DailyPrice(symbol=symbol, trade_date=point.trade_date, open=point.open, high=point.high, low=point.low, close=point.close, volume=point.volume))
             inserted += 1
-
             if company is None:
-                company = Company(
-                    symbol=symbol,
-                    company_name=f"{symbol} Corp",
-                    isin=f"IN{symbol}001",
-                    exchange="NSE",
-                    sector="Unknown",
-                )
+                company = Company(symbol=symbol, company_name=f"{symbol} Corp", isin=f"IN{symbol}001", exchange="NSE", sector="Unknown")
                 self.session.add(company)
-
         await self.session.flush()
         return {"symbol": symbol, "provider": provider_name, "inserted": inserted, "skipped": skipped, "total_fetched": len(points)}
 
-    async def ingest_universe(
-        self,
-        symbols: list[str],
-        provider_name: str | None = None,
-        api_key: str | None = None,
-        start: date | None = None,
-        end: date | None = None,
-        max_concurrency: int = 1,
-    ) -> dict:
-        """Fetch and store real OHLCV history without sharing one AsyncSession
-        across concurrent writers. SQLAlchemy AsyncSession is stateful and must
-        never be flushed concurrently; therefore this ingestion path is
-        deliberately serialized. Provider HTTP requests still use their own
-        async connection pooling internally.
-        """
+    async def ingest_universe(self, symbols: list[str], provider_name: str | None = None, api_key: str | None = None, start: date | None = None, end: date | None = None, max_concurrency: int = 1) -> dict:
         provider_name = self._resolve_provider(provider_name)
-        results: list[dict] = []
-
-        # IMPORTANT: all symbols currently use this service's single AsyncSession.
-        # Never run fetch_and_store_historical concurrently on that session.
-        # Keeping this sequential also makes Render startup ingestion deterministic
-        # and eliminates intermittent "Session is already flushing" failures.
+        results = []
         for symbol in symbols:
             try:
-                result = await self.fetch_and_store_historical(
-                    symbol,
-                    provider_name=provider_name,
-                    api_key=api_key,
-                    start=start,
-                    end=end,
-                )
-            except Exception as exc:  # noqa: BLE001
-                result = {"symbol": symbol.upper(), "provider": provider_name, "error": str(exc)}
-            results.append(result)
-
+                results.append(await self.fetch_and_store_historical(symbol, provider_name=provider_name, api_key=api_key, start=start, end=end))
+            except Exception as exc:
+                results.append({"symbol": symbol.upper(), "provider": provider_name, "error": str(exc)})
         errors = [r for r in results if "error" in r]
-        return {
-            "provider": provider_name,
-            "symbols_requested": len(symbols),
-            "symbols_ok": len(results) - len(errors),
-            "symbols_failed": len(errors),
-            "inserted_total": sum(r.get("inserted", 0) for r in results),
-            "errors": errors,
-        }
+        return {"provider": provider_name, "symbols_requested": len(symbols), "symbols_ok": len(results) - len(errors), "symbols_failed": len(errors), "inserted_total": sum(r.get("inserted", 0) for r in results), "errors": errors}
 
     async def get_quote(self, symbol: str, provider_name: str | None = None, api_key: str | None = None) -> dict:
         provider_name = self._resolve_provider(provider_name)
         provider = get_market_data_provider(provider_name, api_key)
         try:
-            return await provider.get_quote(symbol.upper(), synthetic_ok=self._is_mock(provider_name))
+            quote = await provider.get_quote(symbol.upper())
+            self._normalize_quote_change(quote)
+            return quote
         finally:
             if hasattr(provider, "close"):
                 await provider.close()
 
+    @staticmethod
+    def _normalize_quote_change(q: dict) -> dict:
+        """Ensure every real quote has an accurate day change and percentage."""
+        last = q.get("last_price")
+        prev = q.get("prev_close")
+        if q.get("change") is None and last is not None and prev not in (None, 0):
+            q["change"] = float(last) - float(prev)
+        if q.get("change_percent") is None and q.get("change") is not None and prev not in (None, 0):
+            q["change_percent"] = float(q["change"]) / float(prev) * 100.0
+        return q
+
     async def get_quotes(self, symbols: list[str]) -> dict:
-        symbols = [s.upper() for s in symbols]
-        provider = get_market_data_provider(self._resolve_provider(None))
+        """Return real quotes for a large universe without creating a 100-request burst.
+
+        Yahoo's public chart endpoint is rate-sensitive on cloud IPs. Requests are
+        therefore made in small controlled batches with per-symbol retries. Failed
+        symbols are omitted rather than replaced with fake/demo prices.
+        """
+        symbols = list(dict.fromkeys(s.upper().replace(".NS", "").replace(".BO", "") for s in symbols if s.strip()))[:100]
         now = time.monotonic()
-        out: list[dict | None] = []
+        out: list[dict] = []
         to_fetch: list[str] = []
-        for s in symbols:
-            hit = _quote_cache.get(s)
-            if hit and now - hit[0] < _QUOTE_CACHE_TTL_SECONDS:
+        for symbol in symbols:
+            hit = _quote_cache.get(symbol)
+            if hit and now - hit[0] < _QUOTE_CACHE_TTL_SECONDS and hit[1].get("last_price") is not None:
                 out.append(hit[1])
             else:
-                to_fetch.append(s)
-                out.append(None)
-        if to_fetch:
+                to_fetch.append(symbol)
+
+        provider = get_market_data_provider(self._resolve_provider(None))
+        try:
+            for start in range(0, len(to_fetch), 10):
+                batch = to_fetch[start:start + 10]
+                results = await asyncio.gather(*(self._fetch_quote_with_retry(provider, symbol) for symbol in batch), return_exceptions=True)
+                for symbol, result in zip(batch, results):
+                    if isinstance(result, dict) and result.get("last_price") is not None:
+                        self._normalize_quote_change(result)
+                        _quote_cache[symbol] = (time.monotonic(), result)
+                        out.append(result)
+                if start + 10 < len(to_fetch):
+                    await asyncio.sleep(0.4)
+        finally:
+            if hasattr(provider, "close"):
+                await provider.close()
+
+        # Preserve the requested ordering only as a stable tie-breaker; the UI ranks it.
+        order = {symbol: i for i, symbol in enumerate(symbols)}
+        out.sort(key=lambda q: order.get(str(q.get("symbol", "")).replace(".NS", "").replace(".BO", ""), 9999))
+        return {"quotes": out, "count": len(out), "requested": len(symbols), "live": True, "source": "yahoo_finance"}
+
+    async def _fetch_quote_with_retry(self, provider, symbol: str) -> dict | None:
+        last_error: Exception | None = None
+        for attempt in range(3):
             try:
-                results = await asyncio.gather(*[provider.get_quote(s) for s in to_fetch], return_exceptions=True)
-            finally:
-                if hasattr(provider, "close"):
-                    await provider.close()
-            fi = 0
-            for i, s in enumerate(symbols):
-                if out[i] is None:
-                    res = results[fi]
-                    fi += 1
-                    q = res if not isinstance(res, Exception) else {"symbol": s, "name": s, "last_price": None, "change": None, "change_percent": None, "volume": 0, "exchange": "NSE", "currency": "INR", "source": "error"}
-                    _quote_cache[s] = (now, q)
-                    out[i] = q
-        return {"quotes": out, "count": len(out)}
+                return await provider.get_quote(symbol)
+            except Exception as exc:
+                last_error = exc
+                if attempt < 2:
+                    await asyncio.sleep(0.8 * (attempt + 1))
+        return None
 
     async def get_company_profile(self, symbol: str, provider_name: str | None = None, api_key: str | None = None) -> dict:
         symbol = symbol.upper()
@@ -178,7 +144,7 @@ class MarketDataService:
             provider_name = self._resolve_provider(provider_name)
             provider = get_market_data_provider(provider_name, api_key)
             try:
-                profile = await provider.get_company_profile(symbol, synthetic_ok=self._is_mock(provider_name))
+                profile = await provider.get_company_profile(symbol)
             finally:
                 if hasattr(provider, "close"):
                     await provider.close()
@@ -191,30 +157,18 @@ class MarketDataService:
         existing = (await self.session.execute(select(DailyPrice).where(DailyPrice.symbol == symbol).order_by(DailyPrice.trade_date.asc()))).scalars().all()
         if existing:
             return {"symbol": symbol, "points": [{"trade_date": p.trade_date.isoformat(), "open": p.open, "high": p.high, "low": p.low, "close": p.close, "volume": p.volume} for p in existing]}
-        try:
-            provider_name = self._resolve_provider(provider_name)
-            provider = get_market_data_provider(provider_name, api_key)
-            try:
-                points = await provider.get_historical_prices(symbol, synthetic_ok=self._is_mock(provider_name))
-            finally:
-                if hasattr(provider, "close"):
-                    await provider.close()
-        except Exception:
-            points = None
-        return {"symbol": symbol, "points": [{"trade_date": p.trade_date.isoformat(), "open": p.open, "high": p.high, "low": p.low, "close": p.close, "volume": p.volume} for p in points]} if points else {"symbol": symbol, "points": []}
+        return {"symbol": symbol, "points": []}
 
     def get_available_providers(self) -> list[str]:
         return ["mock", "alphavantage", "yahoo", "nse"]
 
 
 async def load_active_symbols(session: AsyncSession, symbol: str | None = None, limit: int = 100) -> list[str]:
-    from titan_x.core.seed_demo import COMPANIES
     if symbol:
         return [symbol.strip().upper()]
     stmt = select(Company.symbol).where(Company.status == "active").limit(limit)
     result = await session.execute(stmt)
-    rows = [r[0] for r in result.all()]
-    return rows if rows else [c[0] for c in COMPANIES if c[0]][:limit]
+    return [r[0] for r in result.all()]
 
 
 async def run_market_data_ingestion(session_factory: Any, symbol: str | None = None, provider_name: str | None = None, max_symbols: int = 100, lookback_days: int = 365) -> dict:
