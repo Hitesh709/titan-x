@@ -4,30 +4,21 @@ import { useEffect, useRef, useState } from "react"
 import type { PointerEvent as ReactPointerEvent } from "react"
 import { Rotate3D, Sparkles, Target, Zap } from "lucide-react"
 import { usePublicMarket } from "./MarketTicker"
+import "./MarketBattle.css"
 
 type ThreeModule = any
-
 type Winner = "bull" | "bear" | "neutral"
 
 function buildBeast(THREE: ThreeModule, kind: "bull" | "bear") {
   const group = new THREE.Group()
   const bull = kind === "bull"
-  const primary = new THREE.MeshPhysicalMaterial({
-    color: bull ? 0x17212b : 0x172a26,
-    metalness: 0.9,
-    roughness: 0.22,
-    clearcoat: 0.8,
-    emissive: bull ? 0x180000 : 0x00170c,
-    emissiveIntensity: 0.42,
-  })
-  const accent = new THREE.MeshPhysicalMaterial({
-    color: bull ? 0xff284a : 0x27e58b,
-    metalness: 0.8,
-    roughness: 0.2,
-    emissive: bull ? 0xff071f : 0x00a95c,
-    emissiveIntensity: 1.6,
-  })
-  const dark = new THREE.MeshStandardMaterial({ color: 0x050a10, metalness: 0.8, roughness: 0.3 })
+  const bodyColor = bull ? 0x263a4b : 0x30423a
+  const accentColor = bull ? 0xff365b : 0x20f29a
+  const edgeColor = bull ? 0xff8b9c : 0x72ffd0
+  const primary = new THREE.MeshPhysicalMaterial({ color: bodyColor, metalness: 0.68, roughness: 0.24, clearcoat: 1, clearcoatRoughness: 0.14, emissive: bull ? 0x240812 : 0x062a1c, emissiveIntensity: 0.55 })
+  const accent = new THREE.MeshPhysicalMaterial({ color: accentColor, metalness: 0.45, roughness: 0.18, clearcoat: 1, emissive: accentColor, emissiveIntensity: 2.8 })
+  const edge = new THREE.MeshBasicMaterial({ color: edgeColor })
+  const dark = new THREE.MeshStandardMaterial({ color: 0x111a23, metalness: 0.45, roughness: 0.32 })
 
   const mesh = (geometry: any, material: any, position: [number, number, number], scale?: [number, number, number]) => {
     const m = new THREE.Mesh(geometry, material)
@@ -39,45 +30,53 @@ function buildBeast(THREE: ThreeModule, kind: "bull" | "bear") {
     return m
   }
 
-  mesh(new THREE.IcosahedronGeometry(1.2, 2), primary, [0, 1.35, 0], bull ? [1.45, 0.95, 2.0] : [1.55, 1.05, 1.85])
-  mesh(new THREE.IcosahedronGeometry(0.82, 2), primary, [0, 2.25, -1.05], bull ? [0.95, 0.8, 1.0] : [1.05, 0.88, 0.95])
-  mesh(new THREE.CylinderGeometry(0.35, 0.55, 1.1, 8), dark, [0, 1.0, 1.15], [1, 1, 0.8])
+  mesh(new THREE.SphereGeometry(1, 32, 20), primary, [0, 1.38, 0], bull ? [1.55, 0.92, 2.0] : [1.62, 1.02, 1.85])
+  mesh(new THREE.SphereGeometry(0.78, 28, 18), primary, [0, 2.22, -1.02], bull ? [0.98, 0.86, 0.98] : [1.05, 0.92, 1.02])
+  mesh(new THREE.SphereGeometry(0.42, 24, 16), dark, [0, 2.03, -1.72], bull ? [1.1, 0.72, 0.82] : [1.18, 0.78, 0.9])
+  mesh(new THREE.SphereGeometry(0.72, 24, 16), primary, [-0.82, 1.55, -0.42], [0.65, 0.85, 0.85])
+  mesh(new THREE.SphereGeometry(0.72, 24, 16), primary, [0.82, 1.55, -0.42], [0.65, 0.85, 0.85])
 
-  const legGeo = new THREE.CylinderGeometry(0.18, 0.28, 1.35, 8)
-  ;[[-0.7, 0.45, -0.55], [0.7, 0.45, -0.55], [-0.62, 0.45, 0.65], [0.62, 0.45, 0.65]].forEach(([x, y, z]) => {
+  const legGeo = new THREE.CylinderGeometry(0.18, 0.30, 1.30, 16)
+  ;[[-0.72, 0.48, -0.62], [0.72, 0.48, -0.62], [-0.62, 0.48, 0.62], [0.62, 0.48, 0.62]].forEach(([x, y, z]) => {
     const leg = mesh(legGeo, primary, [x, y, z])
-    leg.rotation.z = x > 0 ? -0.08 : 0.08
+    leg.rotation.z = x > 0 ? -0.07 : 0.07
   })
+  const footGeo = new THREE.SphereGeometry(0.28, 18, 12)
+  ;[[-0.72, -0.16, -0.78], [0.72, -0.16, -0.78], [-0.62, -0.16, 0.68], [0.62, -0.16, 0.68]].forEach(([x, y, z]) => mesh(footGeo, dark, [x, y, z], [1.2, 0.55, 1.35]))
 
-  const hornGeo = new THREE.ConeGeometry(0.22, 1.05, 8)
   if (bull) {
-    const h1 = mesh(hornGeo, accent, [-0.52, 2.75, -1.0], [1, 1, 1.15])
-    const h2 = mesh(hornGeo, accent, [0.52, 2.75, -1.0], [1, 1, 1.15])
-    h1.rotation.z = -0.55; h2.rotation.z = 0.55
+    const hornGeo = new THREE.ConeGeometry(0.22, 1.18, 16)
+    const h1 = mesh(hornGeo, accent, [-0.56, 2.80, -1.0], [1, 1, 1.25])
+    const h2 = mesh(hornGeo, accent, [0.56, 2.80, -1.0], [1, 1, 1.25])
+    h1.rotation.z = -0.65; h2.rotation.z = 0.65
+    h1.rotation.x = -0.15; h2.rotation.x = -0.15
   } else {
-    const earGeo = new THREE.ConeGeometry(0.28, 0.55, 6)
-    const e1 = mesh(earGeo, accent, [-0.65, 2.75, -1.0]); const e2 = mesh(earGeo, accent, [0.65, 2.75, -1.0])
-    e1.rotation.z = -0.35; e2.rotation.z = 0.35
+    const earGeo = new THREE.SphereGeometry(0.28, 18, 12)
+    mesh(earGeo, accent, [-0.68, 2.78, -0.88], [1.25, 0.7, 0.8])
+    mesh(earGeo, accent, [0.68, 2.78, -0.88], [1.25, 0.7, 0.8])
+    const inner = new THREE.SphereGeometry(0.13, 16, 10)
+    mesh(inner, dark, [-0.68, 2.78, -1.12], [1.1, 0.7, 0.7])
+    mesh(inner, dark, [0.68, 2.78, -1.12], [1.1, 0.7, 0.7])
   }
 
-  const eyeGeo = new THREE.SphereGeometry(0.075, 12, 12)
-  mesh(eyeGeo, accent, [-0.28, 2.38, -1.72]); mesh(eyeGeo, accent, [0.28, 2.38, -1.72])
-  const jaw = mesh(new THREE.IcosahedronGeometry(0.34, 1), dark, [0, 2.0, -1.58], [1.2, 0.65, 0.85])
-  if (!bull) jaw.rotation.x = 0.15
+  const eyeGeo = new THREE.SphereGeometry(0.095, 18, 12)
+  mesh(eyeGeo, accent, [-0.30, 2.38, -1.72])
+  mesh(eyeGeo, accent, [0.30, 2.38, -1.72])
+  mesh(new THREE.SphereGeometry(0.13, 16, 10), edge, [0, 2.03, -2.05], [1.5, 0.65, 0.7])
 
-  const spineGeo = new THREE.TorusGeometry(1.15, 0.025, 6, 32, Math.PI)
-  const spine = mesh(spineGeo, accent, [0, 1.5, 0.1], [1, 1, 1.3])
+  const spine = mesh(new THREE.TorusGeometry(1.18, 0.035, 8, 48, Math.PI), accent, [0, 1.48, 0.15], [1, 1, 1.35])
   spine.rotation.x = Math.PI / 2
+  const tail = mesh(new THREE.CylinderGeometry(0.08, 0.15, 0.9, 12), edge, [0, 1.38, 1.82])
+  tail.rotation.x = bull ? -0.65 : 0.65
 
   group.rotation.y = bull ? Math.PI * 0.18 : -Math.PI * 0.18
-  group.scale.setScalar(bull ? 1.05 : 1.0)
+  group.scale.setScalar(1.08)
   return group
 }
 
 export default function MarketBattle() {
   const { score, regime, markets } = usePublicMarket()
   const hostRef = useRef<HTMLDivElement>(null)
-  const sceneRef = useRef<any>(null)
   const [rotation, setRotation] = useState(0)
   const [dragging, setDragging] = useState(false)
   const drag = useRef({ active: false, x: 0, rotation: 0 })
@@ -97,53 +96,55 @@ export default function MarketBattle() {
         if (disposed || !hostRef.current) return
         const host = hostRef.current
         const scene = new THREE.Scene()
-        const camera = new THREE.PerspectiveCamera(34, host.clientWidth / Math.max(host.clientHeight, 1), 0.1, 100)
-        camera.position.set(0, 3.1, 11.5)
+        const camera = new THREE.PerspectiveCamera(30, Math.max(host.clientWidth, 280) / Math.max(host.clientHeight, 420), 0.1, 100)
+        camera.position.set(0, 3.0, 13.5)
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" })
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-        renderer.setSize(host.clientWidth, host.clientHeight)
+        renderer.setSize(Math.max(host.clientWidth, 280), Math.max(host.clientHeight, 420))
         renderer.shadowMap.enabled = true
         renderer.shadowMap.type = THREE.PCFSoftShadowMap
         renderer.outputColorSpace = THREE.SRGBColorSpace
+        renderer.toneMapping = THREE.ACESFilmicToneMapping
+        renderer.toneMappingExposure = 1.25
         host.innerHTML = ""
         host.appendChild(renderer.domElement)
 
         const arena = new THREE.Group()
         scene.add(arena)
-        const floor = new THREE.Mesh(new THREE.CylinderGeometry(4.25, 4.25, 0.25, 96), new THREE.MeshPhysicalMaterial({ color: 0x050a12, metalness: 0.95, roughness: 0.25, clearcoat: 1 }))
+        const floor = new THREE.Mesh(new THREE.CylinderGeometry(4.9, 4.9, 0.24, 96), new THREE.MeshPhysicalMaterial({ color: 0x07101b, metalness: 0.82, roughness: 0.24, clearcoat: 1 }))
         floor.receiveShadow = true
-        floor.position.y = -0.05
+        floor.position.y = -0.12
         arena.add(floor)
-        const ring = new THREE.Mesh(new THREE.TorusGeometry(4.15, 0.055, 8, 128), new THREE.MeshBasicMaterial({ color: winner === "bear" ? 0xff204d : 0x24e58a, transparent: true, opacity: 0.9 }))
-        ring.position.y = 0.14
-        ring.rotation.x = Math.PI / 2
-        arena.add(ring)
-        const inner = new THREE.Mesh(new THREE.TorusGeometry(3.55, 0.018, 6, 128), new THREE.MeshBasicMaterial({ color: 0x2ca9ff, transparent: true, opacity: 0.55 }))
-        inner.position.y = 0.16; inner.rotation.x = Math.PI / 2; arena.add(inner)
+        const ringColor = winner === "bear" ? 0xff174e : winner === "bull" ? 0x18f39a : 0x4ebaff
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(4.65, 0.075, 10, 144), new THREE.MeshBasicMaterial({ color: ringColor }))
+        ring.position.y = 0.12; ring.rotation.x = Math.PI / 2; arena.add(ring)
+        const inner = new THREE.Mesh(new THREE.TorusGeometry(3.75, 0.025, 8, 128), new THREE.MeshBasicMaterial({ color: 0x38aaff, transparent: true, opacity: 0.75 }))
+        inner.position.y = 0.15; inner.rotation.x = Math.PI / 2; arena.add(inner)
 
         const bull = buildBeast(THREE, "bull")
         const bear = buildBeast(THREE, "bear")
-        bull.position.set(-2.0, 0.1, 0)
-        bear.position.set(2.0, 0.1, 0)
-        bull.rotation.y += 0.35
-        bear.rotation.y -= 0.35
+        bull.position.set(-2.05, 0.18, 0)
+        bear.position.set(2.05, 0.18, 0)
+        bull.rotation.y += 0.25; bear.rotation.y -= 0.25
         arena.add(bull, bear)
 
         const particleGeo = new THREE.BufferGeometry()
-        const positions = new Float32Array(180 * 3)
+        const positions = new Float32Array(240 * 3)
         for (let i = 0; i < positions.length; i += 3) {
           const a = Math.random() * Math.PI * 2; const r = 4.5 + Math.random() * 3.5
-          positions[i] = Math.cos(a) * r; positions[i + 1] = Math.random() * 3.8; positions[i + 2] = Math.sin(a) * r
+          positions[i] = Math.cos(a) * r; positions[i + 1] = Math.random() * 5; positions[i + 2] = Math.sin(a) * r
         }
         particleGeo.setAttribute("position", new THREE.BufferAttribute(positions, 3))
-        const particles = new THREE.Points(particleGeo, new THREE.PointsMaterial({ color: 0x4ebaff, size: 0.035, transparent: true, opacity: 0.65 }))
-        scene.add(particles)
+        scene.add(new THREE.Points(particleGeo, new THREE.PointsMaterial({ color: 0x5fc8ff, size: 0.045, transparent: true, opacity: 0.8 })))
 
-        scene.add(new THREE.HemisphereLight(0x9bdcff, 0x05070d, 1.3))
-        const key = new THREE.DirectionalLight(winner === "bear" ? 0xff3159 : 0x5fffb0, 4.5)
-        key.position.set(3, 7, 5); key.castShadow = true; key.shadow.mapSize.set(1024, 1024); scene.add(key)
-        const fill = new THREE.PointLight(0x2f8cff, 3, 14); fill.position.set(-4, 3, 4); scene.add(fill)
-        const rim = new THREE.PointLight(winner === "bear" ? 0xff183f : 0x00d890, 3.5, 12); rim.position.set(4, 2, -3); scene.add(rim)
+        scene.add(new THREE.HemisphereLight(0xc9eaff, 0x07101a, 2.0))
+        const key = new THREE.DirectionalLight(0xffffff, 4.0)
+        key.position.set(0, 8, 8); key.castShadow = true; key.shadow.mapSize.set(1024, 1024); scene.add(key)
+        const bullLight = new THREE.PointLight(0xff284f, 7.0, 9); bullLight.position.set(-3.5, 2.8, 4.0); scene.add(bullLight)
+        const bearLight = new THREE.PointLight(0x18f29a, 7.0, 9); bearLight.position.set(3.5, 2.8, 4.0); scene.add(bearLight)
+        const front = new THREE.PointLight(0x8fd7ff, 4.0, 14); front.position.set(0, 4.0, 8.0); scene.add(front)
+        const winnerLight = new THREE.PointLight(ringColor, 6.0, 10)
+        winnerLight.position.set(winner === "bear" ? 3 : winner === "bull" ? -3 : 0, 2.0, 2.0); scene.add(winnerLight)
 
         const clock = new THREE.Clock()
         let frame = 0
@@ -151,24 +152,28 @@ export default function MarketBattle() {
           frame = requestAnimationFrame(animate)
           const t = clock.getElapsedTime()
           arena.rotation.y = rotation * Math.PI / 180
-          bull.position.y = 0.1 + Math.sin(t * 2.2) * 0.035
-          bear.position.y = 0.1 + Math.sin(t * 2.0 + 1.2) * 0.035
-          bull.rotation.z = Math.sin(t * 1.4) * 0.018
-          bear.rotation.z = Math.sin(t * 1.25 + 0.8) * 0.018
-          particles.rotation.y = t * 0.025
+          const bullBase = winner === "bull" ? -0.55 : winner === "bear" ? -2.25 : -2.0
+          const bearBase = winner === "bear" ? 0.55 : winner === "bull" ? 2.25 : 2.0
+          const attack = winner !== "neutral" ? Math.abs(Math.sin(t * 1.7)) * 0.24 : 0
+          bull.position.x = bullBase + (winner === "bull" ? attack : 0)
+          bear.position.x = bearBase - (winner === "bear" ? attack : 0)
+          bull.position.y = 0.18 + Math.sin(t * 2.0) * 0.045
+          bear.position.y = 0.18 + Math.sin(t * 1.8 + 1.1) * 0.045
+          bull.rotation.z = Math.sin(t * 1.4) * 0.022
+          bear.rotation.z = Math.sin(t * 1.25 + 0.8) * 0.022
+          if (winner === "bull") { bull.rotation.x = -0.045 - Math.abs(Math.sin(t * 1.7)) * 0.035; bear.rotation.x = 0.02 }
+          if (winner === "bear") { bear.rotation.x = -0.045 - Math.abs(Math.sin(t * 1.7)) * 0.035; bull.rotation.x = 0.02 }
           renderer.render(scene, camera)
         }
         animate()
 
         const resize = () => {
-          if (!host.clientWidth || !host.clientHeight) return
-          camera.aspect = host.clientWidth / host.clientHeight; camera.updateProjectionMatrix(); renderer.setSize(host.clientWidth, host.clientHeight)
+          const w = Math.max(host.clientWidth, 280); const h = Math.max(host.clientHeight, 420)
+          camera.aspect = w / h; camera.updateProjectionMatrix(); renderer.setSize(w, h)
         }
         window.addEventListener("resize", resize)
         cleanup = () => { cancelAnimationFrame(frame); window.removeEventListener("resize", resize); renderer.dispose(); host.innerHTML = "" }
-      } catch {
-        cleanup = () => {}
-      }
+      } catch { cleanup = () => {} }
     }
     load()
     return () => { disposed = true; cleanup() }
@@ -184,6 +189,8 @@ export default function MarketBattle() {
       <div className="titan-battle-head"><div><div className="titan-kicker"><Sparkles size={12}/> AI MARKET REGIME</div><div className="titan-battle-title">{isBull ? "BULL MARKET" : isBear ? "BEAR MARKET" : "MARKET BALANCED"}</div><div className="titan-battle-sub">{isBull ? "BULL DOMINATING • BUY PRESSURE" : isBear ? "BEAR DOMINATING • SELL PRESSURE" : "WAITING FOR CONFIRMATION"}</div></div><div className="titan-score"><small>AI SCORE</small><b>{Math.round(numericScore)}</b></div></div>
       <div className={`titan-canvas titan-webgl-canvas ${dragging ? "dragging" : ""}`} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
         <div ref={hostRef} className="titan-webgl-host" />
+        <div className="beast-label bull-label">BULL <small>BUY FORCE</small></div>
+        <div className="beast-label bear-label">BEAR <small>SELL FORCE</small></div>
         <div className="battle-hud top-left">INDEX BREADTH <b>{positive} ↑</b> <em>{negative} ↓</em></div>
         <div className="battle-hud top-right">LIVE 3D ENGINE <i /></div>
         <div className="titan-attack-line" />
