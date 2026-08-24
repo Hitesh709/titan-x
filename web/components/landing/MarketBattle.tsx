@@ -74,6 +74,25 @@ export default function MarketBattle() {
       </div>
 
       <div className="battle-footer"><span className="battle-live"><i /> LIVE REGIME ENGINE</span><span>30s refresh</span><span>Score is momentum, not a trade signal</span></div>
+
+      <style jsx>{`
+        .battle-hit-bull { animation: titanBullStrike 1.15s cubic-bezier(.18,.9,.22,1); }
+        .battle-hit-bear { animation: titanBearStrike 1.15s cubic-bezier(.18,.9,.22,1); }
+        @keyframes titanBullStrike {
+          0% { transform: translateX(0) scale(1); }
+          38% { transform: translateX(22%) scale(1.08); }
+          52% { transform: translateX(30%) scale(1.12) rotate(-2deg); filter: brightness(1.45) drop-shadow(0 0 28px rgba(52,211,153,.85)); }
+          70% { transform: translateX(8%) scale(1.03); }
+          100% { transform: translateX(0) scale(1); }
+        }
+        @keyframes titanBearStrike {
+          0% { transform: translateX(0) scale(1); }
+          38% { transform: translateX(-22%) scale(1.08); }
+          52% { transform: translateX(-30%) scale(1.12) rotate(2deg); filter: brightness(1.45) drop-shadow(0 0 28px rgba(244,63,94,.9)); }
+          70% { transform: translateX(-8%) scale(1.03); }
+          100% { transform: translateX(0) scale(1); }
+        }
+      `}</style>
     </div>
   )
 }
