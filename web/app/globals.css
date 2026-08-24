@@ -1,9 +1,7 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
-
 @layer base {
   :root { color-scheme:dark; --background:222 47% 6%; --foreground:210 40% 98%; --card:222 47% 9%; --primary:190 100% 69%; --accent:157 75% 65%; --destructive:350 90% 68%; --border:222 30% 18%; --radius:.8rem; }
   html { color-scheme:dark; scroll-behavior:smooth; }
@@ -12,7 +10,6 @@
   ::selection { background:rgba(94,231,255,.25); color:white; }
   :where(a,button,[role="button"],summary,input,select,textarea):focus-visible { outline:2px solid #5ee7ff; outline-offset:2px; border-radius:6px; }
 }
-
 @layer components {
   .glass { @apply bg-white/5 backdrop-blur-xl border border-white/10; }
   .glass-card { @apply bg-titan-900/50 backdrop-blur-xl border border-titan-700/30 rounded-xl; }
@@ -35,8 +32,6 @@
   .market-bear-3d { background:linear-gradient(145deg,#b32949,#ff7a8e);color:#24040c; }
   .titan-score-glow { box-shadow:0 0 0 1px rgba(94,231,255,.08),0 18px 55px rgba(0,0,0,.24),0 0 45px rgba(94,231,255,.045); }
 }
-
-/* Premium Titan X chrome */
 aside { background:linear-gradient(180deg,rgba(10,18,31,.94),rgba(5,10,19,.96))!important; border-right-color:rgba(94,231,255,.10)!important; box-shadow:20px 0 60px rgba(0,0,0,.12); }
 header.sticky { background:rgba(5,9,20,.82)!important; border-bottom-color:rgba(94,231,255,.10)!important; box-shadow:0 10px 35px rgba(0,0,0,.10); }
 main .glass-card { background:linear-gradient(145deg,rgba(15,26,43,.72),rgba(7,13,25,.78)); border-color:rgba(255,255,255,.075); box-shadow:0 15px 45px rgba(0,0,0,.12); }
@@ -48,10 +43,45 @@ nav a[href="/"] > * { opacity:0; }
 aside a[href="/dashboard"] > div:first-child { background:linear-gradient(145deg,#5ee7ff,#6ee7b7)!important;box-shadow:0 8px 24px rgba(94,231,255,.16)!important; }
 aside a[href="/dashboard"] > div:first-child > span { opacity:1!important;color:#031018!important; }
 
+/* TITAN X landing hero: 3D bull market visual + live-looking intelligence rail */
+.min-h-screen > section:first-of-type { isolation:isolate; }
+.min-h-screen > section:first-of-type::before {
+  content:"🐂";
+  position:absolute; z-index:0; right:7%; top:50%; width:150px; height:150px;
+  display:flex; align-items:center; justify-content:center; font-size:86px; border-radius:42px;
+  transform:perspective(800px) rotateX(10deg) rotateY(-14deg) translateY(-50%);
+  background:linear-gradient(145deg,rgba(27,187,128,.98),rgba(25,90,70,.82));
+  box-shadow:inset -18px -20px 30px rgba(0,0,0,.30),inset 12px 12px 22px rgba(255,255,255,.14),0 25px 65px rgba(0,0,0,.42),0 0 50px rgba(68,240,175,.15);
+  filter:saturate(1.15); animation:titan-bull-float 5s ease-in-out infinite;
+}
+.min-h-screen > section:first-of-type::after {
+  content:"AI MARKET SCORE  •  92  •  VERY BULLISH";
+  position:absolute; z-index:0; right:5.5%; top:calc(50% + 105px); color:#6ee7b7;
+  font:700 11px/1.2 'JetBrains Mono',monospace; letter-spacing:.08em; text-align:center; white-space:nowrap;
+  text-shadow:0 0 20px rgba(110,231,183,.35);
+}
+
+/* Animated market ticker rail */
+.min-h-screen > section:first-of-type + section::after {
+  content:"NIFTY 50  ▲1.15%     •     SENSEX  ▲1.10%     •     BANK NIFTY  ▲1.35%     •     FINNIFTY  ▲1.28%     •     GOLD  ▲0.45%     •     AI SIGNAL ENGINE LIVE     •     BREAKOUT SCANNER ACTIVE     •     INTRADAY ENGINE READY     •     ";
+  display:block; margin:22px auto 0; width:min(1100px,92%); height:42px; overflow:hidden;
+  border-top:1px solid rgba(94,231,255,.12); border-bottom:1px solid rgba(94,231,255,.12);
+  background:rgba(255,255,255,.025); color:#6ee7b7; font:600 12px/42px 'JetBrains Mono',monospace;
+  white-space:nowrap; letter-spacing:.05em; text-align:left; padding-left:100%; box-sizing:border-box;
+  animation:titan-market-scroll 22s linear infinite, titan-ticker-glow 2.8s ease-in-out infinite;
+  box-shadow:0 10px 35px rgba(0,0,0,.15),inset 0 0 25px rgba(94,231,255,.025);
+}
+.market-ticker-line { position:relative; overflow:hidden; mask-image:linear-gradient(to right,transparent,black 8%,black 92%,transparent); }
+.market-ticker-line::before { content:"NIFTY 50 ▲1.15% • SENSEX ▲1.10% • BANK NIFTY ▲1.35% • FINNIFTY ▲1.28% • GOLD ▲0.45% • AI SIGNAL ENGINE LIVE • "; display:inline-block; white-space:nowrap; padding-left:100%; color:#6ee7b7; font:600 12px/42px 'JetBrains Mono',monospace; animation:titan-market-scroll 22s linear infinite; }
+
+@keyframes titan-bull-float { 0%,100%{transform:perspective(800px) rotateX(10deg) rotateY(-14deg) translateY(-50%)} 50%{transform:perspective(800px) rotateX(8deg) rotateY(-8deg) translateY(calc(-50% - 10px))} }
+@keyframes titan-market-scroll { from{transform:translateX(0)} to{transform:translateX(-100%)} }
+@keyframes titan-ticker-glow { 0%,100%{opacity:.82} 50%{opacity:1} }
 @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
 @keyframes pulse-glow { 0%,100%{opacity:.45} 50%{opacity:.9} }
 .animate-float { animation:float 6s ease-in-out infinite; }
 .animate-pulse-glow { animation:pulse-glow 3s ease-in-out infinite; }
 main .rounded-xl { transition:border-color .2s ease,box-shadow .2s ease,transform .2s ease; }
+@media (max-width:900px) { .min-h-screen > section:first-of-type::before,.min-h-screen > section:first-of-type::after{display:none;} }
 @media (prefers-reduced-motion:reduce) { *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important;} }
 ::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:3px}::-webkit-scrollbar-thumb:hover{background:rgba(94,231,255,.22)}
