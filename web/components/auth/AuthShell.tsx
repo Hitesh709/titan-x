@@ -19,13 +19,8 @@ export function AuthShell({
       <div className="flex-1 flex items-center justify-center px-4 sm:px-6 lg:px-8 py-12">
         <div className="w-full max-w-sm">
           <div className="mb-8">
-            <Link href="/" className="flex items-center gap-2 mb-8">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-titan-500 to-titan-700 flex items-center justify-center">
-                <span className="text-white font-bold text-xs">TX</span>
-              </div>
-              <span className="text-lg font-bold text-white">
-                TITAN <span className="text-titan-400">X</span>
-              </span>
+            <Link href="/" className="flex items-center mb-8" aria-label="TITAN X home">
+              <img src="/titan-x-logo.svg" alt="TITAN X — AI · DATA · SPEED · PRECISION" className="h-14 w-auto object-contain" />
             </Link>
             <h1 className="text-2xl font-bold text-white">{title}</h1>
             <p className="text-gray-500 mt-1">{subtitle}</p>
