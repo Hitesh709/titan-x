@@ -1,0 +1,88 @@
+<svg width="900" height="700" viewBox="0 0 900 700" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="450" y1="0" x2="450" y2="700" gradientUnits="userSpaceOnUse"><stop stop-color="#07152B"/><stop offset="1" stop-color="#020711"/></linearGradient>
+    <radialGradient id="halo" cx="0" cy="0" r="1" gradientTransform="translate(410 340) rotate(90) scale(330 360)"><stop stop-color="#00F5A0" stop-opacity=".38"/><stop offset=".55" stop-color="#00A3FF" stop-opacity=".13"/><stop offset="1" stop-color="#00101E" stop-opacity="0"/></radialGradient>
+    <linearGradient id="metal" x1="260" y1="180" x2="630" y2="560" gradientUnits="userSpaceOnUse"><stop stop-color="#F7FBFF"/><stop offset=".15" stop-color="#6B879A"/><stop offset=".35" stop-color="#101A24"/><stop offset=".55" stop-color="#4B5D69"/><stop offset=".72" stop-color="#070B12"/><stop offset="1" stop-color="#263744"/></linearGradient>
+    <linearGradient id="horn" x1="300" y1="210" x2="610" y2="130" gradientUnits="userSpaceOnUse"><stop stop-color="#FFF2A6"/><stop offset=".35" stop-color="#D99B25"/><stop offset=".65" stop-color="#7B3D00"/><stop offset="1" stop-color="#FFD75A"/></linearGradient>
+    <linearGradient id="green" x1="270" y1="170" x2="650" y2="600" gradientUnits="userSpaceOnUse"><stop stop-color="#00FFB0"/><stop offset=".5" stop-color="#00A86B"/><stop offset="1" stop-color="#00583E"/></linearGradient>
+    <linearGradient id="xgrad" x1="300" y1="560" x2="610" y2="620" gradientUnits="userSpaceOnUse"><stop stop-color="#008BFF"/><stop offset=".5" stop-color="#00D9FF"/><stop offset="1" stop-color="#00FF8C"/></linearGradient>
+    <filter id="glowGreen" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="10" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="glowBlue" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="14" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%"><feDropShadow dx="0" dy="22" stdDeviation="20" flood-color="#000" flood-opacity=".8"/></filter>
+  </defs>
+
+  <rect width="900" height="700" rx="36" fill="url(#bg)"/>
+  <ellipse cx="410" cy="345" rx="360" ry="320" fill="url(#halo)"/>
+  <g opacity=".32" stroke="#00B8FF" stroke-width="2">
+    <path d="M55 520C180 430 260 455 350 390C450 318 545 330 650 250C735 185 800 180 870 125"/>
+    <path d="M20 590C170 515 250 520 360 455C470 390 565 400 690 310C760 260 815 250 880 215"/>
+  </g>
+  <g opacity=".7" stroke="#00F5A0" stroke-width="5" filter="url(#glowGreen)">
+    <path d="M40 535L125 500L175 515L245 448L315 455L370 400L430 420L500 342L555 360L630 280L700 292L770 210L850 150"/>
+  </g>
+
+  <!-- pedestal -->
+  <ellipse cx="420" cy="610" rx="330" ry="55" fill="#001019" stroke="#00D9FF" stroke-opacity=".7" stroke-width="3"/>
+  <ellipse cx="420" cy="600" rx="265" ry="35" fill="#051A1B" stroke="#00F5A0" stroke-opacity=".55" stroke-width="3"/>
+  <path d="M180 585L250 530H590L660 585L620 615H220L180 585Z" fill="#08141D" stroke="#244353" stroke-width="3"/>
+  <path d="M220 575L275 540H565L620 575L590 596H250L220 575Z" fill="#101C25"/>
+
+  <!-- bull shadow/body -->
+  <ellipse cx="430" cy="510" rx="210" ry="52" fill="#000" opacity=".7" filter="url(#shadow)"/>
+  <g filter="url(#shadow)">
+    <!-- horns -->
+    <path d="M300 240C230 190 205 115 245 78C257 143 291 158 350 173L328 235L300 240Z" fill="url(#horn)" stroke="#5E3300" stroke-width="5"/>
+    <path d="M555 235L535 173C594 158 628 143 640 78C680 115 655 190 585 240L555 235Z" fill="url(#horn)" stroke="#5E3300" stroke-width="5"/>
+
+    <!-- ears -->
+    <path d="M285 265C245 238 218 247 190 282C230 298 260 304 292 295Z" fill="#3B5362" stroke="#071019" stroke-width="9"/>
+    <path d="M585 265C625 238 652 247 680 282C640 298 610 304 578 295Z" fill="#3B5362" stroke="#071019" stroke-width="9"/>
+
+    <!-- main torso/head silhouette -->
+    <path d="M325 205C350 165 500 165 525 205C548 240 560 288 548 342C535 403 505 455 485 505L450 535L415 505C395 455 365 403 352 342C340 288 302 240 325 205Z" fill="url(#metal)" stroke="#02070B" stroke-width="12"/>
+    <!-- shoulder/body -->
+    <path d="M355 330C292 318 245 354 222 414C205 458 225 510 278 522C330 534 371 501 395 450L415 386Z" fill="url(#metal)" stroke="#02070B" stroke-width="12"/>
+    <path d="M525 330C588 318 635 354 658 414C675 458 655 510 602 522C550 534 509 501 485 450L465 386Z" fill="url(#metal)" stroke="#02070B" stroke-width="12"/>
+
+    <!-- neck armor -->
+    <path d="M365 260L405 225L450 245L495 225L535 260L515 320L450 350L385 320L365 260Z" fill="#0B1720" stroke="#536D7D" stroke-width="5"/>
+    <path d="M390 265L450 240L510 265L490 292L450 310L410 292L390 265Z" fill="#152732"/>
+
+    <!-- face -->
+    <path d="M350 275C370 235 530 235 550 275L565 375C570 430 520 490 450 505C380 490 330 430 335 375L350 275Z" fill="url(#metal)" stroke="#02070B" stroke-width="10"/>
+    <path d="M370 330C395 300 425 292 450 292C475 292 505 300 530 330L515 405C500 438 475 460 450 470C425 460 400 438 385 405L370 330Z" fill="#182833"/>
+
+    <!-- eyes -->
+    <path d="M375 330C394 315 414 315 431 326L415 345C400 342 387 341 375 330Z" fill="#06120E"/>
+    <path d="M525 330C506 315 486 315 469 326L485 345C500 342 513 341 525 330Z" fill="#06120E"/>
+    <ellipse cx="408" cy="331" rx="7" ry="5" fill="#00FF9D" filter="url(#glowGreen)"/>
+    <ellipse cx="492" cy="331" rx="7" ry="5" fill="#00FF9D" filter="url(#glowGreen)"/>
+
+    <!-- muzzle -->
+    <path d="M390 392C410 370 490 370 510 392L525 425C500 458 475 472 450 474C425 472 400 458 375 425L390 392Z" fill="#536873" stroke="#09121A" stroke-width="7"/>
+    <ellipse cx="415" cy="420" rx="9" ry="7" fill="#071015"/>
+    <ellipse cx="485" cy="420" rx="9" ry="7" fill="#071015"/>
+    <path d="M425 445C442 454 458 454 475 445" stroke="#00F5A0" stroke-width="4" stroke-linecap="round" filter="url(#glowGreen)"/>
+
+    <!-- legs -->
+    <path d="M260 430L310 430L325 545L285 565L250 548Z" fill="url(#metal)" stroke="#02070B" stroke-width="10"/>
+    <path d="M350 440L390 445L395 555L360 575L335 552Z" fill="url(#metal)" stroke="#02070B" stroke-width="10"/>
+    <path d="M550 430L590 430L600 548L565 565L535 545Z" fill="url(#metal)" stroke="#02070B" stroke-width="10"/>
+    <path d="M510 440L550 445L565 552L540 575L505 555Z" fill="url(#metal)" stroke="#02070B" stroke-width="10"/>
+    <path d="M248 548L290 555L310 570L295 585L255 580L235 565Z" fill="#111B22" stroke="#00B8FF" stroke-opacity=".7" stroke-width="4"/>
+    <path d="M335 552L390 555L405 570L390 585L345 580L325 565Z" fill="#111B22" stroke="#00B8FF" stroke-opacity=".7" stroke-width="4"/>
+    <path d="M500 552L555 555L570 570L555 585L510 580L490 565Z" fill="#111B22" stroke="#00B8FF" stroke-opacity=".7" stroke-width="4"/>
+    <path d="M535 548L595 555L615 570L600 585L550 580L525 565Z" fill="#111B22" stroke="#00B8FF" stroke-opacity=".7" stroke-width="4"/>
+  </g>
+
+  <!-- TITAN X -->
+  <g filter="url(#glowBlue)">
+    <path d="M315 615L360 615L405 665L360 665Z" fill="url(#xgrad)"/>
+    <path d="M405 615L450 615L495 665L450 665Z" fill="#0B8CFF"/>
+    <path d="M450 615L495 615L540 665L495 665Z" fill="#00F5A0"/>
+  </g>
+  <text x="260" y="655" fill="#E9F7FF" font-family="Arial, Helvetica, sans-serif" font-size="38" font-weight="800" letter-spacing="7">TITAN</text>
+  <text x="545" y="655" fill="#00F5A0" font-family="Arial, Helvetica, sans-serif" font-size="42" font-weight="900">X</text>
+
+  <text x="450" y="42" text-anchor="middle" fill="#7CEFFF" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700" letter-spacing="5">AI MARKET INTELLIGENCE</text>
+</svg>
