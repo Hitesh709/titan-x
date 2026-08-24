@@ -94,37 +94,73 @@ export default function LandingPage() {
       </nav>
 
       {/* Hero */}
-      <section className="relative pt-32 pb-24 overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-titan-900/40 via-transparent to-transparent" />
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[800px] h-[800px] bg-titan-600/10 rounded-full blur-3xl animate-pulse-glow" />
+      <section className="relative pt-28 pb-20 overflow-hidden">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-titan-900/50 via-transparent to-transparent" />
+        <div className="absolute top-1/4 left-1/3 w-[700px] h-[700px] bg-titan-600/10 rounded-full blur-3xl animate-pulse-glow" />
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
-          <div className="text-center max-w-4xl mx-auto">
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-titan-600/10 border border-titan-600/20 text-titan-400 text-sm mb-6">
-              <Sparkles size={14} />
-              <span>Now powering 500+ institutional trading desks</span>
+          <div className="grid lg:grid-cols-[1.02fr_.98fr] gap-10 lg:gap-14 items-center">
+            <div className="text-left">
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-titan-600/10 border border-titan-600/20 text-titan-400 text-sm mb-6">
+                <Sparkles size={14} />
+                <span>AI-powered market intelligence</span>
+              </div>
+              <h1 className="text-5xl md:text-6xl xl:text-7xl font-bold tracking-tight mb-6">
+                Enterprise Intelligence
+                <br />
+                <span className="bg-gradient-to-r from-titan-400 via-blue-400 to-titan-300 text-transparent bg-clip-text">for Financial Markets</span>
+              </h1>
+              <p className="text-lg md:text-xl text-gray-400 max-w-2xl mb-10 leading-relaxed">
+                TITAN X is the next-generation AI-powered analytics and trading platform for investors and trading desks.
+                Harness real-time market intelligence, AI signals, breakout detection, and advanced execution workflows.
+              </p>
+              <div className="flex flex-col sm:flex-row items-start gap-4">
+                <Link href="/register" className="btn-primary text-lg px-8 py-3">
+                  Start Free Trial <ArrowRight size={18} />
+                </Link>
+                <Link href="#features" className="btn-secondary text-lg px-8 py-3">
+                  Explore Platform
+                </Link>
+              </div>
+              <div className="mt-8 flex flex-wrap items-center gap-5 text-sm text-gray-500">
+                <span className="flex items-center gap-1.5"><Lock size={14} />Secure Infrastructure</span>
+                <span className="flex items-center gap-1.5"><Shield size={14} />Risk Controls</span>
+                <span className="flex items-center gap-1.5"><Zap size={14} />Real-Time Signals</span>
+              </div>
             </div>
-            <h1 className="text-5xl md:text-7xl font-bold tracking-tight mb-6">
-              Enterprise Intelligence
-              <br />
-              <span className="bg-gradient-to-r from-titan-400 via-blue-400 to-titan-300 text-transparent bg-clip-text">for Financial Markets</span>
-            </h1>
-            <p className="text-lg md:text-xl text-gray-400 max-w-2xl mx-auto mb-10 leading-relaxed">
-              TITAN X is the next-generation AI-powered analytics and trading platform for institutional investors. 
-              Harness multi-model machine learning, real-time market intelligence, and automated execution—all 
-              built on a security-first, ultra-low-latency infrastructure.
-            </p>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link href="/register" className="btn-primary text-lg px-8 py-3">
-                Start Free Trial <ArrowRight size={18} />
-              </Link>
-              <Link href="#features" className="btn-secondary text-lg px-8 py-3">
-                Explore Features
-              </Link>
-            </div>
-            <div className="mt-8 flex items-center justify-center gap-6 text-sm text-gray-500">
-              <span className="flex items-center gap-1.5"><Lock size={14} />SOC 2 Compliant</span>
-              <span className="flex items-center gap-1.5"><Shield size={14} />Bank-Grade Security</span>
-              <span className="flex items-center gap-1.5"><Zap size={14} />150μs Avg. Latency</span>
+
+            <div className="relative">
+              <div className="absolute -inset-4 rounded-[2rem] bg-gradient-to-br from-titan-500/15 via-blue-500/10 to-transparent blur-2xl" />
+              <div className="relative overflow-hidden rounded-[1.6rem] border border-titan-700/50 bg-black/30 shadow-2xl shadow-black/40">
+                <img
+                  src="/titanx-3d-bull.svg"
+                  alt="TITAN X 3D bull AI market intelligence"
+                  className="w-full h-auto block"
+                />
+                <div className="absolute top-5 right-5 rounded-2xl border border-emerald-400/30 bg-slate-950/80 backdrop-blur-xl px-5 py-4 min-w-[180px] shadow-xl">
+                  <div className="text-[10px] uppercase tracking-[0.2em] text-gray-500">AI Market Score</div>
+                  <div className="flex items-end gap-2 mt-1">
+                    <span className="text-4xl font-black text-white leading-none">92</span>
+                    <span className="text-emerald-400 text-xs font-bold mb-1">/ 100</span>
+                  </div>
+                  <div className="mt-2 text-sm font-semibold text-emerald-300">Very Bullish ↗</div>
+                </div>
+                <div className="absolute bottom-5 left-5 right-5 grid grid-cols-3 gap-2">
+                  {[
+                    ["NIFTY 50", "+1.15%"],
+                    ["SENSEX", "+1.10%"],
+                    ["BANK NIFTY", "+1.35%"],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-xl border border-cyan-400/20 bg-slate-950/75 backdrop-blur-xl px-3 py-2">
+                      <div className="text-[10px] text-gray-500">{label}</div>
+                      <div className="text-xs font-bold text-emerald-300 mt-0.5">▲ {value}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="mt-4 flex items-center justify-between px-2 text-xs text-gray-500">
+                <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />AI market engine active</span>
+                <span>Live dashboard visual</span>
+              </div>
             </div>
           </div>
         </div>
@@ -175,8 +211,8 @@ export default function LandingPage() {
               <div className="badge-blue mb-4 inline-block">Platform Architecture</div>
               <h2 className="text-3xl md:text-4xl font-bold text-white mb-6">Designed for Scale, Built for Speed</h2>
               <p className="text-gray-400 leading-relaxed mb-8">
-                TITAN X runs on a modern, cloud-native architecture with microservices, event-driven data pipelines, 
-                and a multi-model AI inference layer. Every component is horizontally scalable and designed for 
+                TITAN X runs on a modern, cloud-native architecture with microservices, event-driven data pipelines,
+                and a multi-model AI inference layer. Every component is horizontally scalable and designed for
                 high-frequency financial workloads.
               </p>
               <div className="space-y-4">
