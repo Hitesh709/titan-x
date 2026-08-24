@@ -9,9 +9,6 @@ from fastapi import APIRouter
 
 logger = logging.getLogger(__name__)
 
-# Module/router exports. Keep explicit names so a typo is caught during CI,
-# while fallback discovery prevents harmless router-variable renames from
-# taking the whole API down.
 _ROUTER_SPECS: tuple[tuple[str, str | None], ...] = (
     ("analytics_dashboard", "router"), ("adaptive_stop_loss", "router"), ("admin", "admin_router"),
     ("advanced_screener", "router"), ("ai_ranking_v2", "router"), ("ai_registry", "router"),
@@ -45,6 +42,7 @@ _ROUTER_SPECS: tuple[tuple[str, str | None], ...] = (
     ("technical_indicators", "tech_ind_router"), ("timescaledb", "router"), ("top_picks", "router"),
     ("trade_journal", "router"), ("trading_calendar", "router"), ("trading_portfolio", "router"),
     ("users", "users_router"), ("valuation", "router"), ("version", "version_router"), ("watchlists", "router"),
+    ("public_market", "router"),
 )
 
 
