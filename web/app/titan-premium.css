@@ -1,0 +1,26 @@
+/* Premium first-page layer: WebGL arena, institutional HUD and index-only presentation. */
+.titan-brand-logo{display:flex!important;align-items:center!important;gap:0!important;width:190px!important;height:56px!important;}
+.titan-brand-logo img{display:block;width:190px;height:56px;object-fit:contain;object-position:left center;filter:drop-shadow(0 0 18px rgba(66,153,255,.16));}
+.titan-webgl-battle{position:relative;}
+.titan-webgl-canvas{position:relative;min-height:430px!important;overflow:hidden;border:1px solid rgba(73,157,255,.22)!important;background:radial-gradient(circle at 50% 62%,rgba(25,126,255,.13),transparent 32%),linear-gradient(180deg,rgba(2,8,18,.72),rgba(1,4,11,.96))!important;box-shadow:inset 0 0 70px rgba(0,0,0,.65),0 24px 70px rgba(0,0,0,.28);touch-action:none;cursor:grab;}
+.titan-webgl-canvas.dragging{cursor:grabbing;}
+.titan-webgl-host{position:absolute;inset:0;z-index:1;}
+.titan-webgl-host canvas{display:block;width:100%!important;height:100%!important;}
+.titan-webgl-canvas:before{content:"";position:absolute;inset:0;z-index:2;pointer-events:none;background:linear-gradient(rgba(58,150,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(58,150,255,.035) 1px,transparent 1px);background-size:30px 30px;mask-image:linear-gradient(to bottom,black,transparent 92%);}
+.titan-webgl-canvas:after{content:"";position:absolute;left:12%;right:12%;bottom:11%;height:90px;z-index:2;pointer-events:none;background:radial-gradient(ellipse,rgba(0,184,255,.15),transparent 68%);filter:blur(18px);}
+.battle-hud{position:absolute;z-index:5;top:14px;padding:7px 10px;border:1px solid rgba(82,157,255,.18);background:rgba(2,8,18,.68);backdrop-filter:blur(12px);font:700 7px 'JetBrains Mono',monospace;letter-spacing:.08em;color:#70859f;border-radius:6px;}
+.battle-hud b{color:#4ade80;margin-left:5px}.battle-hud em{font-style:normal;color:#fb7185;margin-left:5px}.battle-hud i{display:inline-block;width:5px;height:5px;border-radius:50%;background:#22c55e;box-shadow:0 0 9px #22c55e;margin-left:5px}.battle-hud.top-left{left:14px}.battle-hud.top-right{right:14px;color:#62d9ff}
+.is-bear .titan-webgl-canvas{box-shadow:inset 0 0 80px rgba(255,20,62,.08),0 24px 70px rgba(0,0,0,.28)}
+.is-bull .titan-webgl-canvas{box-shadow:inset 0 0 80px rgba(0,229,144,.08),0 24px 70px rgba(0,0,0,.28)}
+.hero-regime-strip{display:flex;align-items:center;justify-content:center;gap:18px;width:min(1100px,calc(100% - 48px));margin:-2px auto 24px;padding:10px 16px;border:1px solid rgba(82,157,255,.14);background:rgba(2,8,18,.68);border-radius:9px;color:#647b96;font:700 8px 'JetBrains Mono',monospace;letter-spacing:.08em;position:relative;z-index:4;}
+.hero-regime-strip i{display:inline-block;width:5px;height:5px;border-radius:50%;background:#22c55e;box-shadow:0 0 10px #22c55e;margin-right:6px}.hero-regime-strip strong{color:#e2e8f0}.hero-regime-strip b{color:#60a5fa}
+.exchange-live.is-up{color:#4ade80!important}.exchange-live.is-down{color:#fb7185!important}.exchange-live{font:700 8px 'JetBrains Mono',monospace!important;white-space:nowrap;}
+.titan-capabilities span{letter-spacing:.04em}.titan-capabilities span:nth-child(2){color:#75bfff}.titan-capabilities span:nth-child(3){color:#9a8cff}
+.titan-world .exchange-card{max-height:390px;overflow:auto;scrollbar-width:thin;}
+.titan-world .exchange-row{grid-template-columns:1.55fr .65fr .7fr .58fr;}
+.titan-world .exchange-name{grid-template-columns:23px 1fr 1fr;}
+.titan-command .command-card{overflow:hidden;}
+.titan-command .index-chart{background-color:rgba(2,8,18,.55);}
+.titan-stats .titan-wrap{grid-template-columns:repeat(6,1fr)!important;}
+@media (max-width:1100px){.titan-hero-layout{grid-template-columns:1fr!important}.hero-copy{text-align:center;padding:0}.hero-copy>p{margin-left:auto;margin-right:auto}.hero-workflow{max-width:650px;margin-left:auto;margin-right:auto}.hero-actions,.hero-trust{justify-content:center}.hero-battle{width:100%}.titan-stats .titan-wrap{grid-template-columns:repeat(3,1fr)!important}.titan-webgl-canvas{min-height:390px!important}}
+@media (max-width:720px){.titan-brand-logo{width:142px!important;height:46px!important}.titan-brand-logo img{width:142px;height:46px}.titan-webgl-canvas{min-height:300px!important}.battle-hud{font-size:6px}.hero-regime-strip{width:calc(100% - 28px);gap:9px;font-size:7px}.titan-stats .titan-wrap{grid-template-columns:repeat(2,1fr)!important}.titan-world .exchange-row{grid-template-columns:1fr auto}.titan-world .exchange-region{display:none}.titan-world .exchange-price{justify-self:end}.titan-world .exchange-live{grid-column:2;justify-self:end}.titan-world .exchange-name small{display:none}}
