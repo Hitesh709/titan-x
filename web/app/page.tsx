@@ -3,137 +3,56 @@
 import Link from "next/link"
 import { useState } from "react"
 import { useAuth } from "@/contexts/AuthContext"
-import {
-  ArrowRight, BarChart3, Brain, Building2, ChevronRight, Cpu, Database,
-  Gauge, Globe, Lock, Menu, Shield, Sparkles, TrendingUp, Users,
-  X, Zap, LineChart, Target, Activity, CircleDollarSign,
-} from "lucide-react"
-import MarketTicker from "@/components/landing/MarketTicker"
+import MarketTicker, { usePublicMarket } from "@/components/landing/MarketTicker"
 import MarketBattle from "@/components/landing/MarketBattle"
+import { ArrowRight, Activity, BarChart3, Brain, ChevronRight, Cpu, Database, Globe, Lock, Menu, Network, Play, Radar, Server, Shield, Sparkles, Target, TrendingUp, Users, X, Zap } from "lucide-react"
 
 const features = [
-  { icon: Brain, title: "AI Intelligence", desc: "Multi-model AI ensemble for pattern recognition, market regime detection, ranking, prediction and explainability." },
-  { icon: BarChart3, title: "Advanced Analytics", desc: "Institutional-grade technical, fundamental, correlation, breadth and risk analytics in one interface." },
-  { icon: Globe, title: "Global Markets", desc: "Unified market intelligence across equities, indices, commodities, FX and other major asset classes." },
-  { icon: Cpu, title: "Automated Trading", desc: "Backtest, validate and execute strategies with smart routing, real-time controls and audit trails." },
-  { icon: Shield, title: "Risk Engine", desc: "Continuous portfolio risk monitoring, drawdown controls, exposure analysis and circuit breakers." },
-  { icon: Gauge, title: "HFT Infrastructure", desc: "Event-driven pipelines, WebSockets, Redis and time-series processing designed for speed and scale." },
+  { icon: Brain, title: "AI Intelligence", value: "MULTI-MODEL", text: "Deep-learning market regime detection, pattern recognition, ranking and explainable signals.", visual: "brain" },
+  { icon: BarChart3, title: "Advanced Analytics", value: "150+ INDICATORS", text: "Institutional charts, technicals, breadth, correlation, volatility and market structure.", visual: "bars" },
+  { icon: Globe, title: "Global Markets", value: "60+ EXCHANGES", text: "One intelligence layer across equities, indices, commodities, FX and digital assets.", visual: "globe" },
+  { icon: Cpu, title: "Automated Trading", value: "SMART ROUTING", text: "Signal validation, risk controls, order orchestration and execution workflows.", visual: "bot" },
+  { icon: Shield, title: "Risk Engine", value: "24 / 7", text: "Exposure, drawdown, concentration, volatility and circuit-breaker monitoring.", visual: "shield" },
+  { icon: Server, title: "HFT Infrastructure", value: "LOW LATENCY", text: "Event-driven pipelines, WebSockets, Redis and time-series infrastructure built for scale.", visual: "server" },
 ]
 
-const stats = [
-  { value: "60+", label: "Markets & Exchanges", icon: Globe },
-  { value: "50TB+", label: "Data Processed", icon: Database },
-  { value: "1M+", label: "AI Predictions / Day", icon: Brain },
-  { value: "<1ms", label: "Target Processing", icon: Zap },
-  { value: "99.98%", label: "Platform Availability", icon: Activity },
-  { value: "24/7", label: "Risk Monitoring", icon: Shield },
-]
+const globalExchanges = [["NSE","India","Asia","🇮🇳"],["BSE","India","Asia","🇮🇳"],["NASDAQ","United States","Americas","🇺🇸"],["NYSE","United States","Americas","🇺🇸"],["LSE","United Kingdom","Europe","🇬🇧"],["JPX","Japan","Asia","🇯🇵"],["HKEX","Hong Kong","Asia","🇭🇰"],["SSE","China","Asia","🇨🇳"]]
+const sectors = [["NIFTY BANK","Financials","bank"],["NIFTY IT","Technology","tech"],["NIFTY AUTO","Automotive","auto"],["NIFTY PHARMA","Healthcare","pharma"],["NIFTY FMCG","Consumer","fmcg"],["NIFTY METAL","Materials","metal"],["NIFTY ENERGY","Energy","energy"],["NIFTY REALTY","Real Estate","realty"]]
 
-const movers = [
-  ["RELIANCE", "+2.34%", "2,854.10"],
-  ["TCS", "+1.87%", "4,218.75"],
-  ["HDFCBANK", "+1.45%", "1,678.20"],
-  ["INFY", "+1.23%", "1,432.60"],
-  ["SBIN", "-0.76%", "812.40"],
-]
+function FeatureVisual({ type }: { type: string }) {
+  if (type === "bars") return <div className="fx-bars">{[42,70,52,88,64,96].map((h,i)=><i key={i} style={{height:`${h}%`}} />)}</div>
+  if (type === "globe") return <div className="fx-globe"><Globe size={58}/><span/><span/><span/></div>
+  if (type === "bot") return <div className="fx-bot"><Cpu size={48}/><i/><i/><i/></div>
+  if (type === "shield") return <div className="fx-shield"><Shield size={58}/><span>RISK</span></div>
+  if (type === "server") return <div className="fx-server"><Server size={58}/><span/><span/><span/></div>
+  return <div className="fx-brain"><Network size={60}/><span/><span/><span/><span/></div>
+}
+
+function WorldMarkets() {
+  const { markets } = usePublicMarket()
+  const find = (names: string[]) => markets.find(m => names.some(n => m.name.toUpperCase().includes(n)))
+  return <section id="markets" className="titan-section titan-world"><div className="titan-wrap">
+    <div className="titan-section-head"><div><div className="titan-kicker"><Globe size={13}/> GLOBAL MARKET INTELLIGENCE</div><h2>One World. Every Market.</h2><p>Monitor exchanges, indices and cross-market signals through a single high-density intelligence layer.</p></div><div className="titan-live-badge"><i/> LIVE MARKET ENGINE</div></div>
+    <div className="world-grid"><div className="world-map-card"><div className="world-map-title">GLOBAL EXCHANGE NETWORK <span>60+ VENUES</span></div><div className="world-map-svg"><div className="continent c1"/><div className="continent c2"/><div className="continent c3"/><div className="continent c4"/><div className="continent c5"/>{[[24,43],[31,50],[48,39],[52,55],[67,45],[74,55],[82,39]].map(([x,y],i)=><b key={i} style={{left:`${x}%`,top:`${y}%`}}/>)}<div className="route r1"/><div className="route r2"/><div className="route r3"/></div><div className="map-foot"><span><i/> ASIA</span><span><i/> EUROPE</span><span><i/> AMERICAS</span><span><i/> MIDDLE EAST</span></div></div>
+      <div className="exchange-card"><div className="panel-head">WORLD EXCHANGES <small>STATUS / REGION</small></div>{globalExchanges.map(([name,country,region,flag])=>{const live=find([name]);return <div className="exchange-row" key={name}><span className="exchange-name"><b>{flag}</b><strong>{name}</strong><small>{country}</small></span><span className="exchange-region">{region}</span><span className="exchange-price">{live?.price == null ? "—" : live.price.toLocaleString("en-IN",{maximumFractionDigits:2})}</span><span className="exchange-live"><i/> {live ? "LIVE" : "FEED"}</span></div>})}</div></div>
+  </div></section>
+}
+
+function SectorWall() { return <section className="titan-section titan-sector"><div className="titan-wrap"><div className="titan-section-head"><div><div className="titan-kicker"><Radar size={13}/> SECTOR INTELLIGENCE</div><h2>Market Sectors Under the AI Lens</h2><p>See sector rotation, momentum and relative strength as an intelligence layer—not just a chart.</p></div><Link href="/dashboard" className="titan-outline-btn">Open Sector Matrix <ArrowRight size={15}/></Link></div><div className="sector-grid">{sectors.map(([name,label,type],i)=><div className="sector-card" key={name}><div className={`sector-orb ${type}`}><span/></div><div className="sector-meta"><strong>{name}</strong><small>{label}</small></div><div className="sector-spark">{[30,42,36,62,48,76,68,90].map((h,j)=><i key={j} style={{height:`${h + (i%3)*3}%`}}/>)}</div><div className="sector-signal"><span>AI RELATIVE STRENGTH</span><b>{i%2===0?"WATCH":"TRACK"}</b></div><ChevronRight size={16}/></div>)}</div></div></section> }
 
 export default function LandingPage() {
-  const { isAuthenticated } = useAuth()
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-
-  return (
-    <main className="min-h-screen bg-titan-950 text-white overflow-x-hidden">
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-titan-950/85 backdrop-blur-2xl border-b border-white/5">
-        <div className="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-3 shrink-0">
-            <div className="titan-logo-mark">X</div>
-            <div>
-              <div className="text-xl font-black tracking-[0.08em]">TITAN <span className="text-titan-400">X</span></div>
-              <div className="hidden sm:block text-[8px] text-gray-500 tracking-[0.24em]">AI · DATA · SPEED · PRECISION</div>
-            </div>
-          </Link>
-          <div className="hidden lg:flex items-center gap-7 text-sm text-gray-400">
-            <a href="#home" className="hover:text-white transition">Home</a>
-            <a href="#markets" className="hover:text-white transition">Markets</a>
-            <a href="#ai" className="hover:text-white transition">AI Intelligence</a>
-            <a href="#trading" className="hover:text-white transition">Trading</a>
-            <a href="#analytics" className="hover:text-white transition">Analytics</a>
-            <a href="#risk" className="hover:text-white transition">Risk Engine</a>
-            <Link href="/dashboard" className="hover:text-white transition">Platform</Link>
-          </div>
-          <div className="hidden md:flex items-center gap-3">
-            {isAuthenticated ? (
-              <Link href="/dashboard" className="btn-primary text-sm">Open Platform <ArrowRight size={15} /></Link>
-            ) : (
-              <><Link href="/login" className="btn-ghost text-sm">Login</Link><Link href="/register" className="btn-primary text-sm">Get Started <ArrowRight size={15} /></Link></>
-            )}
-          </div>
-          <button onClick={() => setMobileMenuOpen((v) => !v)} className="md:hidden text-gray-300">
-            {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
-          </button>
-        </div>
-        {mobileMenuOpen && (
-          <div className="md:hidden border-t border-white/5 bg-titan-950/95 p-4 space-y-3">
-            {[['#home','Home'],['#markets','Markets'],['#ai','AI Intelligence'],['#trading','Trading'],['#analytics','Analytics'],['#risk','Risk Engine']].map(([href,label]) => (
-              <a key={href} href={href} onClick={() => setMobileMenuOpen(false)} className="block py-2 text-gray-300">{label}</a>
-            ))}
-            <Link href={isAuthenticated ? "/dashboard" : "/register"} className="btn-primary w-full">{isAuthenticated ? "Open Platform" : "Get Started"}</Link>
-          </div>
-        )}
-      </nav>
-
-      <div className="pt-16" id="home"><MarketTicker /></div>
-
-      <section className="relative min-h-[720px] flex items-center overflow-hidden">
-        <div className="absolute inset-0 hero-grid" />
-        <div className="absolute -top-32 left-1/3 w-[700px] h-[700px] rounded-full bg-blue-600/10 blur-[130px]" />
-        <div className="absolute bottom-0 right-0 w-[500px] h-[500px] rounded-full bg-fuchsia-600/10 blur-[120px]" />
-        <div className="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8 py-16 relative w-full">
-          <div className="grid xl:grid-cols-[.82fr_1.18fr] gap-10 xl:gap-12 items-center">
-            <div className="max-w-2xl">
-              <div className="inline-flex items-center gap-2 rounded-full border border-blue-400/20 bg-blue-400/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-blue-300 mb-7"><Sparkles size={14} /> AI-powered financial intelligence</div>
-              <h1 className="text-5xl sm:text-6xl lg:text-7xl font-black tracking-[-0.04em] leading-[.98]">The Future<br />Trades <span className="text-gradient">Smarter</span></h1>
-              <p className="mt-7 text-lg sm:text-xl leading-relaxed text-gray-400 max-w-xl">Real-time market intelligence, AI-driven analytics and automated trading infrastructure for modern investors and trading desks.</p>
-              <div className="mt-8 flex flex-wrap gap-3 text-xs text-gray-400"><span className="hero-chip"><Target size={13} /> Predict</span><span className="hero-chip"><Brain size={13} /> Analyze</span><span className="hero-chip"><Zap size={13} /> Automate</span><span className="hero-chip"><TrendingUp size={13} /> Execute</span></div>
-              <div className="mt-9 flex flex-col sm:flex-row gap-3"><Link href="/register" className="btn-primary text-base px-7 py-3.5">Start Trading Now <ArrowRight size={17} /></Link><Link href="/dashboard" className="btn-secondary text-base px-7 py-3.5"><LineChart size={17} /> Explore Platform</Link></div>
-              <div className="mt-7 flex flex-wrap gap-5 text-xs text-gray-500"><span className="inline-flex items-center gap-2"><Lock size={13} /> Secure infrastructure</span><span className="inline-flex items-center gap-2"><Shield size={13} /> Real-time risk controls</span><span className="inline-flex items-center gap-2"><Activity size={13} /> Live market engine</span></div>
-            </div>
-            <div className="xl:-mr-8"><MarketBattle /></div>
-          </div>
-        </div>
-      </section>
-
-      <section id="markets" className="border-y border-white/5 bg-black/15 py-5">
-        <div className="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8 flex flex-wrap justify-center gap-5 sm:gap-10 text-xs text-gray-500"><span className="inline-flex items-center gap-2"><span className="status-dot" /> LIVE MARKET DATA</span><span>GLOBAL EQUITIES</span><span>INDEX INTELLIGENCE</span><span>AI SIGNALS</span><span>PORTFOLIO RISK</span><span>AUTOMATED EXECUTION</span></div>
-      </section>
-
-      <section id="ai" className="py-20 sm:py-24">
-        <div className="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="section-heading"><div className="section-kicker">ONE INTELLIGENCE LAYER</div><h2>Everything an Investment Desk Needs</h2><p>From live market data to AI signals, execution, analytics and risk — unified in one high-performance platform.</p></div>
-          <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5">{features.map((feature) => <div key={feature.title} className="tech-card group"><div className="tech-icon"><feature.icon size={25} /></div><div className="flex-1"><h3>{feature.title}</h3><p>{feature.desc}</p></div><ChevronRight className="tech-arrow" size={18} /></div>)}</div>
-        </div>
-      </section>
-
-      <section id="analytics" className="py-20 border-t border-white/5 bg-[#020612]">
-        <div className="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="section-heading"><div className="section-kicker">INSTITUTIONAL ANALYTICS</div><h2>A Living Market Command Center</h2><p>Dark glass, high-density data and real-time signals — built around the TITAN X trading engine.</p></div>
-          <div className="grid xl:grid-cols-[1.05fr_1.2fr_.9fr] gap-5">
-            <div className="dashboard-card min-h-[360px]"><div className="panel-title"><span>GLOBAL MARKETS</span><span className="live-label"><i /> LIVE</span></div><div className="world-map"><div className="map-orb map-orb-1" /><div className="map-orb map-orb-2" /><div className="map-orb map-orb-3" /><div className="map-line" /><div className="map-label">60+ EXCHANGES</div></div><div className="market-list">{[['NSE','India'],['BSE','India'],['NASDAQ','US'],['NYSE','US'],['LSE','UK'],['JPX','Japan']].map(([a,b]) => <div key={a}><span>{a} <small>{b}</small></span><b>OPEN</b></div>)}</div></div>
-            <div className="dashboard-card min-h-[360px]"><div className="panel-title"><span>AI PREDICTION ENGINE</span><span className="live-label"><i /> LIVE</span></div><div className="prediction-top"><div><small>NIFTY 50 · 15 MIN</small><strong>AI SIGNAL</strong></div><div className="prediction-badge">BUY<br /><b>87% CONFIDENCE</b></div></div><div className="chart-area"><div className="chart-grid" /><svg viewBox="0 0 700 250" preserveAspectRatio="none" className="chart-svg"><polyline points="0,190 55,165 90,178 135,140 180,155 230,110 275,130 325,95 370,118 420,70 465,90 515,58 560,82 610,35 700,20" /></svg><div className="chart-target">PREDICTED MOVE<br /><b>+1.32%</b></div></div><div className="signal-row"><span>CONFIDENCE <b>87%</b></span><span>TARGET <b>25,150</b></span><span>STOP <b>24,250</b></span></div></div>
-            <div className="dashboard-card min-h-[360px]"><div className="panel-title"><span>TOP AI MOVERS</span><span className="live-label"><i /> LIVE</span></div><div className="movers-list">{movers.map(([name,change,price]) => { const up = change.startsWith('+'); return <div key={name} className="mover-row"><div><b>{name}</b><small>{price}</small></div><span className={up ? 'is-up' : 'is-down'}>{change}</span></div> })}</div><div className="sentiment-mini"><div><span>AI MARKET SENTIMENT</span><strong>78</strong></div><div className="sentiment-bar"><i /></div><small>Momentum · News · Technical · Volume</small></div></div>
-          </div>
-        </div>
-      </section>
-
-      <section id="trading" className="py-20 sm:py-24"><div className="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8"><div className="grid lg:grid-cols-2 gap-10 items-center"><div><div className="section-kicker">AUTOMATION + EXECUTION</div><h2 className="text-4xl sm:text-5xl font-black tracking-tight mt-3">From Signal to Execution.</h2><p className="text-gray-400 text-lg leading-relaxed mt-5 max-w-xl">TITAN X connects prediction, validation, risk controls, portfolio intelligence and execution into one continuous decision workflow.</p><div className="mt-8 space-y-4">{[['01','Predict','AI ensemble detects regime, momentum and opportunity.'],['02','Validate','Technical, fundamental, news and risk layers cross-check the idea.'],['03','Execute','Smart routing and real-time controls manage the trade lifecycle.']].map(([n,t,d]) => <div key={n} className="flow-row"><span>{n}</span><div><b>{t}</b><p>{d}</p></div></div>)}</div></div><div className="execution-visual"><div className="execution-orbit orbit-a" /><div className="execution-orbit orbit-b" /><div className="execution-core"><Zap size={38} /><span>AI<br />EXECUTION</span></div><div className="execution-node node-a">SIGNAL</div><div className="execution-node node-b">RISK</div><div className="execution-node node-c">ORDER</div><div className="execution-node node-d">FILL</div></div></div></div></section>
-
-      <section id="risk" className="py-20 border-t border-white/5 bg-[#020612]"><div className="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8"><div className="section-heading"><div className="section-kicker">PROTECT THE DOWNSIDE</div><h2>Risk Intelligence That Never Sleeps</h2><p>Continuous monitoring across positions, exposure, drawdown, volatility, concentration and market regime.</p></div><div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">{['Portfolio Exposure','Drawdown Control','Volatility Monitor','Real-Time Alerts'].map((item,i) => <div key={item} className="risk-card"><div className="risk-number">0{i+1}</div><Shield size={24} /><h3>{item}</h3><div className="risk-meter"><i style={{ width: `${72+i*6}%` }} /></div><small>AI monitoring active</small></div>)}</div></div></section>
-
-      <section id="stats" className="py-16 border-y border-white/5"><div className="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-6">{stats.map((stat) => <div key={stat.label} className="stat-card"><stat.icon size={20} /><strong>{stat.value}</strong><span>{stat.label}</span></div>)}</div></section>
-
-      <section className="py-24"><div className="max-w-[1100px] mx-auto px-4 sm:px-6 text-center"><div className="inline-flex items-center gap-2 text-xs uppercase tracking-[.2em] text-blue-300 mb-5"><CircleDollarSign size={14} /> TITAN X PLATFORM</div><h2 className="text-4xl sm:text-6xl font-black tracking-tight">The market moves fast.<br /><span className="text-gradient">Your intelligence should move faster.</span></h2><p className="text-gray-400 text-lg max-w-2xl mx-auto mt-6">Build your workflow around real-time data, AI intelligence and disciplined execution.</p><div className="mt-9 flex justify-center gap-3 flex-wrap"><Link href="/register" className="btn-primary text-base px-8 py-3.5">Start Trading Now <ArrowRight size={17} /></Link><Link href="/dashboard" className="btn-secondary text-base px-8 py-3.5">Open Platform</Link></div></div></section>
-
-      <footer className="border-t border-white/5 py-8"><div className="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row gap-4 justify-between items-center text-xs text-gray-600"><div className="flex items-center gap-3"><div className="titan-logo-mark titan-logo-small">X</div><span>TITAN X · AI DATA SPEED PRECISION</span></div><div className="flex items-center gap-5"><span><Users size={13} className="inline mr-1" /> Institutional intelligence</span><span><Building2 size={13} className="inline mr-1" /> Built for scale</span></div></div></footer>
-    </main>
-  )
+  const { isAuthenticated } = useAuth(); const [mobileMenuOpen,setMobileMenuOpen] = useState(false)
+  return <main className="titan-site">
+    <nav className="titan-nav"><div className="titan-wrap titan-nav-inner"><Link href="/" className="titan-brand"><span className="titan-brand-mark">X</span><span><strong>TITAN <em>X</em></strong><small>AI · DATA · SPEED · PRECISION</small></span></Link><div className="titan-nav-links"><a href="#home">Home</a><a href="#markets">Markets</a><a href="#ai">AI Intelligence</a><a href="#trading">Trading</a><a href="#analytics">Analytics</a><a href="#risk">Risk Engine</a><a href="#products">Products</a><a href="#api">API</a><a href="#about">About</a></div><div className="titan-nav-actions"><button className="icon-btn">◐</button><button className="icon-btn">⌕</button>{isAuthenticated?<Link href="/dashboard" className="nav-login">Platform</Link>:<Link href="/login" className="nav-login">Login</Link>}<Link href={isAuthenticated?"/dashboard":"/register"} className="nav-start">Get Started <ArrowRight size={14}/></Link></div><button className="mobile-menu" onClick={()=>setMobileMenuOpen(v=>!v)}>{mobileMenuOpen?<X/>:<Menu/>}</button></div>{mobileMenuOpen&&<div className="mobile-links">{['Home','Markets','AI Intelligence','Trading','Analytics','Risk Engine','Products','API','About'].map(x=><a key={x} href={`#${x.toLowerCase().replaceAll(' ','-')}`} onClick={()=>setMobileMenuOpen(false)}>{x}</a>)}<Link href="/register" className="nav-start">Get Started <ArrowRight size={14}/></Link></div>}</nav>
+    <div className="titan-ticker-wrap"><MarketTicker /></div>
+    <section id="home" className="titan-hero"><div className="titan-hero-grid"/><div className="titan-hero-glow g1"/><div className="titan-hero-glow g2"/><div className="titan-wrap titan-hero-layout"><div className="hero-copy"><div className="titan-kicker"><Sparkles size={13}/> AI-POWERED FINANCIAL INTELLIGENCE</div><h1>The Future<br/>Trades <span>Smarter</span></h1><p>Real-time market intelligence, AI-driven analytics and automated trading infrastructure for global markets.</p><div className="hero-workflow"><span><Target/>Predict<small>Market Moves</small></span><span><Brain/>Analyze<small>Deep Insights</small></span><span><Zap/>Automate<small>Smart Execution</small></span><span><TrendingUp/>Execute<small>Optimal Results</small></span></div><div className="hero-actions"><Link href="/register" className="nav-start big">Start Trading Now <ArrowRight size={16}/></Link><Link href="/dashboard" className="titan-outline-btn"><Play size={14}/> Watch Platform Tour</Link></div><div className="hero-trust"><span><Lock size={12}/> Secure infrastructure</span><span><Shield size={12}/> Real-time risk controls</span><span><Activity size={12}/> Live market engine</span></div></div><div className="hero-battle"><MarketBattle/></div></div></section>
+    <div className="titan-capabilities"><div className="titan-wrap"><span><i/> LIVE MARKET DATA</span><span>GLOBAL EQUITIES</span><span>INDEX INTELLIGENCE</span><span>AI SIGNALS</span><span>PORTFOLIO RISK</span><span>AUTOMATED EXECUTION</span><span>LOW-LATENCY INFRA</span></div></div>
+    <section id="ai" className="titan-section"><div className="titan-wrap"><div className="titan-section-head center"><div><div className="titan-kicker">ONE INTELLIGENCE LAYER</div><h2>Everything an Investment Desk Needs</h2><p>High-density financial intelligence with the visual language of an institutional command center.</p></div></div><div className="feature-grid">{features.map(f=>{const Icon=f.icon;return <div className="feature-card" key={f.title}><div className="feature-visual"><FeatureVisual type={f.visual}/></div><div className="feature-body"><div className="feature-title"><Icon size={17}/><strong>{f.title}</strong></div><p>{f.text}</p><div className="feature-bottom"><b>{f.value}</b><ChevronRight size={17}/></div></div></div>})}</div></div></section>
+    <WorldMarkets/><SectorWall/>
+    <section id="analytics" className="titan-section titan-command"><div className="titan-wrap"><div className="titan-section-head center"><div><div className="titan-kicker"><Activity size={13}/> INSTITUTIONAL COMMAND CENTER</div><h2>See the Market Before the Market Moves</h2><p>AI prediction, portfolio intelligence, market news and execution signals in one visual operating layer.</p></div></div><div className="command-grid"><div className="command-card wide"><div className="panel-head">AI PREDICTION ENGINE <span><i/> LIVE</span></div><div className="prediction-header"><div><small>NIFTY 50 · 15 MIN TIMEFRAME</small><strong>24,823.15</strong><b>+0.68%</b></div><div className="prediction-badge">PREDICTED MOVE<strong>+1.32%</strong></div></div><div className="big-chart"><div className="chart-lines"/><svg viewBox="0 0 900 260" preserveAspectRatio="none"><polyline points="0,215 55,188 95,205 145,150 205,175 260,112 310,142 370,92 425,122 475,70 520,96 580,52 635,83 690,40 750,62 820,26 900,10"/></svg><div className="chart-glow-point p1"/><div className="chart-glow-point p2"/><div className="chart-glow-point p3"/></div><div className="signal-strip"><span>AI SIGNAL <b>BUY</b></span><span>CONFIDENCE <b>87%</b></span><span>TARGET <b>25,150</b></span><span>STOP LOSS <b>24,250</b></span></div></div><div className="command-card"><div className="panel-head">PORTFOLIO OVERVIEW <span>LIVE</span></div><div className="portfolio-ring"><div><strong>₹12.8L</strong><small>TOTAL VALUE</small></div></div><div className="portfolio-list"><span>Equity <b>52%</b></span><span>F&amp;O <b>24%</b></span><span>Options <b>12%</b></span><span>Crypto <b>8%</b></span><span>Others <b>4%</b></span></div></div><div className="command-card"><div className="panel-head">MARKET NEWS AI <span><i/> LIVE</span></div><div className="news-list"><div><b>01</b><p>Macro and policy signals classified in real time<small>HIGH IMPACT</small></p></div><div><b>02</b><p>Company news mapped to sector momentum<small>POSITIVE</small></p></div><div><b>03</b><p>Global risk events linked to Indian markets<small>MARKET IMPACT</small></p></div><div><b>04</b><p>AI extracts signal from high-volume news flow<small>AI CLASSIFIED</small></p></div></div></div></div></div></section>
+    <section id="trading" className="titan-section titan-execution"><div className="titan-wrap"><div className="execution-layout"><div><div className="titan-kicker"><Zap size={13}/> AUTOMATED EXECUTION</div><h2>Signal → Risk → Order → Fill</h2><p>Move from AI idea to controlled execution through a transparent decision pipeline.</p><div className="execution-steps"><div><b>01</b><strong>Predict</strong><small>AI ensemble detects opportunity.</small></div><div><b>02</b><strong>Validate</strong><small>Technical, news and risk checks.</small></div><div><b>03</b><strong>Route</strong><small>Smart order orchestration.</small></div><div><b>04</b><strong>Execute</strong><small>Real-time controls and audit trail.</small></div></div></div><div className="execution-tech"><div className="exec-core"><Zap size={32}/><strong>AI<br/>EXECUTION</strong></div><div className="exec-node n1">SIGNAL</div><div className="exec-node n2">RISK</div><div className="exec-node n3">ORDER</div><div className="exec-node n4">FILL</div><div className="exec-orbit o1"/><div className="exec-orbit o2"/></div></div></div></section>
+    <section id="risk" className="titan-section titan-risk"><div className="titan-wrap"><div className="titan-section-head center"><div><div className="titan-kicker"><Shield size={13}/> RISK INTELLIGENCE</div><h2>Protection Designed Into Every Decision</h2><p>Portfolio risk is not a separate screen. It is part of the signal, order and execution lifecycle.</p></div></div><div className="risk-grid">{[['Portfolio Exposure','62%','Exposure'],['Drawdown Control','18%','Headroom'],['Volatility Monitor','74%','Normalised'],['Real-Time Alerts','24/7','Active']].map(([a,b,c],i)=><div className="risk-tech" key={a}><span>0{i+1}</span><Shield size={22}/><strong>{a}</strong><small>{c}</small><div className="risk-bar"><i style={{width:i===3?'100%':`${62+i*9}%`}}/></div><b>{b}</b></div>)}</div></div></section>
+    <section id="products" className="titan-stats"><div className="titan-wrap">{[["<1ms","Target Processing",Zap],["99.98%","Availability",Activity],["50TB+","Daily Data Layer",Database],["1M+","AI Predictions / Day",Brain],["60+","Stock Exchanges",Globe],["100K+","Active Users",Users]].map(([v,l,I])=>{const Icon=I as any;return <div key={String(l)}><Icon size={21}/><strong>{v}</strong><small>{l}</small></div>})}</div></section>
+    <footer id="about" className="titan-footer"><div className="titan-wrap"><div><div className="titan-brand"><span className="titan-brand-mark">X</span><span><strong>TITAN <em>X</em></strong><small>AI · DATA · SPEED · PRECISION</small></span></div><p>High-performance financial intelligence for modern investors, trading desks and financial technology platforms.</p></div><div className="footer-links"><span>PLATFORM</span><a href="#markets">Markets</a><a href="#ai">AI Intelligence</a><a href="#trading">Trading</a><a href="#analytics">Analytics</a><a href="#risk">Risk Engine</a></div><div id="api" className="footer-links"><span>CONNECT</span><Link href="/dashboard">Platform</Link><Link href="/login">Login</Link><Link href="/register">Get Started</Link><a href="#home">Back to top ↑</a></div></div><div className="footer-bottom"><span>© {new Date().getFullYear()} TITAN X. All rights reserved.</span><span>MARKET DATA • AI • EXECUTION • RISK</span></div></footer>
+  </main>
 }
