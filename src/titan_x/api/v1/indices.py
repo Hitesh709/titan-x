@@ -10,11 +10,13 @@ from titan_x.models.user import User
 
 router = APIRouter(prefix="/indices", tags=["indices"])
 
+# Index-only universe. No individual stocks, commodities, FX or crypto.
 INDEXES = [
     ("NIFTY", "NIFTY 50", "^NSEI"),
     ("SENSEX", "S&P BSE Sensex", "^BSESN"),
     ("BANKNIFTY", "NIFTY Bank", "^NSEBANK"),
     ("NIFTYIT", "NIFTY IT", "^CNXIT"),
+    ("NIFTYFIN", "NIFTY Financial Services", "^CNXFIN"),
     ("NIFTYMID", "NIFTY Midcap 100", "^NSEMDCP50"),
     ("NIFTYSMALLCAP", "NIFTY Smallcap 100", "^NSMIDCP"),
     ("NIFTYAUTO", "NIFTY Auto", "^CNXAUTO"),
@@ -23,6 +25,18 @@ INDEXES = [
     ("NIFTYMETAL", "NIFTY Metal", "^CNXMETAL"),
     ("NIFTYENERGY", "NIFTY Energy", "^CNXENERGY"),
     ("NIFTYREALTY", "NIFTY Realty", "^CNXREALTY"),
+    ("SP500", "S&P 500", "^GSPC"),
+    ("NASDAQ", "NASDAQ Composite", "^IXIC"),
+    ("DOW", "Dow Jones Industrial Average", "^DJI"),
+    ("RUSSELL2000", "Russell 2000", "^RUT"),
+    ("FTSE100", "FTSE 100", "^FTSE"),
+    ("DAX", "DAX", "^GDAXI"),
+    ("CAC40", "CAC 40", "^FCHI"),
+    ("NIKKEI225", "Nikkei 225", "^N225"),
+    ("HANGSENG", "Hang Seng Index", "^HSI"),
+    ("SHANGHAI", "Shanghai Composite", "000001.SS"),
+    ("KOSPI", "KOSPI", "^KS11"),
+    ("ASX200", "S&P/ASX 200", "^AXJO"),
 ]
 
 RANGES = {"1W": "5d", "1M": "1mo", "3M": "3mo", "6M": "6mo", "YTD": "ytd", "1Y": "1y"}
