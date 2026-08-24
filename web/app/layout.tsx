@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import { AuthProvider } from "@/contexts/AuthContext"
 import "./globals.css"
+import "./titan-landing.css"
 
 export const metadata: Metadata = {
   title: "TITAN X — XeCaps Intelligence Platform",
