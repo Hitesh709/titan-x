@@ -4,6 +4,7 @@ import "./globals.css"
 import "./titan-landing.css"
 import "./titan-premium.css"
 import "./brand.css"
+import "./reference-polish.css"
 
 export const metadata: Metadata = {
   title: "TITAN X — AI Market Intelligence",
