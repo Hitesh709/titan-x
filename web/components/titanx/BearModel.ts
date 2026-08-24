@@ -1,40 +1,10 @@
-import * as THREE from "three"
-
-export type BeastMaterials = { body: THREE.MeshPhysicalMaterial; dark: THREE.MeshStandardMaterial; energy: THREE.MeshPhysicalMaterial }
-
-function mesh(group: THREE.Group, geometry: THREE.BufferGeometry, material: THREE.Material, p: [number, number, number], s: [number, number, number] = [1, 1, 1]) {
-  const m = new THREE.Mesh(geometry, material)
-  m.position.set(...p); m.scale.set(...s); m.castShadow = true; m.receiveShadow = true; group.add(m); return m
-}
-
-/** Procedural fallback: a genuine WebGL 3D mechanical bear, ready to be replaced by a GLB without changing the scene. */
-export function createBear(materials: BeastMaterials) {
-  const g = new THREE.Group()
-  const { body, dark, energy } = materials
-  mesh(g, new THREE.SphereGeometry(1.25, 48, 32), body, [0, 1.55, 0], [1.55, 1.15, 1.8])
-  mesh(g, new THREE.SphereGeometry(0.98, 42, 28), body, [0, 2.55, -0.92], [1.08, 1.05, 1.12])
-  mesh(g, new THREE.SphereGeometry(0.72, 36, 24), dark, [0, 2.32, -1.7], [1.2, .7, .82])
-  mesh(g, new THREE.SphereGeometry(.46, 28, 20), dark, [0, 2.45, -1.98], [1.05, .7, .58])
-  const ear = new THREE.SphereGeometry(.34, 24, 18)
-  mesh(g, ear, body, [-.72, 3.16, -.9], [1.15, .9, .75]); mesh(g, ear, body, [.72, 3.16, -.9], [1.15, .9, .75])
-  const shoulder = new THREE.SphereGeometry(.7, 32, 22)
-  mesh(g, shoulder, body, [-1.05, 1.65, -.45], [.78, 1.05, .92]); mesh(g, shoulder, body, [1.05, 1.65, -.45], [.78, 1.05, .92])
-  const upper = new THREE.CylinderGeometry(.25, .34, 1.5, 20)
-  ;[[-1.08,.62,-.68],[1.08,.62,-.68],[-.86,.58,.65],[.86,.58,.65]].forEach(p => mesh(g, upper, body, p as [number,number,number], [1,1,1]))
-  const paw = new THREE.SphereGeometry(.38, 24, 16)
-  ;[[-1.1,-.12,-.82],[1.1,-.12,-.82],[-.86,-.15,.78],[.86,-.15,.78]].forEach(p => mesh(g, paw, dark, p as [number,number,number], [1.25,.55,1.5]))
-  const claw = new THREE.ConeGeometry(.07,.48,12)
-  for (const x of [-1.08,1.08]) for (const z of [-1.03,-.86,-.69]) { const c = mesh(g, claw, energy, [x + (x > 0 ? .02 : -.02), -.18, z], [.7,.7,.7]); c.rotation.x = Math.PI }
-  const eye = new THREE.SphereGeometry(.105, 20, 14)
-  mesh(g, eye, energy, [-.34,2.57,-1.88]); mesh(g, eye, energy, [.34,2.57,-1.88])
-  const brow = new THREE.BoxGeometry(.46,.12,.18)
-  const b1 = mesh(g,brow,energy,[-.35,2.77,-1.82],[1,.65,1]); const b2=mesh(g,brow,energy,[.35,2.77,-1.82],[1,.65,1]); b1.rotation.z=.28; b2.rotation.z=-.28
-  const spine = new THREE.TorusGeometry(1.08,.045,10,64,Math.PI*1.25)
-  const s = mesh(g, spine, energy, [0,1.65,.25],[1.05,1,1.25]); s.rotation.x=Math.PI/2
-  const armor = new THREE.BoxGeometry(.62,.42,.16)
-  for (let i=0;i<4;i++) mesh(g, armor, dark, [0,1.35+i*.25,1.35-i*.18],[1.8-i*.12,1,1])
-  const arm = new THREE.CylinderGeometry(.2,.3,1.65,20)
-  const a1=mesh(g,arm,body,[-1.48,1.08,-.2],[1,1,1]); const a2=mesh(g,arm,body,[1.48,1.08,-.2],[1,1,1]); a1.rotation.z=-.35; a2.rotation.z=.35
-  g.userData.kind="bear"
-  return g
-}
+export type ThreeModule = any
+export type BeastMaterials = { body:any; dark:any; energy:any }
+function mesh(THREE:ThreeModule,group:any,geometry:any,material:any,p:number[],s:number[]=[1,1,1]){const m=new THREE.Mesh(geometry,material);m.position.set(...p);m.scale.set(...s);m.castShadow=true;m.receiveShadow=true;group.add(m);return m}
+export function createBear(THREE:ThreeModule,materials:BeastMaterials){const g=new THREE.Group();const {body,dark,energy}=materials
+mesh(THREE,g,new THREE.SphereGeometry(1.25,48,32),body,[0,1.55,0],[1.55,1.15,1.8]);mesh(THREE,g,new THREE.SphereGeometry(.98,42,28),body,[0,2.55,-.92],[1.08,1.05,1.12]);mesh(THREE,g,new THREE.SphereGeometry(.72,36,24),dark,[0,2.32,-1.7],[1.2,.7,.82]);mesh(THREE,g,new THREE.SphereGeometry(.46,28,20),dark,[0,2.45,-1.98],[1.05,.7,.58])
+const ear=new THREE.SphereGeometry(.34,24,18);mesh(THREE,g,ear,body,[-.72,3.16,-.9],[1.15,.9,.75]);mesh(THREE,g,ear,body,[.72,3.16,-.9],[1.15,.9,.75]);const shoulder=new THREE.SphereGeometry(.7,32,22);mesh(THREE,g,shoulder,body,[-1.05,1.65,-.45],[.78,1.05,.92]);mesh(THREE,g,shoulder,body,[1.05,1.65,-.45],[.78,1.05,.92])
+const upper=new THREE.CylinderGeometry(.25,.34,1.5,20);[[-1.08,.62,-.68],[1.08,.62,-.68],[-.86,.58,.65],[.86,.58,.65]].forEach((p:any)=>mesh(THREE,g,upper,body,p));const paw=new THREE.SphereGeometry(.38,24,16);[[-1.1,-.12,-.82],[1.1,-.12,-.82],[-.86,-.15,.78],[.86,-.15,.78]].forEach((p:any)=>mesh(THREE,g,paw,dark,p,[1.25,.55,1.5]))
+const claw=new THREE.ConeGeometry(.07,.48,12);for(const x of [-1.08,1.08])for(const z of [-1.03,-.86,-.69]){const c=mesh(THREE,g,claw,energy,[x,-.18,z],[.7,.7,.7]);c.rotation.x=Math.PI}const eye=new THREE.SphereGeometry(.105,20,14);mesh(THREE,g,eye,energy,[-.34,2.57,-1.88]);mesh(THREE,g,eye,energy,[.34,2.57,-1.88])
+const brow=new THREE.BoxGeometry(.46,.12,.18);const b1=mesh(THREE,g,brow,energy,[-.35,2.77,-1.82],[1,.65,1]);const b2=mesh(THREE,g,brow,energy,[.35,2.77,-1.82],[1,.65,1]);b1.rotation.z=.28;b2.rotation.z=-.28;const spine=new THREE.TorusGeometry(1.08,.045,10,64,Math.PI*1.25);const s=mesh(THREE,g,spine,energy,[0,1.65,.25],[1.05,1,1.25]);s.rotation.x=Math.PI/2
+const armor=new THREE.BoxGeometry(.62,.42,.16);for(let i=0;i<4;i++)mesh(THREE,g,armor,dark,[0,1.35+i*.25,1.35-i*.18],[1.8-i*.12,1,1]);const arm=new THREE.CylinderGeometry(.2,.3,1.65,20);const a1=mesh(THREE,g,arm,body,[-1.48,1.08,-.2]);const a2=mesh(THREE,g,arm,body,[1.48,1.08,-.2]);a1.rotation.z=-.35;a2.rotation.z=.35;g.userData.kind="bear";return g}
