@@ -2,20 +2,21 @@ import type { Metadata } from "next"
 import { AuthProvider } from "@/contexts/AuthContext"
 import "./globals.css"
 import "./titan-landing.css"
+import "./titan-premium.css"
 import "./brand.css"
 
 export const metadata: Metadata = {
-  title: "TITAN X — XeCaps Intelligence Platform",
-  description: "AI-powered financial analytics, market intelligence, and portfolio management platform by XeCaps.",
-  keywords: ["trading", "finance", "AI", "portfolio management", "market analysis", "institutional trading", "XeCaps"],
+  title: "TITAN X — AI Market Intelligence",
+  description: "TITAN X is a high-performance financial intelligence platform for live index intelligence, AI analytics, trading and risk.",
+  keywords: ["TITAN X", "AI trading", "market intelligence", "global indices", "financial analytics", "risk engine"],
   icons: {
     icon: "/titan-x-logo.svg",
     shortcut: "/titan-x-logo.svg",
     apple: "/titan-x-logo.svg",
   },
   openGraph: {
-    title: "TITAN X — XeCaps Intelligence Platform",
-    description: "AI-powered financial analytics and portfolio management by XeCaps.",
+    title: "TITAN X — AI Market Intelligence",
+    description: "Live index intelligence, AI analytics, trading and risk in one high-performance platform.",
     type: "website",
   },
 }
