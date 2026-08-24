@@ -1,0 +1,15 @@
+/* TITAN X master brand treatment. The same logo is used across the landing, auth and shared branded surfaces. */
+.titan-brand{gap:0 !important;}
+.titan-brand .titan-brand-mark{
+  width:168px !important;
+  height:52px !important;
+  display:block !important;
+  flex:none !important;
+  background:url('/titan-x-logo.svg') center/contain no-repeat !important;
+  clip-path:none !important;
+  box-shadow:none !important;
+  font-size:0 !important;
+  color:transparent !important;
+}
+.titan-brand > span:nth-child(2){display:none !important;}
+@media (max-width:900px){.titan-brand .titan-brand-mark{width:142px !important;height:46px !important;}}
