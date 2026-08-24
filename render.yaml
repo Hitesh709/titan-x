@@ -3,7 +3,6 @@
 # managed PostgreSQL, managed Redis, and the API service.
 
 services:
-  # ---------- Frontend (Next.js) ----------
   - type: web
     name: titan-x
     plan: free
@@ -15,12 +14,9 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      # Use the API service directly. This avoids relying on a same-origin
-      # Next.js rewrite for authentication and API requests in production.
       - key: NEXT_PUBLIC_API_URL
         value: https://titan-x-api.onrender.com/api/v1
 
-  # ---------- Backend API (FastAPI, Docker) ----------
   - type: web
     name: titan-x-api
     plan: free
@@ -42,8 +38,9 @@ services:
         value: https://titan-x.onrender.com
       - key: SEED_DEMO_ON_STARTUP
         value: "true"
+      # Demo prices must not be used by live-market UI components.
       - key: PAPER_DEMO_PRICES
-        value: "true"
+        value: "false"
       - key: DATABASE_URL
         fromDatabase:
           name: titan-x-db
@@ -74,14 +71,12 @@ services:
       - key: BACKUP_S3_SECRET_KEY
         sync: false
 
-  # ---------- Redis (managed) ----------
   - type: redis
     name: titan-x-redis
     plan: free
     maxmemoryPolicy: noeviction
     ipAllowList: []
 
-# ---------- PostgreSQL (managed) ----------
 databases:
   - name: titan-x-db
     plan: free
