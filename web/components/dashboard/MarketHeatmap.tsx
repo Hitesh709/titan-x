@@ -8,6 +8,7 @@ import type { BatchQuotesResponse, MarketQuote, ResearchCompanyPage } from "@/ty
 
 const REFRESH_MS = 30000
 const MAX_COMPANIES = 100
+const SIDE_COUNT = 50
 
 export default function MarketHeatmap() {
   const [quotes, setQuotes] = useState<MarketQuote[]>([])
@@ -16,7 +17,6 @@ export default function MarketHeatmap() {
 
   const load = useCallback(async () => {
     try {
-      // Get the actual NSE universe from Titan X rather than a hard-coded watchlist.
       const universe = await api.get<ResearchCompanyPage>(
         "/research/companies?sort_by=market_cap&sort_desc=true&limit=100&skip=0"
       )
@@ -26,10 +26,10 @@ export default function MarketHeatmap() {
       const res = await api.get<BatchQuotesResponse>(
         `/market-data/quotes?symbols=${encodeURIComponent(symbols.join(","))}`
       )
-      const live = (res.quotes ?? []).filter((q) => q.last_price != null)
-      if (mounted.current) setQuotes(live.slice(0, MAX_COMPANIES))
+      const live = (res.quotes ?? []).filter((q) => q.last_price != null).slice(0, MAX_COMPANIES)
+      if (mounted.current) setQuotes(live)
     } catch {
-      // Keep the last successful live snapshot visible during a transient provider/API failure.
+      // Keep the last successful live snapshot visible during transient failures.
     } finally {
       if (mounted.current) setLoading(false)
     }
@@ -42,29 +42,85 @@ export default function MarketHeatmap() {
     return () => { mounted.current = false; clearInterval(timer) }
   }, [load])
 
-  const items = quotes.slice(0, MAX_COMPANIES)
-  const max = Math.max(...items.map((q) => Math.abs(q.change_percent ?? q.change ?? 0)), 1)
+  const ranked = [...quotes].sort((a, b) =>
+    (b.change_percent ?? b.change ?? 0) - (a.change_percent ?? a.change ?? 0)
+  )
+  const winners = ranked.filter((q) => (q.change_percent ?? q.change ?? 0) > 0).slice(0, SIDE_COUNT)
+  const losers = ranked.filter((q) => (q.change_percent ?? q.change ?? 0) < 0).sort(
+    (a, b) => (a.change_percent ?? a.change ?? 0) - (b.change_percent ?? b.change ?? 0)
+  ).slice(0, SIDE_COUNT)
+  const flat = ranked.filter((q) => (q.change_percent ?? q.change ?? 0) === 0)
+  const max = Math.max(...ranked.map((q) => Math.abs(q.change_percent ?? q.change ?? 0)), 1)
 
-  return <section className="glass-card overflow-hidden">
-    <div className="px-5 py-4 border-b border-titan-800/30 flex items-center justify-between">
-      <div className="flex items-center gap-2">
-        <Activity size={16} className="text-titan-400" />
-        <div><h2 className="text-sm font-semibold text-white">Market Heatmap</h2><p className="text-[11px] text-gray-500">Top 100 NSE companies · live price movement</p></div>
+  const StockBox = ({ q, positive }: { q: MarketQuote; positive: boolean }) => {
+    const change = q.change_percent ?? q.change ?? 0
+    const intensity = Math.min(Math.abs(change) / max, 1)
+    const alpha = 0.16 + intensity * 0.52
+    return (
+      <Link
+        key={q.symbol}
+        href={`/dashboard/stocks/${q.symbol}`}
+        title={`${q.name ?? q.symbol}: ${positive ? "+" : ""}${change.toFixed(2)}%`}
+        className="group aspect-square min-w-0 rounded-md border border-white/5 p-1.5 sm:p-2 flex flex-col justify-between transition-all hover:scale-[1.04] hover:z-10 hover:border-white/40"
+        style={{ background: positive ? `rgba(16,185,129,${alpha})` : `rgba(239,68,68,${alpha})` }}
+      >
+        <span className="text-[9px] sm:text-[10px] lg:text-[11px] font-bold text-white truncate">{q.symbol}</span>
+        <span className={`text-[9px] sm:text-[10px] lg:text-[11px] font-bold ${positive ? "text-emerald-200" : "text-red-200"}`}>
+          {positive ? "+" : ""}{change.toFixed(2)}%
+        </span>
+      </Link>
+    )
+  }
+
+  return (
+    <section className="glass-card overflow-hidden">
+      <div className="px-5 py-4 border-b border-titan-800/30 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Activity size={16} className="text-titan-400" />
+          <div>
+            <h2 className="text-sm font-semibold text-white">Market Heatmap</h2>
+            <p className="text-[11px] text-gray-500">Top 100 NSE companies · 50 winners vs 50 losers · live</p>
+          </div>
+        </div>
+        <span className="text-[10px] uppercase tracking-wider text-emerald-400">
+          {loading ? "Loading live data" : `${ranked.length} live`}
+        </span>
       </div>
-      <span className="text-[10px] uppercase tracking-wider text-emerald-400">{loading ? "Loading live data" : `${items.length} live`}</span>
-    </div>
-    {items.length === 0 ? <div className="p-8 text-center text-sm text-gray-600">Live quote data unavailable. Retrying automatically.</div> : <div className="p-3 grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-1.5">
-      {items.map((q) => {
-        const change = q.change_percent ?? q.change ?? 0
-        const positive = change >= 0
-        const intensity = Math.min(Math.abs(change) / max, 1)
-        const alpha = 0.16 + intensity * 0.42
-        return <Link key={q.symbol} href={`/dashboard/stocks/${q.symbol}`} title={`${q.name ?? q.symbol}: ${positive ? "+" : ""}${change.toFixed(2)}%`} className="group aspect-square rounded-md border border-white/5 p-2 flex flex-col justify-between transition-all hover:scale-[1.03] hover:border-white/30" style={{ background: positive ? `rgba(16,185,129,${alpha})` : `rgba(239,68,68,${alpha})` }}>
-          <span className="text-[10px] sm:text-[11px] font-bold text-white truncate">{q.symbol}</span>
-          <span className={`text-[10px] sm:text-[11px] font-bold ${positive ? "text-emerald-200" : "text-red-200"}`}>{positive ? "+" : ""}{change.toFixed(2)}%</span>
-        </Link>
-      })}
-    </div>}
-    <div className="px-5 py-3 border-t border-titan-800/30 text-[10px] text-gray-600">Green = live gain · Red = live loss · intensity reflects the magnitude of today's percentage move · refreshes every 30 seconds.</div>
-  </section>
+
+      {ranked.length === 0 ? (
+        <div className="p-8 text-center text-sm text-gray-600">Live quote data unavailable. Retrying automatically.</div>
+      ) : (
+        <div className="p-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.03] overflow-hidden">
+            <div className="px-3 py-2 border-b border-emerald-500/10 flex items-center justify-between">
+              <span className="text-xs font-bold text-emerald-300">TOP 50 WINNERS</span>
+              <span className="text-[10px] text-emerald-400">{winners.length}/50</span>
+            </div>
+            <div className="p-2 grid grid-cols-5 sm:grid-cols-7 lg:grid-cols-10 gap-1.5">
+              {winners.map((q) => <StockBox key={q.symbol} q={q} positive />)}
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-red-500/20 bg-red-500/[0.03] overflow-hidden">
+            <div className="px-3 py-2 border-b border-red-500/10 flex items-center justify-between">
+              <span className="text-xs font-bold text-red-300">TOP 50 LOSERS</span>
+              <span className="text-[10px] text-red-400">{losers.length}/50</span>
+            </div>
+            <div className="p-2 grid grid-cols-5 sm:grid-cols-7 lg:grid-cols-10 gap-1.5">
+              {losers.map((q) => <StockBox key={q.symbol} q={q} positive={false} />)}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {flat.length > 0 && (
+        <div className="px-5 py-2 text-[10px] text-gray-600 border-t border-titan-800/20">
+          {flat.length} stocks unchanged and excluded from the winner/loser 100.
+        </div>
+      )}
+      <div className="px-5 py-3 border-t border-titan-800/30 text-[10px] text-gray-600">
+        Green = live gain · Red = live loss · intensity reflects percentage movement · refreshes every 30 seconds.
+      </div>
+    </section>
+  )
 }
