@@ -59,15 +59,13 @@ async def strict_recommendations(
     session=Depends(deps.get_session),
     _: User = Depends(deps.get_current_active_user),
 ):
-    """Return only Titan X recommendations passing the strict 95+ technical gate.
+    """Return only recommendations passing the actual Technical Pillar >=95 gate.
 
-    Delivery mode requires the same stock to have directional technical
-    conviction >=95 on both the daily/delivery model and the live 5-minute
-    intraday model, with the two directions agreeing.
-
-    Intraday mode returns only live 5-minute BUY/SELL signals whose directional
-    technical conviction is >=95. This endpoint intentionally returns no weak
-    or merely average signals.
+    Delivery mode requires the same stock to have Technical Pillar Score >=95
+    on both the daily/delivery model and the live 5-minute intraday model.
+    Intraday mode applies the same >=95 Technical Pillar Score gate directly
+    to the live 5-minute model. Confidence and directional conviction are not
+    used for the strict threshold.
     """
     try:
         return await get_strict_recommendations(
