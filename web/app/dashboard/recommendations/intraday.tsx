@@ -16,7 +16,6 @@ const PILLARS = ["technical", "fundamental", "news", "regime", "similarity", "ri
 const PILLAR_LABELS: Record<string, string> = { technical: "Technical", fundamental: "Fundamental", news: "News", regime: "Regime", similarity: "Pattern", risk: "Risk" }
 const riskRank = (risk?: string | null) => risk === "Low" ? 1 : risk === "Medium" ? 2 : risk === "High" ? 3 : 0
 function fnoPriority(symbol: string) { const normalized = symbol.toUpperCase().replace(/[^A-Z0-9]/g, ""); const index = FNO_INDEX_PRIORITY.findIndex((name) => normalized === name || normalized.startsWith(name)); return index === -1 ? 999 : index }
-function marketOpenNow() { const now = new Date(); const day = now.getDay(); const minutes = now.getHours() * 60 + now.getMinutes(); return day >= 1 && day <= 5 && minutes >= 555 && minutes <= 930 }
 
 function pillarsFor(rec: StrictIntradayRecommendation) {
   const factors = rec.factors ?? {}
@@ -66,13 +65,8 @@ export function IntradayRecommendations() {
 
   useEffect(() => {
     try { const cached = localStorage.getItem(cacheKey); if (cached) { setData(JSON.parse(cached) as StrictResponse); setLoading(false) } } catch { /* ignore */ }
-    void load(Boolean(localStorage.getItem(cacheKey)))
+    // Do not scan or query the API automatically. Saved recommendations remain available locally; Refresh is user-triggered.
   }, [load, cacheKey])
-
-  useEffect(() => {
-    const id = window.setInterval(() => { if (marketOpenNow()) void load(true) }, 5 * 60 * 1000)
-    return () => window.clearInterval(id)
-  }, [load])
 
   const toggleSort = (key: SortKey) => { if (sortKey === key) setSortDir((d) => d === "asc" ? "desc" : "asc"); else { setSortKey(key); setSortDir("desc") } }
   const displayedRecommendations = useMemo(() => {
@@ -96,7 +90,7 @@ export function IntradayRecommendations() {
   const sortButton = (key: SortKey, label: string) => <button onClick={() => toggleSort(key)} className={`px-2 py-1 rounded border ${sortKey === key ? "border-titan-500 text-titan-300" : "border-white/10 text-gray-400"}`}>{label} {sortKey === key ? (sortDir === "asc" ? <ArrowUp size={11} className="inline" /> : <ArrowDown size={11} className="inline" />) : null}</button>
 
   return <div className="space-y-5">
-    <div className="glass-card p-3 flex flex-wrap items-center justify-between gap-3"><div><div className="text-white font-semibold flex items-center gap-2"><Clock3 size={15} className="text-titan-400" /> Intraday AI</div><div className="text-xs text-gray-500 mt-1">5-minute market structure · Technical Pillar ≥95 · full available universe · auto refresh every 5 minutes during market hours</div></div><div className="flex items-center gap-2"><div className="flex rounded-lg border border-white/10 p-1 bg-white/[0.02]"><button onClick={() => setSegment("equity")} className={`px-3 py-1.5 rounded-md text-xs ${segment === "equity" ? "bg-titan-600 text-white" : "text-gray-400"}`}>Equity Intraday</button><button onClick={() => setSegment("fno")} className={`px-3 py-1.5 rounded-md text-xs ${segment === "fno" ? "bg-titan-600 text-white" : "text-gray-400"}`}>F&O Intraday</button></div><button onClick={() => void load()} className="btn-secondary text-xs inline-flex items-center gap-2"><RefreshCw size={13} /> Refresh</button></div></div>
+    <div className="glass-card p-3 flex flex-wrap items-center justify-between gap-3"><div><div className="text-white font-semibold flex items-center gap-2"><Clock3 size={15} className="text-titan-400" /> Intraday AI</div><div className="text-xs text-gray-500 mt-1">5-minute market structure · Technical Pillar ≥95 · full available universe · manual refresh only</div></div><div className="flex items-center gap-2"><div className="flex rounded-lg border border-white/10 p-1 bg-white/[0.02]"><button onClick={() => setSegment("equity")} className={`px-3 py-1.5 rounded-md text-xs ${segment === "equity" ? "bg-titan-600 text-white" : "text-gray-400"}`}>Equity Intraday</button><button onClick={() => setSegment("fno")} className={`px-3 py-1.5 rounded-md text-xs ${segment === "fno" ? "bg-titan-600 text-white" : "text-gray-400"}`}>F&O Intraday</button></div><button onClick={() => void load()} className="btn-secondary text-xs inline-flex items-center gap-2"><RefreshCw size={13} /> Refresh</button></div></div>
     {data && <div className="grid grid-cols-2 md:grid-cols-4 gap-3"><div className="glass-card p-4"><div className="text-[11px] text-gray-500">Universe</div><div className="text-xl text-white font-semibold mt-1">{data.universe_size}</div></div><div className="glass-card p-4"><div className="text-[11px] text-gray-500">Scanned</div><div className="text-xl text-white font-semibold mt-1">{data.scanned}</div></div><div className="glass-card p-4"><div className="text-[11px] text-gray-500">Strict Signals</div><div className="text-xl text-emerald-400 font-semibold mt-1">{displayedRecommendations.length}</div></div><div className="glass-card p-4"><div className="text-[11px] text-gray-500 flex items-center gap-1"><Clock3 size={12} /> Status</div><div className="text-xs text-gray-300 mt-2">{data.scanning ? `${Math.round(scanStatus?.progress_pct ?? 0)}% scanning` : data.generated_at ? new Date(data.generated_at).toLocaleTimeString() : "Starting…"}</div></div></div>}
     {data?.scanning && <div className="glass-card p-4 border border-titan-500/20 text-sm text-titan-300">Full-market intraday scan is running in the background — {scanStatus?.scanned ?? 0} / {scanStatus?.universe_size ?? data.universe_size ?? 0} symbols scanned.</div>}
     {data?.scan_status?.error && <div className="glass-card p-4 border border-red-500/20 text-sm text-red-400">Scan error: {data.scan_status.error}</div>}

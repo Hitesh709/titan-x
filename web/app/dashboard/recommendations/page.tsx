@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { RefreshCw, Search, Play, Zap, TrendingUp, TrendingDown, Minus, ArrowUp, ArrowDown, Brain } from "lucide-react"
 import api from "@/lib/api"
-import { useLiveRefresh } from "@/lib/live"
 import type { StockRecommendation } from "@/types"
 import { WidgetError, RefreshButton } from "@/components/dashboard/widget"
 import { StatCard, RecommendationCard } from "./components"
@@ -29,7 +28,6 @@ export default function RecommendationsPage() {
   const [scanInfo, setScanInfo] = useState<string | null>(null)
   const [mode, setMode] = useState<"delivery" | "intraday">("delivery")
   const mounted = useRef(true)
-  const timerRef = useRef<number | null>(null)
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
@@ -64,37 +62,19 @@ export default function RecommendationsPage() {
       const cached = localStorage.getItem(DELIVERY_CACHE_KEY)
       if (cached) {
         const parsed = JSON.parse(cached) as StockRecommendation[]
-        if (Array.isArray(parsed) && parsed.length) { setRecommendations(parsed); setLoading(false); setScanInfo("Showing saved Delivery recommendations while Titan X checks for the latest scan.") }
+        if (Array.isArray(parsed) && parsed.length) { setRecommendations(parsed); setLoading(false); setScanInfo("Showing saved Delivery recommendations. Run Scan when you want fresh results.") }
       }
     } catch { /* ignore malformed browser cache */ }
-    void load(Boolean(localStorage.getItem(DELIVERY_CACHE_KEY)))
-    return () => { mounted.current = false; if (timerRef.current) window.clearTimeout(timerRef.current) }
+    // Do not scan or query the API automatically. Saved recommendations remain available locally; scanning is user-triggered.
+    return () => { mounted.current = false }
   }, [load])
 
-  useLiveRefresh(() => void load(true), [load])
-
-  const scheduleNextDeliveryRefresh = useCallback(() => {
-    if (timerRef.current) window.clearTimeout(timerRef.current)
-    const now = new Date()
-    const slots = [9, 12, 15, 18]
-    let next: Date | null = null
-    for (const hour of slots) {
-      const candidate = new Date(now)
-      candidate.setHours(hour, 0, 0, 0)
-      if (candidate.getTime() > now.getTime()) { next = candidate; break }
-    }
-    if (!next) { next = new Date(now); next.setDate(now.getDate() + 1); next.setHours(9, 0, 0, 0) }
-    timerRef.current = window.setTimeout(async () => { await handleScan(); scheduleNextDeliveryRefresh() }, Math.max(1000, next.getTime() - now.getTime()))
-  }, [])
-
   const handleScan = async () => {
-    setScanning(true); setError(null); setScanInfo("Starting full-market delivery scan…")
+    setScanning(true); setError(null); setScanInfo("No automatic scan. Run a delivery scan when you want fresh recommendations.")
     try { await api.post("/recommendations/scan?sync=false&limit=3000", {}); await load(true) }
     catch (e) { setError(e instanceof Error ? e.message : "Scan failed") }
     finally { setScanning(false) }
   }
-
-  useEffect(() => { scheduleNextDeliveryRefresh(); return () => { if (timerRef.current) window.clearTimeout(timerRef.current) } }, [scheduleNextDeliveryRefresh])
 
   const handleRefresh = () => { setRefreshing(true); void load(true) }
   const toggleSort = (key: SortKey) => { if (sortKey === key) setSortDir((d) => d === "asc" ? "desc" : "asc"); else { setSortKey(key); setSortDir("desc") } }
@@ -133,7 +113,7 @@ export default function RecommendationsPage() {
       {scanInfo && <div className="glass-card p-3 text-sm text-titan-300 border border-titan-500/20">{scanInfo}</div>}
       <div className="glass-card p-3 text-xs text-titan-300 border border-titan-500/20">Delivery strict gate: <b>Delivery Technical Pillar Score ≥95</b>. Intraday Technical Pillar is independent and is not required for Delivery. Recommendations are saved in the browser so logout/login does not force a rescan.</div>
       <SymbolAnalyzer />
-      {loading && recommendations.length === 0 ? <div className="glass-card p-8 text-center text-gray-400">Starting full-market delivery scan…</div> : <>
+      {loading && recommendations.length === 0 ? <div className="glass-card p-8 text-center text-gray-400">No automatic scan. Run a delivery scan when you want fresh recommendations.</div> : <>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4"><StatCard label="Buy signals" value={buyCount} tone="text-emerald-400" icon={<TrendingUp size={16} />} /><StatCard label="Sell signals" value={sellCount} tone="text-red-400" icon={<TrendingDown size={16} />} /><StatCard label="Neutral" value={neutralCount} tone="text-gray-400" icon={<Minus size={16} />} /><StatCard label="Avg confidence" value={avgConfidence} tone="text-titan-400" icon={<Zap size={16} />} /></div>
         <div className="flex flex-wrap items-center gap-3"><div className="relative w-full sm:w-64"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter by symbol…" className="input-field w-full text-sm pl-9" /></div><div className="flex flex-wrap items-center gap-2 text-xs text-gray-500"><span>Sort:</span>{sortButton("technical", "Technical")}{sortButton("risk", "Risk")}{sortButton("confidence", "Confidence")}{sortButton("return", "Return")}{sortButton("symbol", "Symbol")}</div></div>
         {filtered.length === 0 ? <div className="glass-card p-10 text-center"><Brain size={28} className="mx-auto text-titan-500/60 mb-3" /><p className="text-gray-400">No stock currently has a Delivery Technical Pillar Score ≥95.</p><p className="text-gray-600 text-xs mt-2">Titan X does not require the Intraday Technical Pillar for Delivery recommendations.</p><button onClick={handleScan} className="btn-primary mt-4 text-sm inline-flex items-center gap-2"><Play size={14} /> Run fresh delivery market scan</button></div> : <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">{filtered.map((rec) => <RecommendationCard key={rec.id} rec={rec} />)}</div>}
