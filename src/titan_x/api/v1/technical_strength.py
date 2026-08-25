@@ -28,8 +28,8 @@ async def technical_strength(
     symbol = symbol.upper()
     intraday_service = IntradayService(session)
     intraday_bars, _ = await intraday_service.get_bars(symbol, resolution, limit=500)
-    daily_result = await session.execute(select(DailyPrice).where(DailyPrice.symbol == symbol).order_by(DailyPrice.trade_date.asc()).limit(500))
-    daily_bars = list(daily_result.scalars().all())
+    daily_result = await session.execute(select(DailyPrice).where(DailyPrice.symbol == symbol).order_by(DailyPrice.trade_date.desc()).limit(500))
+    daily_bars = list(reversed(list(daily_result.scalars().all())))
     if not intraday_bars and not daily_bars:
         raise HTTPException(status_code=404, detail=f"No price data available for {symbol}")
 
