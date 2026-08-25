@@ -4,10 +4,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 
 from titan_x.api import deps
+from titan_x.api.deps import get_app_session_factory
 from titan_x.models.company import Company
 from titan_x.models.user import User
 from titan_x.services.intraday_recommendation_service import get_intraday_recommendations
-from titan_x.services.strict_recommendation_service import get_strict_recommendations
+from titan_x.services.strict_recommendation_service import (
+    get_strict_recommendations,
+    get_strict_scan_status,
+)
 
 router = APIRouter(tags=["intraday-recommendations"])
 
@@ -19,13 +23,7 @@ async def intraday_recommendations(
     session=Depends(deps.get_session),
     _: User = Depends(deps.get_current_active_user),
 ):
-    """Return live 5-minute intraday opportunities.
-
-    Equity uses the active NSE/BSE company universe stored in Titan X instead
-    of the old hard-coded 30-symbol slice. F&O keeps its dedicated derivatives
-    universe plus major indices. ``limit`` controls returned actionable
-    signals, not the size of the equity database universe.
-    """
+    """Return live 5-minute intraday opportunities from the full universe."""
     try:
         universe_symbols: list[str] | None = None
         if segment == "equity":
@@ -56,20 +54,19 @@ async def strict_recommendations(
     mode: str = Query(default="delivery", pattern=r"^(delivery|intraday)$"),
     segment: str = Query(default="equity", pattern=r"^(equity|fno)$"),
     limit: int = Query(default=100, ge=1, le=3000),
-    session=Depends(deps.get_session),
+    session_factory=Depends(get_app_session_factory),
     _: User = Depends(deps.get_current_active_user),
 ):
-    """Return only recommendations passing the actual Technical Pillar >=95 gate.
+    """Start/return a non-blocking full-market strict scan.
 
-    Delivery mode requires the same stock to have Technical Pillar Score >=95
-    on both the daily/delivery model and the live 5-minute intraday model.
-    Intraday mode applies the same >=95 Technical Pillar Score gate directly
-    to the live 5-minute model. Confidence and directional conviction are not
-    used for the strict threshold.
+    A full live Yahoo 5-minute scan can take minutes on a free host, so this
+    endpoint NEVER holds the HTTP request open for the whole scan. The first
+    request starts the scan and returns immediately; later requests return the
+    cached results/progress. Only actual Technical Pillar Score >=95 qualifies.
     """
     try:
         return await get_strict_recommendations(
-            session=session,
+            session_factory=session_factory,
             mode=mode,
             segment=segment,
             limit=limit,
@@ -78,3 +75,13 @@ async def strict_recommendations(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Strict recommendation scan unavailable: {exc}") from exc
+
+
+@router.get("/recommendations/strict/status")
+async def strict_scan_status(
+    mode: str = Query(default="delivery", pattern=r"^(delivery|intraday)$"),
+    segment: str = Query(default="equity", pattern=r"^(equity|fno)$"),
+    _: User = Depends(deps.get_current_active_user),
+):
+    """Return progress for the background full-market strict scan."""
+    return get_strict_scan_status(mode, segment)
