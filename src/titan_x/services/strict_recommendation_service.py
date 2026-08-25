@@ -6,11 +6,13 @@ from datetime import date, timedelta
 from sqlalchemy import select
 
 from titan_x.infrastructure.market_data_providers import StooqProvider, YahooFinanceProvider
+from titan_x.models.company import Company
 from titan_x.models.recommendation import Recommendation
 from titan_x.services.ai_recommendation_engine import _technical_pillar, bars_from_records
-from titan_x.services.intraday_recommendation_service import get_intraday_recommendations
+from titan_x.services.intraday_recommendation_service import FNO_UNIVERSE, get_intraday_recommendations
 
 STRICT_TECHNICAL_THRESHOLD = 95.0
+MAX_MARKET_SCAN = 3000
 
 
 def _rec_dict(r: Recommendation, technical_score: float) -> dict:
@@ -78,6 +80,24 @@ async def _daily_technical_gate(
     return float(_technical_pillar(bars_from_records(points)).score)
 
 
+async def _full_market_universe(session, segment: str) -> list[str]:
+    """Build the real scan universe instead of using the old 30-symbol fallback."""
+    if segment == "fno":
+        return list(dict.fromkeys(FNO_UNIVERSE))
+
+    rows = (
+        await session.execute(
+            select(Company.symbol)
+            .where(Company.status == "active")
+            .where(Company.exchange.in_(["NSE", "BSE"]))
+            .order_by(Company.symbol.asc())
+            .limit(MAX_MARKET_SCAN)
+        )
+    ).all()
+    symbols = [str(row[0]).upper().strip() for row in rows if row[0]]
+    return list(dict.fromkeys(symbols))
+
+
 async def get_strict_recommendations(
     *,
     session,
@@ -87,19 +107,20 @@ async def get_strict_recommendations(
 ) -> dict:
     """Return only recommendations passing the actual Technical Pillar >=95 gate.
 
-    The value is the same ``technical_pillar_score`` calculated by the
-    analyzer/Pillar Scores engine. Confidence, probability and discovery
-    scores are never substituted for this gate.
+    IMPORTANT: every strict intraday request scans the complete active NSE/BSE
+    universe (currently thousands of symbols), not the legacy 30-symbol list.
+    Confidence is never substituted for Technical Pillar Score.
     """
     mode = mode.lower().strip()
     segment = segment.lower().strip()
-    limit = max(1, min(int(limit), 3000))
+    limit = max(1, min(int(limit), MAX_MARKET_SCAN))
 
     if mode == "intraday":
+        universe_symbols = await _full_market_universe(session, segment)
         result = await get_intraday_recommendations(
             segment=segment,
-            limit=3000,
-            universe_symbols=None,
+            limit=MAX_MARKET_SCAN,
+            universe_symbols=universe_symbols,
         )
         qualified = []
         for item in result.get("recommendations", []):
@@ -117,12 +138,18 @@ async def get_strict_recommendations(
             qualified.append(item)
 
         qualified.sort(
-            key=lambda r: (r.get("technical_pillar_score", 0.0), r.get("confidence", 0.0)),
+            key=lambda r: (
+                r.get("technical_pillar_score", 0.0),
+                r.get("confidence", 0.0),
+            ),
             reverse=True,
         )
         result["recommendations"] = qualified[:limit]
+        result["universe_size"] = len(universe_symbols)
+        result["scanned_universe"] = len(universe_symbols)
         result["strict_technical_threshold"] = STRICT_TECHNICAL_THRESHOLD
         result["strict_gate"] = "actual Technical pillar score >=95 in intraday"
+        result["scan_scope"] = "FULL_ACTIVE_NSE_BSE_UNIVERSE" if segment == "equity" else "FULL_FNO_UNIVERSE"
         return result
 
     if mode != "delivery":
@@ -170,7 +197,7 @@ async def get_strict_recommendations(
     symbols = [x[0].symbol for x in delivery_candidates]
     intraday = await get_intraday_recommendations(
         segment="equity",
-        limit=3000,
+        limit=MAX_MARKET_SCAN,
         universe_symbols=symbols,
     )
     intraday_by_symbol = {x["symbol"]: x for x in intraday.get("recommendations", [])}
