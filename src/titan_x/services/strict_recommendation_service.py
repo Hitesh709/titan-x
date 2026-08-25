@@ -51,27 +51,18 @@ def _rec_dict(r: Recommendation, technical_score: float) -> dict:
     }
 
 
-async def _daily_technical_gate(
-    symbol: str,
-    yahoo: YahooFinanceProvider,
-    stooq: StooqProvider,
-) -> float | None:
+async def _daily_technical_gate(symbol: str, yahoo: YahooFinanceProvider, stooq: StooqProvider) -> float | None:
     points = None
     try:
         points = await yahoo.get_historical_prices(
-            symbol,
-            interval="1d",
-            start=date.today() - timedelta(days=400),
-            synthetic_ok=False,
+            symbol, interval="1d", start=date.today() - timedelta(days=400), synthetic_ok=False
         )
     except Exception:
         points = None
     if not points:
         try:
             points = await stooq.get_historical_prices(
-                symbol,
-                interval="1d",
-                start=date.today() - timedelta(days=400),
+                symbol, interval="1d", start=date.today() - timedelta(days=400)
             )
         except Exception:
             points = None
@@ -81,10 +72,9 @@ async def _daily_technical_gate(
 
 
 async def _full_market_universe(session, segment: str) -> list[str]:
-    """Build the real scan universe instead of using the old 30-symbol fallback."""
+    """Return the complete scan universe, never the old 30-symbol fallback."""
     if segment == "fno":
         return list(dict.fromkeys(FNO_UNIVERSE))
-
     rows = (
         await session.execute(
             select(Company.symbol)
@@ -94,29 +84,45 @@ async def _full_market_universe(session, segment: str) -> list[str]:
             .limit(MAX_MARKET_SCAN)
         )
     ).all()
-    symbols = [str(row[0]).upper().strip() for row in rows if row[0]]
-    return list(dict.fromkeys(symbols))
+    return list(dict.fromkeys(str(row[0]).upper().strip() for row in rows if row[0]))
 
 
-async def get_strict_recommendations(
-    *,
-    session,
-    mode: str = "delivery",
-    segment: str = "equity",
-    limit: int = 100,
-) -> dict:
-    """Return only recommendations passing the actual Technical Pillar >=95 gate.
+async def _scan_daily_scores(symbols: list[str]) -> dict[str, float]:
+    """Scan the full delivery universe with the same Technical Pillar engine."""
+    yahoo = YahooFinanceProvider()
+    stooq = StooqProvider()
+    semaphore = asyncio.Semaphore(8)
 
-    IMPORTANT: every strict intraday request scans the complete active NSE/BSE
-    universe (currently thousands of symbols), not the legacy 30-symbol list.
-    Confidence is never substituted for Technical Pillar Score.
+    async def scan(symbol: str):
+        async with semaphore:
+            try:
+                score = await _daily_technical_gate(symbol, yahoo, stooq)
+                return symbol, score
+            except Exception:
+                return symbol, None
+
+    try:
+        pairs = await asyncio.gather(*(scan(symbol) for symbol in symbols))
+    finally:
+        await yahoo.close()
+        await stooq.close()
+    return {symbol: float(score) for symbol, score in pairs if score is not None}
+
+
+async def get_strict_recommendations(*, session, mode: str = "delivery", segment: str = "equity", limit: int = 100) -> dict:
+    """Return only stocks whose actual Technical Pillar Score is >=95.
+
+    Delivery mode scans the complete active NSE/BSE universe first, then checks
+    every daily-qualified symbol against the live 5-minute intraday engine.
+    Intraday mode scans the complete same universe directly. Confidence is
+    never used as a substitute for Technical Pillar Score.
     """
     mode = mode.lower().strip()
     segment = segment.lower().strip()
     limit = max(1, min(int(limit), MAX_MARKET_SCAN))
+    universe_symbols = await _full_market_universe(session, segment)
 
     if mode == "intraday":
-        universe_symbols = await _full_market_universe(session, segment)
         result = await get_intraday_recommendations(
             segment=segment,
             limit=MAX_MARKET_SCAN,
@@ -124,26 +130,14 @@ async def get_strict_recommendations(
         )
         qualified = []
         for item in result.get("recommendations", []):
-            direction = item.get("direction")
-            technical_score = float(
-                item.get("technical_pillar_score")
-                if item.get("technical_pillar_score") is not None
-                else item.get("technical_score") or 0.0
-            )
-            if direction not in {"BUY", "SELL"} or technical_score < STRICT_TECHNICAL_THRESHOLD:
+            technical_score = float(item.get("technical_pillar_score") or item.get("technical_score") or 0.0)
+            if item.get("direction") not in {"BUY", "SELL"} or technical_score < STRICT_TECHNICAL_THRESHOLD:
                 continue
             item["technical_score"] = round(technical_score, 2)
             item["technical_pillar_score"] = round(technical_score, 2)
             item["strict_technical_gate"] = True
             qualified.append(item)
-
-        qualified.sort(
-            key=lambda r: (
-                r.get("technical_pillar_score", 0.0),
-                r.get("confidence", 0.0),
-            ),
-            reverse=True,
-        )
+        qualified.sort(key=lambda r: (r.get("technical_pillar_score", 0.0), r.get("confidence", 0.0)), reverse=True)
         result["recommendations"] = qualified[:limit]
         result["universe_size"] = len(universe_symbols)
         result["scanned_universe"] = len(universe_symbols)
@@ -155,85 +149,58 @@ async def get_strict_recommendations(
     if mode != "delivery":
         raise ValueError("mode must be delivery or intraday")
 
-    rows = (
-        await session.execute(
-            select(Recommendation)
-            .where(Recommendation.status == "active")
-            .where(Recommendation.direction.in_(["BUY", "SELL"]))
-            .order_by(Recommendation.generated_at.desc())
-            .limit(500)
-        )
-    ).scalars().all()
+    # Full-market delivery scan. The old implementation only examined the
+    # latest 500 Recommendation rows, which could hide qualifying companies.
+    daily_scores = await _scan_daily_scores(universe_symbols)
+    daily_qualified = {
+        symbol: score for symbol, score in daily_scores.items() if score >= STRICT_TECHNICAL_THRESHOLD
+    }
 
-    yahoo = YahooFinanceProvider()
-    stooq = StooqProvider()
-    semaphore = asyncio.Semaphore(6)
-    try:
-        async def verify(rec: Recommendation):
-            async with semaphore:
-                daily_score = await _daily_technical_gate(rec.symbol, yahoo, stooq)
-                if daily_score is None or daily_score < STRICT_TECHNICAL_THRESHOLD:
-                    return None
-                return rec, daily_score
-
-        verified = await asyncio.gather(*(verify(r) for r in rows))
-    finally:
-        await yahoo.close()
-        await stooq.close()
-
-    delivery_candidates = [x for x in verified if x is not None]
-    if not delivery_candidates:
-        return {
-            "mode": "delivery",
-            "segment": "equity",
-            "generated_at": date.today().isoformat(),
-            "universe_size": len(rows),
-            "scanned": len(rows),
-            "recommendations": [],
-            "strict_technical_threshold": STRICT_TECHNICAL_THRESHOLD,
-            "strict_gate": "delivery Technical pillar score >=95 AND intraday Technical pillar score >=95",
-        }
-
-    symbols = [x[0].symbol for x in delivery_candidates]
+    # Only symbols that pass the delivery Technical Pillar gate need the more
+    # expensive live 5-minute scan. This keeps the full-market scan practical.
     intraday = await get_intraday_recommendations(
-        segment="equity",
+        segment=segment,
         limit=MAX_MARKET_SCAN,
-        universe_symbols=symbols,
+        universe_symbols=list(daily_qualified),
     )
-    intraday_by_symbol = {x["symbol"]: x for x in intraday.get("recommendations", [])}
 
     recommendations = []
-    for rec, daily_score in delivery_candidates:
-        intra = intraday_by_symbol.get(rec.symbol)
-        if not intra:
-            continue
-        intraday_score = float(
-            intra.get("technical_pillar_score")
-            if intra.get("technical_pillar_score") is not None
-            else intra.get("technical_score") or 0.0
-        )
-        if intraday_score < STRICT_TECHNICAL_THRESHOLD:
+    for intra in intraday.get("recommendations", []):
+        symbol = intra.get("symbol")
+        intraday_score = float(intra.get("technical_pillar_score") or intra.get("technical_score") or 0.0)
+        delivery_score = daily_qualified.get(symbol)
+        if delivery_score is None or delivery_score < STRICT_TECHNICAL_THRESHOLD:
             continue
         if intra.get("direction") not in {"BUY", "SELL"}:
             continue
-        item = _rec_dict(rec, daily_score)
-        item["intraday_technical_score"] = round(intraday_score, 2)
-        item["intraday_technical_pillar_score"] = round(intraday_score, 2)
-        item["intraday"] = intra
+        if intraday_score < STRICT_TECHNICAL_THRESHOLD:
+            continue
+
+        item = dict(intra)
+        item["technical_score"] = round(intraday_score, 2)
+        item["technical_pillar_score"] = round(intraday_score, 2)
+        item["delivery_technical_score"] = round(delivery_score, 2)
+        item["delivery_technical_pillar_score"] = round(delivery_score, 2)
+        item["strict_technical_gate"] = True
+        item["strict_gate_passed"] = True
         recommendations.append(item)
 
     recommendations.sort(
-        key=lambda r: min(r["technical_pillar_score"], r["intraday_technical_pillar_score"]),
+        key=lambda r: min(r["delivery_technical_pillar_score"], r["intraday_technical_pillar_score"]),
         reverse=True,
     )
 
     return {
         "mode": "delivery",
-        "segment": "equity",
+        "segment": segment,
         "generated_at": date.today().isoformat(),
-        "universe_size": len(rows),
-        "scanned": len(rows),
+        "universe_size": len(universe_symbols),
+        "scanned": len(universe_symbols),
+        "delivery_scored": len(daily_scores),
+        "delivery_qualified": len(daily_qualified),
+        "intraday_scanned": len(daily_qualified),
         "recommendations": recommendations[:limit],
         "strict_technical_threshold": STRICT_TECHNICAL_THRESHOLD,
         "strict_gate": "delivery Technical pillar score >=95 AND intraday Technical pillar score >=95",
+        "scan_scope": "FULL_ACTIVE_NSE_BSE_UNIVERSE" if segment == "equity" else "FULL_FNO_UNIVERSE",
     }
