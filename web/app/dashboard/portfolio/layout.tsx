@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Briefcase, Wallet, PieChart, Building2, TrendingUp, Trophy, ArrowLeftRight, BrainCircuit } from "lucide-react"
+import { Briefcase, Wallet, PieChart, Building2, TrendingUp, Trophy, ArrowLeftRight, BrainCircuit, FileDown } from "lucide-react"
 
 const tabs = [
   { href: "/dashboard/portfolio", label: "Holdings", icon: Briefcase },
@@ -12,6 +12,7 @@ const tabs = [
   { href: "/dashboard/portfolio/profit", label: "Profit", icon: TrendingUp },
   { href: "/dashboard/portfolio/performance", label: "Performance", icon: Trophy },
   { href: "/dashboard/portfolio/transactions", label: "Transactions", icon: ArrowLeftRight },
+  { href: "/dashboard/portfolio/reports", label: "Reports", icon: FileDown },
   { href: "/dashboard/portfolio/analytics", label: "Analytics", icon: BrainCircuit },
 ]
 
