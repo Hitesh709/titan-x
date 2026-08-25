@@ -12,7 +12,6 @@ class Company(PrimaryKeyMixin, TimestampMixin, Base):
 
     symbol: Mapped[str] = mapped_column(String(16), unique=True, index=True, nullable=False)
     company_name: Mapped[str] = mapped_column(String(256), nullable=False)
-    # Compatibility alias used by recommendation/search layers.
     name = synonym("company_name")
     isin: Mapped[str] = mapped_column(String(12), unique=True, index=True, nullable=False)
     sector: Mapped[str | None] = mapped_column(String(128), nullable=True)
@@ -24,14 +23,6 @@ class Company(PrimaryKeyMixin, TimestampMixin, Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     website: Mapped[str | None] = mapped_column(String(256), nullable=True)
 
-    promoter_transactions: Mapped[list["PromoterTransaction"]] = relationship(back_populates="company", foreign_keys="PromoterTransaction.company_id")
-    insider_trades: Mapped[list["InsiderTrade"]] = relationship(back_populates="company", foreign_keys="InsiderTrade.company_id")
-    shareholding_patterns: Mapped[list["ShareholdingPattern"]] = relationship(back_populates="company", foreign_keys="ShareholdingPattern.company_id")
-    corporate_analyses: Mapped[list["CorporateAnalysis"]] = relationship(back_populates="company", foreign_keys="CorporateAnalysis.company_id")
-    fii_holdings: Mapped[list["FIIHolding"]] = relationship(back_populates="company", foreign_keys="FIIHolding.company_id")
-    dii_holdings: Mapped[list["DIIHolding"]] = relationship(back_populates="company", foreign_keys="DIIHolding.company_id")
-    mf_holdings: Mapped[list["MutualFundHolding"]] = relationship(back_populates="company", foreign_keys="MutualFundHolding.company_id")
-    etf_holdings: Mapped[list["ETFHolding"]] = relationship(back_populates="company", foreign_keys="ETFHolding.company_id")
     promoter_transactions: Mapped[list["PromoterTransaction"]] = relationship(back_populates="company", foreign_keys="PromoterTransaction.company_id")
     insider_trades: Mapped[list["InsiderTrade"]] = relationship(back_populates="company", foreign_keys="InsiderTrade.company_id")
     shareholding_patterns: Mapped[list["ShareholdingPattern"]] = relationship(back_populates="company", foreign_keys="ShareholdingPattern.company_id")
