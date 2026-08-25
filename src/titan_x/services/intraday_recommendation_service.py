@@ -8,8 +8,9 @@ from zoneinfo import ZoneInfo
 from titan_x.infrastructure.market_data_providers import YahooFinanceProvider
 from titan_x.services.ai_recommendation_engine import bars_from_records
 
-# Liquid names used for the first intraday scan. The universe is deliberately
-# bounded so a Render request does not fan out into hundreds of market-data calls.
+# Fallback/liquid equity universe. The API normally replaces this with the
+# active company universe from the database so the recommendation screen is
+# not limited to the original 30 symbols.
 EQUITY_UNIVERSE = [
     "RELIANCE", "HDFCBANK", "ICICIBANK", "SBIN", "TCS", "INFY", "BHARTIARTL",
     "LT", "AXISBANK", "KOTAKBANK", "ITC", "MARUTI", "M&M", "SUNPHARMA",
@@ -18,16 +19,27 @@ EQUITY_UNIVERSE = [
     "TITAN", "ONGC", "COALINDIA", "BEL",
 ]
 
-# Common liquid NSE F&O underlyings. Eligibility and contract details can change;
-# this list is only the scan universe, while live contract/lot/expiry data should
-# come from a licensed derivatives feed before an order is placed.
+# Common liquid NSE F&O underlyings plus major Indian indices. Contract
+# eligibility/lot/expiry data should still come from a licensed derivatives
+# feed before any real order is placed.
 FNO_UNIVERSE = [
+    "NIFTY", "BANKNIFTY", "SENSEX", "FINNIFTY", "MIDCPNIFTY", "NIFTYNXT50",
     "RELIANCE", "HDFCBANK", "ICICIBANK", "SBIN", "AXISBANK", "KOTAKBANK",
     "BAJFINANCE", "BAJAJFINSV", "BHARTIARTL", "TCS", "INFY", "HCLTECH",
     "ITC", "LT", "MARUTI", "M&M", "SUNPHARMA", "HINDUNILVR", "TATAMOTORS",
     "TATASTEEL", "ADANIENT", "ADANIPORTS", "BEL", "NTPC", "POWERGRID",
     "ONGC", "COALINDIA", "JSWSTEEL", "VEDL", "JINDALSTEL",
 ]
+
+# Yahoo Finance ticker mapping for the index names shown in Titan X.
+YAHOO_INDEX_TICKERS = {
+    "NIFTY": "^NSEI",
+    "BANKNIFTY": "^NSEBANK",
+    "SENSEX": "^BSESN",
+    "FINNIFTY": "NIFTY_FIN_SERVICE.NS",
+    "MIDCPNIFTY": "NIFTY_MID_SELECT.NS",
+    "NIFTYNXT50": "^NSEMDCP50",
+}
 
 IST = ZoneInfo("Asia/Kolkata")
 
@@ -115,12 +127,11 @@ def _score_intraday(points: list) -> dict | None:
     if ema20 is None or ema50 is None or rsi is None or atr is None:
         return None
 
-    lookback = min(12, len(closes) - 1)  # approximately one hour on 5m bars
+    lookback = min(12, len(closes) - 1)
     momentum = (price / closes[-lookback - 1] - 1.0) * 100.0
     avg_volume = sum(volumes[-21:-1]) / max(1, len(volumes[-21:-1]))
     volume_ratio = volumes[-1] / avg_volume if avg_volume > 0 else 1.0
 
-    # Intraday composite: trend + momentum + RSI + participation + candle quality.
     score = 50.0
     score += max(-15.0, min(15.0, momentum * 8.0))
     if price > ema20:
@@ -212,26 +223,49 @@ def _score_intraday(points: list) -> dict | None:
     }
 
 
-async def get_intraday_recommendations(segment: str, limit: int = 10) -> dict:
+async def get_intraday_recommendations(
+    segment: str,
+    limit: int = 10,
+    universe_symbols: list[str] | None = None,
+) -> dict:
     segment = segment.lower().strip()
     if segment not in {"equity", "fno"}:
         raise ValueError("segment must be equity or fno")
 
-    universe = FNO_UNIVERSE if segment == "fno" else EQUITY_UNIVERSE
+    universe = list(dict.fromkeys(universe_symbols or (FNO_UNIVERSE if segment == "fno" else EQUITY_UNIVERSE)))
+    if not universe:
+        universe = FNO_UNIVERSE if segment == "fno" else EQUITY_UNIVERSE
+
+    # Do not allow an accidental enormous request to create an unbounded scan.
+    # Titan X currently has ~2.3k active NSE symbols, so 3000 is a safe upper bound.
+    limit = max(1, min(int(limit), 3000))
     provider = YahooFinanceProvider()
     start = date.today() - timedelta(days=30)
     end = date.today() + timedelta(days=1)
 
-    async def scan(symbol: str):
-        try:
-            points = await provider.get_historical_prices(symbol, interval="5m", start=start, end=end, synthetic_ok=False)
-            scored = _score_intraday(points)
-            if not scored:
+    # Yahoo/Render can become unstable when hundreds of requests are opened at
+    # once. A bounded worker pool lets the full universe be scanned without the
+    # old all-at-once gather fan-out.
+    semaphore = asyncio.Semaphore(8)
+
+    async def scan(display_symbol: str):
+        ticker = YAHOO_INDEX_TICKERS.get(display_symbol, display_symbol)
+        async with semaphore:
+            try:
+                points = await provider.get_historical_prices(
+                    ticker,
+                    interval="5m",
+                    start=start,
+                    end=end,
+                    synthetic_ok=False,
+                )
+                scored = _score_intraday(points)
+                if not scored:
+                    return None
+                scored["symbol"] = display_symbol
+                return scored
+            except Exception:
                 return None
-            scored["symbol"] = symbol
-            return scored
-        except Exception:
-            return None
 
     try:
         results = await asyncio.gather(*(scan(symbol) for symbol in universe))
@@ -239,22 +273,32 @@ async def get_intraday_recommendations(segment: str, limit: int = 10) -> dict:
         await provider.close()
 
     scored = [r for r in results if r is not None]
-    # Only surface actionable signals. HOLD/NO-TRADE stays available as an
-    # empty result rather than being presented as a trade recommendation.
     actionable = [r for r in scored if r["direction"] in {"BUY", "SELL"} and r["confidence"] >= 58]
-    actionable.sort(key=lambda r: (r["confidence"], r["score"] if r["direction"] == "BUY" else 100 - r["score"]), reverse=True)
+    actionable.sort(
+        key=lambda r: (
+            r["confidence"],
+            r["score"] if r["direction"] == "BUY" else 100 - r["score"],
+        ),
+        reverse=True,
+    )
 
     recommendations = []
     generated = datetime.now(IST).isoformat()
-    for item in actionable[: max(1, min(limit, 20))]:
+    for item in actionable[:limit]:
         direction = item["direction"]
         item["segment"] = segment
-        item["instrument"] = "FUTURES" if segment == "fno" else "EQUITY"
+        item["instrument"] = "INDEX" if item["symbol"] in YAHOO_INDEX_TICKERS else ("FUTURES" if segment == "fno" else "EQUITY")
         item["option_bias"] = "CALL" if direction == "BUY" else "PUT" if direction == "SELL" else "NONE"
         item["option_strike"] = _round_strike(item["current_price"]) if segment == "fno" else None
         item["timeframe"] = "Intraday · 5m"
         item["generated_at"] = generated
         recommendations.append(item)
+
+    # Keep major indices first in the F&O response, then rank all other
+    # derivatives by confidence.
+    if segment == "fno":
+        priority = {name: i for i, name in enumerate(FNO_UNIVERSE[:6])}
+        recommendations.sort(key=lambda r: (priority.get(r["symbol"], 999), -r["confidence"]))
 
     return {
         "segment": segment,
