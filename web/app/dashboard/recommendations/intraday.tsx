@@ -1,12 +1,24 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { RefreshCw, TrendingDown, TrendingUp, Zap, Clock3, AlertTriangle } from "lucide-react"
 import api from "@/lib/api"
 import type { IntradayRecommendation, IntradayRecommendationsResponse } from "@/types"
 
 function money(value: number) {
   return `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`
+}
+
+// Keep major Indian F&O indices at the top of the F&O recommendations.
+// The API remains the source of truth; this only controls presentation order.
+const FNO_INDEX_PRIORITY = [
+  "NIFTY", "BANKNIFTY", "SENSEX", "FINNIFTY", "MIDCPNIFTY", "NIFTYNXT50",
+]
+
+function fnoPriority(symbol: string) {
+  const normalized = symbol.toUpperCase().replace(/[^A-Z0-9]/g, "")
+  const index = FNO_INDEX_PRIORITY.findIndex((name) => normalized === name || normalized.startsWith(name))
+  return index === -1 ? 999 : index
 }
 
 function RecommendationCard({ rec }: { rec: IntradayRecommendation }) {
@@ -24,9 +36,7 @@ function RecommendationCard({ rec }: { rec: IntradayRecommendation }) {
             </span>
             <div>
               <div className="text-white font-semibold">{rec.symbol}</div>
-              <div className="text-[11px] text-gray-500">
-                {rec.instrument} · {rec.timeframe}
-              </div>
+              <div className="text-[11px] text-gray-500">{rec.instrument} · {rec.timeframe}</div>
             </div>
           </div>
         </div>
@@ -37,29 +47,14 @@ function RecommendationCard({ rec }: { rec: IntradayRecommendation }) {
       </div>
 
       <div className="mt-4 flex items-center justify-between">
-        <div>
-          <div className="text-[11px] text-gray-500">Current</div>
-          <div className="text-lg font-semibold text-white">{money(rec.current_price)}</div>
-        </div>
-        <div className="text-right">
-          <div className="text-[11px] text-gray-500">AI score / confidence</div>
-          <div className="text-sm font-semibold text-titan-300">{rec.score.toFixed(0)} / {rec.confidence.toFixed(0)}%</div>
-        </div>
+        <div><div className="text-[11px] text-gray-500">Current</div><div className="text-lg font-semibold text-white">{money(rec.current_price)}</div></div>
+        <div className="text-right"><div className="text-[11px] text-gray-500">AI score / confidence</div><div className="text-sm font-semibold text-titan-300">{rec.score.toFixed(0)} / {rec.confidence.toFixed(0)}%</div></div>
       </div>
 
       <div className="grid grid-cols-3 gap-2 mt-4">
-        <div className="rounded-lg bg-white/[0.03] p-2">
-          <div className="text-[10px] text-gray-500">Entry</div>
-          <div className="text-xs text-white mt-1">{money(rec.entry_price)}</div>
-        </div>
-        <div className="rounded-lg bg-emerald-500/[0.05] p-2">
-          <div className="text-[10px] text-gray-500">Target</div>
-          <div className="text-xs text-emerald-300 mt-1">{money(rec.target_price)}</div>
-        </div>
-        <div className="rounded-lg bg-red-500/[0.05] p-2">
-          <div className="text-[10px] text-gray-500">Stop</div>
-          <div className="text-xs text-red-300 mt-1">{money(rec.stop_price)}</div>
-        </div>
+        <div className="rounded-lg bg-white/[0.03] p-2"><div className="text-[10px] text-gray-500">Entry</div><div className="text-xs text-white mt-1">{money(rec.entry_price)}</div></div>
+        <div className="rounded-lg bg-emerald-500/[0.05] p-2"><div className="text-[10px] text-gray-500">Target</div><div className="text-xs text-emerald-300 mt-1">{money(rec.target_price)}</div></div>
+        <div className="rounded-lg bg-red-500/[0.05] p-2"><div className="text-[10px] text-gray-500">Stop</div><div className="text-xs text-red-300 mt-1">{money(rec.stop_price)}</div></div>
       </div>
 
       <div className="grid grid-cols-4 gap-2 mt-3 text-[11px]">
@@ -71,29 +66,16 @@ function RecommendationCard({ rec }: { rec: IntradayRecommendation }) {
 
       {rec.segment === "fno" && (
         <div className="mt-4 rounded-lg border border-titan-500/20 bg-titan-500/[0.04] p-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-titan-300">F&O Strategy</span>
-            <span className="text-xs text-white">{rec.option_bias === "CALL" ? "CALL bias" : rec.option_bias === "PUT" ? "PUT bias" : "No option bias"}</span>
-          </div>
-          <div className="mt-1 text-[11px] text-gray-400">
-            Futures: {bullish ? "LONG" : bearish ? "SHORT" : "WAIT"}
-            {rec.option_strike ? ` · ATM candidate ${rec.option_strike}` : ""}
-          </div>
+          <div className="flex items-center justify-between"><span className="text-xs font-semibold text-titan-300">F&O Strategy</span><span className="text-xs text-white">{rec.option_bias === "CALL" ? "CALL bias" : rec.option_bias === "PUT" ? "PUT bias" : "No option bias"}</span></div>
+          <div className="mt-1 text-[11px] text-gray-400">Futures: {bullish ? "LONG" : bearish ? "SHORT" : "WAIT"}{rec.option_strike ? ` · ATM candidate ${rec.option_strike}` : ""}</div>
           <div className="mt-2 text-[10px] text-gray-500">Option premium/expiry is shown only when live derivatives-chain data is available.</div>
         </div>
       )}
 
       <div className="mt-4 pt-3 border-t border-white/5">
         <div className="text-[11px] font-semibold text-emerald-400 uppercase tracking-wider mb-1">Why</div>
-        <ul className="space-y-1 text-xs text-gray-300 list-disc list-inside">
-          {rec.evidence.slice(0, 3).map((item) => <li key={item}>{item}</li>)}
-        </ul>
-        {rec.caution.length > 0 && (
-          <div className="mt-2 flex gap-2 text-[11px] text-amber-300">
-            <AlertTriangle size={13} className="shrink-0 mt-0.5" />
-            <span>{rec.caution[0]}</span>
-          </div>
-        )}
+        <ul className="space-y-1 text-xs text-gray-300 list-disc list-inside">{rec.evidence.slice(0, 3).map((item) => <li key={item}>{item}</li>)}</ul>
+        {rec.caution.length > 0 && <div className="mt-2 flex gap-2 text-[11px] text-amber-300"><AlertTriangle size={13} className="shrink-0 mt-0.5" /><span>{rec.caution[0]}</span></div>}
       </div>
     </div>
   )
@@ -109,7 +91,8 @@ export function IntradayRecommendations() {
     setLoading(true)
     setError(null)
     try {
-      const res = await api.get<IntradayRecommendationsResponse>(`/recommendations/intraday?segment=${segment}&limit=10`)
+      // Request the complete available intraday universe instead of the old 10/30-script slice.
+      const res = await api.get<IntradayRecommendationsResponse>(`/recommendations/intraday?segment=${segment}&limit=2000`)
       setData(res)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load intraday recommendations")
@@ -120,41 +103,44 @@ export function IntradayRecommendations() {
 
   useEffect(() => { void load() }, [load])
 
+  const displayedRecommendations = useMemo(() => {
+    const recommendations = data?.recommendations ?? []
+    if (segment !== "fno") return recommendations
+    return [...recommendations].sort((a, b) => {
+      const priorityDiff = fnoPriority(a.symbol) - fnoPriority(b.symbol)
+      if (priorityDiff !== 0) return priorityDiff
+      return (b.confidence ?? 0) - (a.confidence ?? 0)
+    })
+  }, [data?.recommendations, segment])
+
+  const priorityIndices = useMemo(
+    () => displayedRecommendations.filter((rec) => fnoPriority(rec.symbol) < 999),
+    [displayedRecommendations],
+  )
+
   return (
     <div className="space-y-5">
       <div className="glass-card p-3 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <div className="text-white font-semibold flex items-center gap-2"><Zap size={15} className="text-titan-400" /> Intraday AI</div>
-          <div className="text-xs text-gray-500 mt-1">5-minute market structure · momentum · volume · risk filters</div>
-        </div>
+        <div><div className="text-white font-semibold flex items-center gap-2"><Zap size={15} className="text-titan-400" /> Intraday AI</div><div className="text-xs text-gray-500 mt-1">5-minute market structure · momentum · volume · risk filters · full available universe</div></div>
         <div className="flex items-center gap-2">
-          <div className="flex rounded-lg border border-white/10 p-1 bg-white/[0.02]">
-            <button onClick={() => setSegment("equity")} className={`px-3 py-1.5 rounded-md text-xs ${segment === "equity" ? "bg-titan-600 text-white" : "text-gray-400"}`}>Equity Intraday</button>
-            <button onClick={() => setSegment("fno")} className={`px-3 py-1.5 rounded-md text-xs ${segment === "fno" ? "bg-titan-600 text-white" : "text-gray-400"}`}>F&O Intraday</button>
-          </div>
+          <div className="flex rounded-lg border border-white/10 p-1 bg-white/[0.02]"><button onClick={() => setSegment("equity")} className={`px-3 py-1.5 rounded-md text-xs ${segment === "equity" ? "bg-titan-600 text-white" : "text-gray-400"}`}>Equity Intraday</button><button onClick={() => setSegment("fno")} className={`px-3 py-1.5 rounded-md text-xs ${segment === "fno" ? "bg-titan-600 text-white" : "text-gray-400"}`}>F&O Intraday</button></div>
           <button onClick={() => void load()} className="btn-secondary text-xs inline-flex items-center gap-2"><RefreshCw size={13} /> Refresh</button>
         </div>
       </div>
 
-      {data && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="glass-card p-4"><div className="text-[11px] text-gray-500">Universe</div><div className="text-xl text-white font-semibold mt-1">{data.universe_size}</div></div>
-          <div className="glass-card p-4"><div className="text-[11px] text-gray-500">Scanned</div><div className="text-xl text-white font-semibold mt-1">{data.scanned}</div></div>
-          <div className="glass-card p-4"><div className="text-[11px] text-gray-500">Signals</div><div className="text-xl text-emerald-400 font-semibold mt-1">{data.recommendations.length}</div></div>
-          <div className="glass-card p-4"><div className="text-[11px] text-gray-500 flex items-center gap-1"><Clock3 size={12} /> Generated</div><div className="text-xs text-gray-300 mt-2">{new Date(data.generated_at).toLocaleTimeString()}</div></div>
+      {data && <div className="grid grid-cols-2 md:grid-cols-4 gap-3"><div className="glass-card p-4"><div className="text-[11px] text-gray-500">Universe</div><div className="text-xl text-white font-semibold mt-1">{data.universe_size}</div></div><div className="glass-card p-4"><div className="text-[11px] text-gray-500">Scanned</div><div className="text-xl text-white font-semibold mt-1">{data.scanned}</div></div><div className="glass-card p-4"><div className="text-[11px] text-gray-500">Signals</div><div className="text-xl text-emerald-400 font-semibold mt-1">{displayedRecommendations.length}</div></div><div className="glass-card p-4"><div className="text-[11px] text-gray-500 flex items-center gap-1"><Clock3 size={12} /> Generated</div><div className="text-xs text-gray-300 mt-2">{new Date(data.generated_at).toLocaleTimeString()}</div></div></div>}
+
+      {segment === "fno" && priorityIndices.length > 0 && (
+        <div className="glass-card p-4 border border-titan-500/20">
+          <div className="text-xs uppercase tracking-wider text-titan-300 font-semibold mb-3">Major F&O Indices — Priority</div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">{priorityIndices.map((rec) => <div key={`priority-${rec.symbol}`} className="rounded-lg bg-white/[0.03] border border-white/10 px-3 py-2"><div className="text-white font-semibold text-sm">{rec.symbol}</div><div className={`text-xs mt-1 ${rec.direction === "BUY" ? "text-emerald-400" : rec.direction === "SELL" ? "text-red-400" : "text-gray-400"}`}>{rec.direction} · {rec.confidence.toFixed(0)}%</div></div>)}</div>
         </div>
       )}
 
-      {loading && <div className="glass-card p-8 text-center text-sm text-gray-400">Scanning live 5m data…</div>}
+      {loading && <div className="glass-card p-8 text-center text-sm text-gray-400">Scanning live 5m data across the full available universe…</div>}
       {error && !loading && <div className="glass-card p-6 text-center text-sm text-red-400">{error}</div>}
-      {!loading && !error && data?.recommendations.length === 0 && (
-        <div className="glass-card p-8 text-center text-sm text-gray-400">No qualified intraday signal right now. TitanX prefers NO-TRADE over weak signals.</div>
-      )}
-      {!loading && !error && data?.recommendations.length ? (
-        <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {data.recommendations.map((rec) => <RecommendationCard key={`${rec.segment}-${rec.symbol}-${rec.instrument}`} rec={rec} />)}
-        </div>
-      ) : null}
+      {!loading && !error && displayedRecommendations.length === 0 && <div className="glass-card p-8 text-center text-sm text-gray-400">No qualified intraday signal right now. TitanX prefers NO-TRADE over weak signals.</div>}
+      {!loading && !error && displayedRecommendations.length > 0 && <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">{displayedRecommendations.map((rec) => <RecommendationCard key={`${rec.segment}-${rec.symbol}-${rec.instrument}`} rec={rec} />)}</div>}
 
       <div className="text-[10px] text-gray-600 px-1">Intraday signals are generated from live 5-minute OHLCV data and are separate from TitanX delivery/short-term recommendations.</div>
     </div>
