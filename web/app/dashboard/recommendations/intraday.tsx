@@ -5,7 +5,7 @@ import { RefreshCw, TrendingDown, TrendingUp, Zap, Clock3, AlertTriangle } from 
 import api from "@/lib/api"
 import type { IntradayRecommendation, IntradayRecommendationsResponse } from "@/types"
 
-type StrictIntradayRecommendation = IntradayRecommendation & { technical_conviction_score?: number }
+type StrictIntradayRecommendation = IntradayRecommendation & { technical_pillar_score?: number; technical_score?: number }
 
 function money(value: number) {
   return `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`
@@ -25,7 +25,7 @@ function RecommendationCard({ rec }: { rec: StrictIntradayRecommendation }) {
   const bullish = rec.direction === "BUY"
   const bearish = rec.direction === "SELL"
   const directionClass = bullish ? "badge-green" : bearish ? "badge-red" : "badge-blue"
-  const technicalScore = rec.technical_conviction_score ?? rec.score
+  const technicalScore = rec.technical_pillar_score ?? rec.technical_score ?? rec.score
 
   return (
     <div className="glass-card p-5">
@@ -49,7 +49,7 @@ function RecommendationCard({ rec }: { rec: StrictIntradayRecommendation }) {
 
       <div className="mt-4 flex items-center justify-between">
         <div><div className="text-[11px] text-gray-500">Current</div><div className="text-lg font-semibold text-white">{money(rec.current_price)}</div></div>
-        <div className="text-right"><div className="text-[11px] text-gray-500">Technical ≥95 / confidence</div><div className="text-sm font-semibold text-titan-300">{technicalScore.toFixed(0)} / {rec.confidence.toFixed(0)}%</div></div>
+        <div className="text-right"><div className="text-[11px] text-gray-500">Technical Pillar Score</div><div className="text-sm font-semibold text-titan-300">{technicalScore.toFixed(0)} / 100</div></div>
       </div>
 
       <div className="grid grid-cols-3 gap-2 mt-4">
@@ -109,7 +109,7 @@ export function IntradayRecommendations() {
     return [...recommendations].sort((a, b) => {
       const priorityDiff = fnoPriority(a.symbol) - fnoPriority(b.symbol)
       if (priorityDiff !== 0) return priorityDiff
-      return (b.confidence ?? 0) - (a.confidence ?? 0)
+      return (b.technical_pillar_score ?? b.technical_score ?? b.score ?? 0) - (a.technical_pillar_score ?? a.technical_score ?? a.score ?? 0)
     })
   }, [data?.recommendations, segment])
 
@@ -121,7 +121,7 @@ export function IntradayRecommendations() {
   return (
     <div className="space-y-5">
       <div className="glass-card p-3 flex flex-wrap items-center justify-between gap-3">
-        <div><div className="text-white font-semibold flex items-center gap-2"><Zap size={15} className="text-titan-400" /> Intraday AI</div><div className="text-xs text-gray-500 mt-1">5-minute market structure · momentum · volume · strict technical conviction ≥95 · full available universe</div></div>
+        <div><div className="text-white font-semibold flex items-center gap-2"><Zap size={15} className="text-titan-400" /> Intraday AI</div><div className="text-xs text-gray-500 mt-1">5-minute market structure · momentum · volume · Technical pillar score ≥95 · full available universe</div></div>
         <div className="flex items-center gap-2">
           <div className="flex rounded-lg border border-white/10 p-1 bg-white/[0.02]"><button onClick={() => setSegment("equity")} className={`px-3 py-1.5 rounded-md text-xs ${segment === "equity" ? "bg-titan-600 text-white" : "text-gray-400"}`}>Equity Intraday</button><button onClick={() => setSegment("fno")} className={`px-3 py-1.5 rounded-md text-xs ${segment === "fno" ? "bg-titan-600 text-white" : "text-gray-400"}`}>F&O Intraday</button></div>
           <button onClick={() => void load()} className="btn-secondary text-xs inline-flex items-center gap-2"><RefreshCw size={13} /> Refresh</button>
@@ -133,16 +133,16 @@ export function IntradayRecommendations() {
       {segment === "fno" && priorityIndices.length > 0 && (
         <div className="glass-card p-4 border border-titan-500/20">
           <div className="text-xs uppercase tracking-wider text-titan-300 font-semibold mb-3">Major F&O Indices — Priority</div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">{priorityIndices.map((rec) => <div key={`priority-${rec.symbol}`} className="rounded-lg bg-white/[0.03] border border-white/10 px-3 py-2"><div className="text-white font-semibold text-sm">{rec.symbol}</div><div className={`text-xs mt-1 ${rec.direction === "BUY" ? "text-emerald-400" : rec.direction === "SELL" ? "text-red-400" : "text-gray-400"}`}>{rec.direction} · {(rec.technical_conviction_score ?? rec.score).toFixed(0)}</div></div>)}</div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">{priorityIndices.map((rec) => { const score = rec.technical_pillar_score ?? rec.technical_score ?? rec.score; return <div key={`priority-${rec.symbol}`} className="rounded-lg bg-white/[0.03] border border-white/10 px-3 py-2"><div className="text-white font-semibold text-sm">{rec.symbol}</div><div className={`text-xs mt-1 ${rec.direction === "BUY" ? "text-emerald-400" : rec.direction === "SELL" ? "text-red-400" : "text-gray-400"}`}>{rec.direction} · Technical {score.toFixed(0)}</div></div> })}</div>
         </div>
       )}
 
-      {loading && <div className="glass-card p-8 text-center text-sm text-gray-400">Scanning strict 95+ live 5m technical signals across the full available universe…</div>}
+      {loading && <div className="glass-card p-8 text-center text-sm text-gray-400">Scanning strict 95+ Technical pillar scores across the full available universe…</div>}
       {error && !loading && <div className="glass-card p-6 text-center text-sm text-red-400">{error}</div>}
-      {!loading && !error && displayedRecommendations.length === 0 && <div className="glass-card p-8 text-center text-sm text-gray-400">No stock currently passes the strict 95+ technical gate. Titan X will show a recommendation only when the threshold is met.</div>}
+      {!loading && !error && displayedRecommendations.length === 0 && <div className="glass-card p-8 text-center text-sm text-gray-400">No stock currently has a Technical pillar score of 95 or higher. Titan X will show a recommendation only when the Technical pillar score is ≥95.</div>}
       {!loading && !error && displayedRecommendations.length > 0 && <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">{displayedRecommendations.map((rec) => <RecommendationCard key={`${rec.segment}-${rec.symbol}-${rec.instrument}`} rec={rec} />)}</div>}
 
-      <div className="text-[10px] text-gray-600 px-1">Strict recommendations require a directional technical conviction score of at least 95. This is a screening rule, not a guarantee of returns.</div>
+      <div className="text-[10px] text-gray-600 px-1">Strict recommendations use the Technical pillar score shown in Titan X's Pillar Scores. Confidence is not used as the 95+ gate.</div>
     </div>
   )
 }
