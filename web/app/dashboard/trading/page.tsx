@@ -1,7 +1,6 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { useSearchParams } from "next/navigation"
 import { Clock, CheckCircle } from "lucide-react"
 import api from "@/lib/api"
 import { useLiveRefresh } from "@/lib/live"
@@ -19,7 +18,6 @@ import {
 const OPEN_STATUSES = ["pending", "open", "partially_filled"]
 
 export default function TradingPage() {
-  const searchParams = useSearchParams()
   const [account, setAccount] = useState<PaperAccountSummary | null>(null)
   const [positions, setPositions] = useState<PaperPosition[]>([])
   const [orders, setOrders] = useState<OrderRow[]>([])
@@ -66,14 +64,17 @@ export default function TradingPage() {
 
   useEffect(() => {
     mounted.current = true
-    const requestedSymbol = searchParams.get("symbol")?.trim().toUpperCase()
-    const requestedSide = searchParams.get("side")?.toLowerCase()
+    // Preserve the selected stock across Recommendation → Research → Trade Signal → Trading.
+    // URL query state is intentionally read client-side so the existing static Next.js route remains build-safe.
+    const params = new URLSearchParams(window.location.search)
+    const requestedSymbol = params.get("symbol")?.trim().toUpperCase()
+    const requestedSide = params.get("side")?.toLowerCase()
     if (requestedSymbol) setSymbol(requestedSymbol)
     if (requestedSide === "buy" || requestedSide === "sell") setSide(requestedSide)
     return () => {
       mounted.current = false
     }
-  }, [searchParams])
+  }, [])
 
   useLiveRefresh(() => void load(true), [load])
 
