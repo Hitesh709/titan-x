@@ -101,6 +101,11 @@ function RecommendationCardBase({ rec }: { rec: StockRecommendation }) {
 
     <div className="flex items-center gap-2 mt-3"><RiskBadge risk={rec.risk_level} />{rec.price_target ? <span className="text-[11px] text-gray-500">Target ₹{rec.price_target.toLocaleString("en-IN")}</span> : null}<span className="ml-auto inline-flex items-center gap-1 text-[11px] text-gray-500"><Clock size={12} />{rec.generated_at ? new Date(rec.generated_at).toLocaleTimeString() : "—"}</span></div>
     <div className="grid grid-cols-2 gap-3 mt-4 pt-3 border-t border-titan-800/20"><div><div className="text-[11px] font-semibold text-emerald-400 uppercase tracking-wider mb-1.5">Supporting evidence</div><ul className="space-y-1 text-xs text-gray-300 list-disc list-inside">{(meta.evidence ?? []).slice(0, 3).map((e) => <li key={e}>{e}</li>)}</ul></div><div><div className="text-[11px] font-semibold text-red-400/90 uppercase tracking-wider mb-1.5">Reasons for caution</div><ul className="space-y-1 text-xs text-gray-400 list-disc list-inside">{(meta.caution ?? []).slice(0, 3).map((c) => <li key={c}>{c}</li>)}</ul></div></div>
+
+    <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-white/5">
+      <Link href={`/dashboard/trading?symbol=${encodeURIComponent(rec.symbol)}&side=buy`} className="btn-primary text-sm text-center">BUY {rec.symbol}</Link>
+      <Link href={`/dashboard/trading?symbol=${encodeURIComponent(rec.symbol)}&side=sell`} className="btn-secondary text-sm text-center">SELL {rec.symbol}</Link>
+    </div>
   </div>
 }
 
