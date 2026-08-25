@@ -6,6 +6,13 @@ import { Clock } from "lucide-react"
 import type { StockRecommendation } from "@/types"
 import { formatPercent } from "@/lib/utils"
 
+interface StrictRecommendation extends StockRecommendation {
+  technical_pillar_score?: number
+  technical_score?: number
+  intraday_technical_pillar_score?: number
+  intraday_technical_score?: number
+}
+
 interface ParsedMeta {
   signal?: string
   as_of_date?: string
@@ -41,10 +48,7 @@ function parseMeta(rec: StockRecommendation): ParsedMeta {
 function parsePillars(rec: StockRecommendation): PillarScore[] {
   if (!rec.inputs_json) return []
   try {
-    const factors = JSON.parse(rec.inputs_json) as Record<
-      string,
-      { score?: number; direction?: number }
-    >
+    const factors = JSON.parse(rec.inputs_json) as Record<string, { score?: number; direction?: number }>
     return Object.entries(factors)
       .filter(([name]) => name in PILLAR_LABELS)
       .map(([name, v]) => ({
@@ -80,98 +84,67 @@ export function StatCard({
 }
 
 export function RiskBadge({ risk }: { risk?: string | null }) {
-  const cls =
-    risk === "High"
-      ? "bg-red-500/10 text-red-400"
-      : risk === "Medium"
-        ? "bg-amber-500/10 text-amber-400"
-        : "bg-emerald-500/10 text-emerald-400"
-  return (
-    <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${cls}`}>{risk ?? "—"}</span>
-  )
+  const cls = risk === "High" ? "bg-red-500/10 text-red-400" : risk === "Medium" ? "bg-amber-500/10 text-amber-400" : "bg-emerald-500/10 text-emerald-400"
+  return <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${cls}`}>{risk ?? "—"}</span>
 }
 
 function RecommendationCardBase({ rec }: { rec: StockRecommendation }) {
+  const strictRec = rec as StrictRecommendation
   const meta = parseMeta(rec)
   const pillars = parsePillars(rec)
-  const dirCls =
-    rec.direction === "BUY" ? "badge-green" : rec.direction === "SELL" ? "badge-red" : "badge-blue"
+  const technicalPillar = strictRec.technical_pillar_score ?? strictRec.technical_score ?? pillars.find((p) => p.name === "technical")?.score ?? 0
+  const intradayTechnicalPillar = strictRec.intraday_technical_pillar_score ?? strictRec.intraday_technical_score
+  const dirCls = rec.direction === "BUY" ? "badge-green" : rec.direction === "SELL" ? "badge-red" : "badge-blue"
 
   return (
     <div className="glass-card p-5 flex flex-col">
       <div className="flex items-center justify-between gap-3">
         <Link href={`/dashboard/stocks/${rec.symbol}`} className="flex items-center gap-3 group">
-          <span className="w-9 h-9 rounded-lg bg-titan-600/20 border border-titan-600/30 flex items-center justify-center text-white font-semibold text-xs">
-            {rec.symbol.slice(0, 4)}
-          </span>
+          <span className="w-9 h-9 rounded-lg bg-titan-600/20 border border-titan-600/30 flex items-center justify-center text-white font-semibold text-xs">{rec.symbol.slice(0, 4)}</span>
           <div>
             <div className="text-white font-semibold group-hover:text-titan-400 transition-colors">{rec.symbol}</div>
             <div className="text-[11px] text-gray-500">₹{rec.current_price?.toLocaleString("en-IN") ?? "—"}</div>
           </div>
         </Link>
-        <span className={`badge ${dirCls}`}>
-          {rec.direction}
-          {rec.signal ? ` · ${rec.signal.replaceAll("_", " ")}` : ""}
-        </span>
+        <span className={`badge ${dirCls}`}>{rec.direction}{rec.signal ? ` · ${rec.signal.replaceAll("_", " ")}` : ""}</span>
       </div>
 
       <div className="grid grid-cols-3 gap-3 mt-4">
         <div>
-          <div className="text-[11px] text-gray-500 mb-1">Confidence</div>
+          <div className="text-[11px] text-gray-500 mb-1">Technical Pillar</div>
           <div className="flex items-center gap-2">
-            <div className="flex-1 h-1.5 rounded-full bg-white/5 overflow-hidden">
-              <div
-                className={`h-full rounded-full ${rec.confidence! >= 50 ? "bg-emerald-500" : "bg-yellow-500"}`}
-                style={{ width: `${Math.min(100, rec.confidence ?? 0)}%` }}
-              />
-            </div>
-            <span className="text-xs text-gray-300">{Math.round(rec.confidence ?? 0)}%</span>
+            <div className="flex-1 h-1.5 rounded-full bg-white/5 overflow-hidden"><div className={`h-full rounded-full ${technicalPillar >= 95 ? "bg-emerald-500" : "bg-titan-500"}`} style={{ width: `${Math.min(100, Math.max(0, technicalPillar))}%` }} /></div>
+            <span className="text-xs text-gray-200 font-semibold">{Math.round(technicalPillar)}</span>
           </div>
+        </div>
+        <div>
+          <div className="text-[11px] text-gray-500 mb-1">Confidence</div>
+          <div className="text-sm font-semibold text-gray-300">{Math.round(rec.confidence ?? 0)}%</div>
         </div>
         <div>
           <div className="text-[11px] text-gray-500 mb-1">Expected return</div>
-          <div
-            className={`text-sm font-semibold ${
-              (rec.predicted_return_pct ?? 0) >= 0 ? "text-emerald-400" : "text-red-400"
-            }`}
-          >
-            {rec.predicted_return_pct !== null && rec.predicted_return_pct !== undefined
-              ? formatPercent(rec.predicted_return_pct)
-              : "—"}
-          </div>
-        </div>
-        <div>
-          <div className="text-[11px] text-gray-500 mb-1">Holding</div>
-          <div className="text-sm text-gray-300">{rec.timeframe ?? "—"}</div>
+          <div className={`text-sm font-semibold ${(rec.predicted_return_pct ?? 0) >= 0 ? "text-emerald-400" : "text-red-400"}`}>{rec.predicted_return_pct !== null && rec.predicted_return_pct !== undefined ? formatPercent(rec.predicted_return_pct) : "—"}</div>
         </div>
       </div>
 
+      {intradayTechnicalPillar !== undefined && (
+        <div className="mt-3 rounded-lg border border-titan-500/20 bg-titan-500/[0.04] px-3 py-2">
+          <div className="flex items-center justify-between text-[11px]"><span className="text-gray-400">Intraday Technical Pillar</span><span className="font-semibold text-titan-300">{Math.round(intradayTechnicalPillar)} / 100</span></div>
+          <div className="mt-1 h-1 rounded-full bg-white/5 overflow-hidden"><div className="h-full rounded-full bg-titan-500" style={{ width: `${Math.min(100, Math.max(0, intradayTechnicalPillar))}%` }} /></div>
+        </div>
+      )}
+
       {pillars.length > 0 && (
         <div className="mt-4">
-          <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
-            Pillar scores
-          </div>
+          <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Pillar scores</div>
           <div className="grid grid-cols-3 gap-2">
             {pillars.map((p) => (
               <div key={p.name} className="bg-white/[0.03] rounded-lg p-2">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] text-gray-400">{PILLAR_LABELS[p.name] ?? p.name}</span>
-                  <span
-                    className={`text-[11px] font-semibold ${
-                      p.score >= 55 ? "text-emerald-400" : p.score <= 45 ? "text-red-400" : "text-amber-400"
-                    }`}
-                  >
-                    {Math.round(p.score)}
-                  </span>
+                  <span className={`text-[11px] font-semibold ${p.score >= 55 ? "text-emerald-400" : p.score <= 45 ? "text-red-400" : "text-amber-400"}`}>{Math.round(p.score)}</span>
                 </div>
-                <div className="mt-1 h-1 rounded-full bg-white/5 overflow-hidden">
-                  <div
-                    className={`h-full rounded-full ${
-                      p.score >= 55 ? "bg-emerald-500" : p.score <= 45 ? "bg-red-500" : "bg-amber-500"
-                    }`}
-                    style={{ width: `${Math.min(100, p.score)}%` }}
-                  />
-                </div>
+                <div className="mt-1 h-1 rounded-full bg-white/5 overflow-hidden"><div className={`h-full rounded-full ${p.score >= 55 ? "bg-emerald-500" : p.score <= 45 ? "bg-red-500" : "bg-amber-500"}`} style={{ width: `${Math.min(100, p.score)}%` }} /></div>
               </div>
             ))}
           </div>
@@ -180,36 +153,13 @@ function RecommendationCardBase({ rec }: { rec: StockRecommendation }) {
 
       <div className="flex items-center gap-2 mt-3">
         <RiskBadge risk={rec.risk_level} />
-        {rec.price_target ? (
-          <span className="text-[11px] text-gray-500">Target ₹{rec.price_target.toLocaleString("en-IN")}</span>
-        ) : null}
-        <span className="ml-auto inline-flex items-center gap-1 text-[11px] text-gray-500">
-          <Clock size={12} />
-          {rec.generated_at ? new Date(rec.generated_at).toLocaleTimeString() : "—"}
-        </span>
+        {rec.price_target ? <span className="text-[11px] text-gray-500">Target ₹{rec.price_target.toLocaleString("en-IN")}</span> : null}
+        <span className="ml-auto inline-flex items-center gap-1 text-[11px] text-gray-500"><Clock size={12} />{rec.generated_at ? new Date(rec.generated_at).toLocaleTimeString() : "—"}</span>
       </div>
 
       <div className="grid grid-cols-2 gap-3 mt-4 pt-3 border-t border-titan-800/20">
-        <div>
-          <div className="text-[11px] font-semibold text-emerald-400 uppercase tracking-wider mb-1.5">
-            Supporting evidence
-          </div>
-          <ul className="space-y-1 text-xs text-gray-300 list-disc list-inside">
-            {(meta.evidence ?? []).slice(0, 3).map((e) => (
-              <li key={e}>{e}</li>
-            ))}
-          </ul>
-        </div>
-        <div>
-          <div className="text-[11px] font-semibold text-red-400/90 uppercase tracking-wider mb-1.5">
-            Reasons for caution
-          </div>
-          <ul className="space-y-1 text-xs text-gray-400 list-disc list-inside">
-            {(meta.caution ?? []).slice(0, 3).map((c) => (
-              <li key={c}>{c}</li>
-            ))}
-          </ul>
-        </div>
+        <div><div className="text-[11px] font-semibold text-emerald-400 uppercase tracking-wider mb-1.5">Supporting evidence</div><ul className="space-y-1 text-xs text-gray-300 list-disc list-inside">{(meta.evidence ?? []).slice(0, 3).map((e) => <li key={e}>{e}</li>)}</ul></div>
+        <div><div className="text-[11px] font-semibold text-red-400/90 uppercase tracking-wider mb-1.5">Reasons for caution</div><ul className="space-y-1 text-xs text-gray-400 list-disc list-inside">{(meta.caution ?? []).slice(0, 3).map((c) => <li key={c}>{c}</li>)}</ul></div>
       </div>
     </div>
   )
