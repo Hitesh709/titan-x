@@ -7,6 +7,7 @@ import "./titan-premium-overrides.css"
 import "./brand.css"
 import "./reference-polish.css"
 import "./titan-command.css"
+import "./xecaps-titan-brand.css"
 
 export const metadata: Metadata = {
   title: "TITAN X — AI Market Intelligence",
