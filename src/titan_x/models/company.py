@@ -1,7 +1,7 @@
 from datetime import date
 
-from sqlalchemy import BigInteger, Boolean, Date, Numeric, String, Text, synonym
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import BigInteger, Boolean, Date, Numeric, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym
 
 from titan_x.db.base import Base
 from titan_x.db.mixins import PrimaryKeyMixin, TimestampMixin
