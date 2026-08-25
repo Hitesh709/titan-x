@@ -109,6 +109,8 @@ export default function StockDetailPage() {
 
   const name = profile?.name ?? quote?.name ?? symbol
   const up = quote?.change == null ? null : quote.change >= 0
+  const tradeSide = research?.direction === "SELL" ? "sell" : "buy"
+  const tradeHref = `/dashboard/trading?symbol=${encodeURIComponent(symbol)}&side=${tradeSide}`
 
   if (loading && !quote) return <WidgetLoading lines={8} />
   if (error && !quote) return <WidgetError message={error} onRetry={() => void load()} />
@@ -176,8 +178,10 @@ export default function StockDetailPage() {
 
       <ResearchBlock symbol={symbol} research={research} loaded={researchLoaded} onRefresh={() => void loadResearch()} />
 
-      <div className="flex justify-center">
-        <Link href="/dashboard/trading" className="btn-primary text-sm px-6">Trade {symbol}</Link>
+      <div className="flex flex-wrap justify-center gap-3">
+        <Link href={`/dashboard/trading?symbol=${encodeURIComponent(symbol)}&side=buy`} className="btn-primary text-sm px-6">BUY {symbol}</Link>
+        <Link href={`/dashboard/trading?symbol=${encodeURIComponent(symbol)}&side=sell`} className="btn-secondary text-sm px-6">SELL {symbol}</Link>
+        <Link href={tradeHref} className="text-xs text-gray-400 hover:text-titan-300 px-3 py-2">Trade Signal → {research?.direction ?? "BUY"}</Link>
       </div>
     </div>
   )
