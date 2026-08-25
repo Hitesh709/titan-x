@@ -1,0 +1,64 @@
+name: Recommendations manual scan only
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Remove automatic recommendation scans
+        shell: python
+        run: |
+          from pathlib import Path
+
+          page = Path('web/app/dashboard/recommendations/page.tsx')
+          s = page.read_text()
+          s = s.replace('import { useLiveRefresh } from "@/lib/live"\n', '')
+          s = s.replace('  const timerRef = useRef<number | null>(null)\n', '')
+          s = s.replace('    return () => { mounted.current = false; if (timerRef.current) window.clearTimeout(timerRef.current) }\n', '    return () => { mounted.current = false }\n')
+          s = s.replace('  useLiveRefresh(() => void load(true), [load])\n\n', '')
+
+          start = '  const scheduleNextDeliveryRefresh = useCallback(() => {'
+          end = '  const handleScan = async () => {'
+          i = s.find(start)
+          j = s.find(end, i)
+          if i != -1 and j != -1:
+              s = s[:i] + s[j:]
+
+          s = s.replace('  useEffect(() => { scheduleNextDeliveryRefresh(); return () => { if (timerRef.current) window.clearTimeout(timerRef.current) } }, [scheduleNextDeliveryRefresh])\n\n', '')
+          s = s.replace('    void load(Boolean(localStorage.getItem(DELIVERY_CACHE_KEY)))\n', '    // Do not scan or query the API automatically. Saved recommendations remain available locally; scanning is user-triggered.\n')
+          s = s.replace('Starting full-market delivery scan…', 'No automatic scan. Run a delivery scan when you want fresh recommendations.')
+          s = s.replace('Showing saved Delivery recommendations while Titan X checks for the latest scan.', 'Showing saved Delivery recommendations. Run Scan when you want fresh results.')
+          page.write_text(s)
+
+          intraday = Path('web/app/dashboard/recommendations/intraday.tsx')
+          s = intraday.read_text()
+          s = s.replace('function marketOpenNow() { const now = new Date(); const day = now.getDay(); const minutes = now.getHours() * 60 + now.getMinutes(); return day >= 1 && day <= 5 && minutes >= 555 && minutes <= 930 }\n', '')
+          s = s.replace('    void load(Boolean(localStorage.getItem(cacheKey)))\n', '    // Do not scan or query the API automatically. Saved recommendations remain available locally; Refresh is user-triggered.\n')
+          auto = '  useEffect(() => {\n    const id = window.setInterval(() => { if (marketOpenNow()) void load(true) }, 5 * 60 * 1000)\n    return () => window.clearInterval(id)\n  }, [load])\n\n'
+          s = s.replace(auto, '')
+          s = s.replace('5-minute market structure · Technical Pillar ≥95 · full available universe · auto refresh every 5 minutes during market hours', '5-minute market structure · Technical Pillar ≥95 · full available universe · manual refresh only')
+          intraday.write_text(s)
+
+      - name: Commit changes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add web/app/dashboard/recommendations/page.tsx web/app/dashboard/recommendations/intraday.tsx
+          if git diff --cached --quiet; then
+            echo "No changes needed"
+          else
+            git commit -m "Make recommendation scans manual only"
+            git push
+          fi
