@@ -13,12 +13,8 @@ from titan_x.services.intraday_recommendation_service import get_intraday_recomm
 STRICT_TECHNICAL_THRESHOLD = 95.0
 
 
-def _technical_conviction(raw_score: float, direction: str) -> float:
-    """Convert the 0..100 bullish technical score into directional conviction.
-
-    BUY conviction is the bullish score; SELL conviction is the inverse score.
-    This makes the strict 95+ rule symmetrical for both directions.
-    """
+def _technical_conviction(raw_score: float, direction: str | None) -> float:
+    """Convert the 0..100 bullish technical score into directional conviction."""
     if direction == "BUY":
         return round(raw_score, 2)
     if direction == "SELL":
@@ -62,37 +58,35 @@ def _rec_dict(r: Recommendation, technical_score: float, technical_conviction: f
     }
 
 
-async def _daily_technical_gate(symbol: str) -> tuple[float, float] | None:
-    yahoo = YahooFinanceProvider()
-    stooq = StooqProvider()
+async def _daily_technical_gate(
+    symbol: str,
+    yahoo: YahooFinanceProvider,
+    stooq: StooqProvider,
+) -> tuple[float, float] | None:
+    points = None
     try:
+        points = await yahoo.get_historical_prices(
+            symbol,
+            interval="1d",
+            start=date.today() - timedelta(days=400),
+            synthetic_ok=False,
+        )
+    except Exception:
         points = None
+    if not points:
         try:
-            points = await yahoo.get_historical_prices(
+            points = await stooq.get_historical_prices(
                 symbol,
                 interval="1d",
                 start=date.today() - timedelta(days=400),
-                synthetic_ok=False,
             )
         except Exception:
             points = None
-        if not points:
-            try:
-                points = await stooq.get_historical_prices(
-                    symbol,
-                    interval="1d",
-                    start=date.today() - timedelta(days=400),
-                )
-            except Exception:
-                points = None
-        if not points:
-            return None
-        pillar = _technical_pillar(bars_from_records(points))
-        raw = float(pillar.score)
-        return raw, raw
-    finally:
-        await yahoo.close()
-        await stooq.close()
+    if not points:
+        return None
+    pillar = _technical_pillar(bars_from_records(points))
+    raw = float(pillar.score)
+    return raw, raw
 
 
 async def get_strict_recommendations(
@@ -102,15 +96,14 @@ async def get_strict_recommendations(
     segment: str = "equity",
     limit: int = 100,
 ) -> dict:
-    """Return only actionable recommendations passing the 95+ technical gate.
+    """Return only recommendations passing the strict 95+ technical gate.
 
-    Delivery mode starts from Titan X's existing active delivery recommendations,
-    verifies their live daily technical score, then verifies the same symbol's
-    live 5-minute intraday technical conviction. Therefore a delivery result is
-    shown only when BOTH delivery and intraday technical conviction are >=95.
+    Delivery mode requires the same stock to have directional technical
+    conviction >=95 on BOTH the daily/delivery model and the live 5-minute
+    intraday model, with the two directions agreeing.
 
-    Intraday mode uses the existing full-universe 5-minute scanner and applies
-    the same >=95 directional technical-conviction gate.
+    Intraday mode scans the full available universe and returns only live
+    5-minute BUY/SELL signals whose directional technical conviction is >=95.
     """
     mode = mode.lower().strip()
     segment = segment.lower().strip()
@@ -150,22 +143,27 @@ async def get_strict_recommendations(
         )
     ).scalars().all()
 
+    yahoo = YahooFinanceProvider()
+    stooq = StooqProvider()
     semaphore = asyncio.Semaphore(6)
+    try:
+        async def verify(rec: Recommendation):
+            async with semaphore:
+                daily = await _daily_technical_gate(rec.symbol, yahoo, stooq)
+                if daily is None:
+                    return None
+                raw_daily, _ = daily
+                daily_conviction = _technical_conviction(raw_daily, rec.direction)
+                if daily_conviction < STRICT_TECHNICAL_THRESHOLD:
+                    return None
+                return rec, raw_daily, daily_conviction
 
-    async def verify(rec: Recommendation):
-        async with semaphore:
-            daily = await _daily_technical_gate(rec.symbol)
-            if daily is None:
-                return None
-            raw_daily, _ = daily
-            daily_conviction = _technical_conviction(raw_daily, rec.direction)
-            if daily_conviction < STRICT_TECHNICAL_THRESHOLD:
-                return None
-            return rec, raw_daily, daily_conviction
+        verified = await asyncio.gather(*(verify(r) for r in rows))
+    finally:
+        await yahoo.close()
+        await stooq.close()
 
-    verified = await asyncio.gather(*(verify(r) for r in rows))
     delivery_candidates = [x for x in verified if x is not None]
-
     if not delivery_candidates:
         return {
             "mode": "delivery",
@@ -178,8 +176,8 @@ async def get_strict_recommendations(
             "strict_gate": "delivery technical conviction >=95 AND intraday technical conviction >=95",
         }
 
-    # Verify the SAME symbols on the live 5-minute model. This is the important
-    # intersection: a stock must pass both time horizons before it is displayed.
+    # Verify the SAME symbols on the live 5-minute model. A stock is displayed
+    # only when both horizons pass and the direction agrees.
     symbols = [x[0].symbol for x in delivery_candidates]
     intraday = await get_intraday_recommendations(
         segment="equity",
@@ -193,10 +191,8 @@ async def get_strict_recommendations(
         intra = intraday_by_symbol.get(rec.symbol)
         if not intra:
             continue
-        intra_conviction = _technical_conviction(
-            float(intra.get("score") or 0.0),
-            intra.get("direction"),
-        )
+        intra_raw = float(intra.get("score") or 0.0)
+        intra_conviction = _technical_conviction(intra_raw, intra.get("direction"))
         if intra.get("direction") not in {"BUY", "SELL"}:
             continue
         if intra_conviction < STRICT_TECHNICAL_THRESHOLD:
@@ -204,7 +200,7 @@ async def get_strict_recommendations(
         if intra.get("direction") != rec.direction:
             continue
         item = _rec_dict(rec, daily_raw, daily_conviction)
-        item["intraday_technical_score"] = round(float(intra.get("score") or 0.0), 2)
+        item["intraday_technical_score"] = round(intra_raw, 2)
         item["intraday_technical_conviction_score"] = round(intra_conviction, 2)
         item["intraday"] = intra
         recommendations.append(item)
