@@ -9,8 +9,6 @@ function money(value: number) {
   return `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`
 }
 
-// Keep major Indian F&O indices at the top of the F&O recommendations.
-// The API remains the source of truth; this only controls presentation order.
 const FNO_INDEX_PRIORITY = [
   "NIFTY", "BANKNIFTY", "SENSEX", "FINNIFTY", "MIDCPNIFTY", "NIFTYNXT50",
 ]
@@ -48,7 +46,7 @@ function RecommendationCard({ rec }: { rec: IntradayRecommendation }) {
 
       <div className="mt-4 flex items-center justify-between">
         <div><div className="text-[11px] text-gray-500">Current</div><div className="text-lg font-semibold text-white">{money(rec.current_price)}</div></div>
-        <div className="text-right"><div className="text-[11px] text-gray-500">AI score / confidence</div><div className="text-sm font-semibold text-titan-300">{rec.score.toFixed(0)} / {rec.confidence.toFixed(0)}%</div></div>
+        <div className="text-right"><div className="text-[11px] text-gray-500">Technical ≥95 / confidence</div><div className="text-sm font-semibold text-titan-300">{(rec.technical_conviction_score ?? rec.score).toFixed(0)} / {rec.confidence.toFixed(0)}%</div></div>
       </div>
 
       <div className="grid grid-cols-3 gap-2 mt-4">
@@ -91,11 +89,10 @@ export function IntradayRecommendations() {
     setLoading(true)
     setError(null)
     try {
-      // Request the complete available intraday universe instead of the old 10/30-script slice.
-      const res = await api.get<IntradayRecommendationsResponse>(`/recommendations/intraday?segment=${segment}&limit=2000`)
+      const res = await api.get<IntradayRecommendationsResponse>(`/recommendations/strict?mode=intraday&segment=${segment}&limit=2000`)
       setData(res)
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load intraday recommendations")
+      setError(e instanceof Error ? e.message : "Failed to load strict intraday recommendations")
     } finally {
       setLoading(false)
     }
@@ -121,28 +118,28 @@ export function IntradayRecommendations() {
   return (
     <div className="space-y-5">
       <div className="glass-card p-3 flex flex-wrap items-center justify-between gap-3">
-        <div><div className="text-white font-semibold flex items-center gap-2"><Zap size={15} className="text-titan-400" /> Intraday AI</div><div className="text-xs text-gray-500 mt-1">5-minute market structure · momentum · volume · risk filters · full available universe</div></div>
+        <div><div className="text-white font-semibold flex items-center gap-2"><Zap size={15} className="text-titan-400" /> Intraday AI</div><div className="text-xs text-gray-500 mt-1">5-minute market structure · momentum · volume · strict technical conviction ≥95 · full available universe</div></div>
         <div className="flex items-center gap-2">
           <div className="flex rounded-lg border border-white/10 p-1 bg-white/[0.02]"><button onClick={() => setSegment("equity")} className={`px-3 py-1.5 rounded-md text-xs ${segment === "equity" ? "bg-titan-600 text-white" : "text-gray-400"}`}>Equity Intraday</button><button onClick={() => setSegment("fno")} className={`px-3 py-1.5 rounded-md text-xs ${segment === "fno" ? "bg-titan-600 text-white" : "text-gray-400"}`}>F&O Intraday</button></div>
           <button onClick={() => void load()} className="btn-secondary text-xs inline-flex items-center gap-2"><RefreshCw size={13} /> Refresh</button>
         </div>
       </div>
 
-      {data && <div className="grid grid-cols-2 md:grid-cols-4 gap-3"><div className="glass-card p-4"><div className="text-[11px] text-gray-500">Universe</div><div className="text-xl text-white font-semibold mt-1">{data.universe_size}</div></div><div className="glass-card p-4"><div className="text-[11px] text-gray-500">Scanned</div><div className="text-xl text-white font-semibold mt-1">{data.scanned}</div></div><div className="glass-card p-4"><div className="text-[11px] text-gray-500">Signals</div><div className="text-xl text-emerald-400 font-semibold mt-1">{displayedRecommendations.length}</div></div><div className="glass-card p-4"><div className="text-[11px] text-gray-500 flex items-center gap-1"><Clock3 size={12} /> Generated</div><div className="text-xs text-gray-300 mt-2">{new Date(data.generated_at).toLocaleTimeString()}</div></div></div>}
+      {data && <div className="grid grid-cols-2 md:grid-cols-4 gap-3"><div className="glass-card p-4"><div className="text-[11px] text-gray-500">Universe</div><div className="text-xl text-white font-semibold mt-1">{data.universe_size}</div></div><div className="glass-card p-4"><div className="text-[11px] text-gray-500">Scanned</div><div className="text-xl text-white font-semibold mt-1">{data.scanned}</div></div><div className="glass-card p-4"><div className="text-[11px] text-gray-500">Strict Signals</div><div className="text-xl text-emerald-400 font-semibold mt-1">{displayedRecommendations.length}</div></div><div className="glass-card p-4"><div className="text-[11px] text-gray-500 flex items-center gap-1"><Clock3 size={12} /> Generated</div><div className="text-xs text-gray-300 mt-2">{new Date(data.generated_at).toLocaleTimeString()}</div></div></div>}
 
       {segment === "fno" && priorityIndices.length > 0 && (
         <div className="glass-card p-4 border border-titan-500/20">
           <div className="text-xs uppercase tracking-wider text-titan-300 font-semibold mb-3">Major F&O Indices — Priority</div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">{priorityIndices.map((rec) => <div key={`priority-${rec.symbol}`} className="rounded-lg bg-white/[0.03] border border-white/10 px-3 py-2"><div className="text-white font-semibold text-sm">{rec.symbol}</div><div className={`text-xs mt-1 ${rec.direction === "BUY" ? "text-emerald-400" : rec.direction === "SELL" ? "text-red-400" : "text-gray-400"}`}>{rec.direction} · {rec.confidence.toFixed(0)}%</div></div>)}</div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">{priorityIndices.map((rec) => <div key={`priority-${rec.symbol}`} className="rounded-lg bg-white/[0.03] border border-white/10 px-3 py-2"><div className="text-white font-semibold text-sm">{rec.symbol}</div><div className={`text-xs mt-1 ${rec.direction === "BUY" ? "text-emerald-400" : rec.direction === "SELL" ? "text-red-400" : "text-gray-400"}`}>{rec.direction} · {(rec.technical_conviction_score ?? rec.score).toFixed(0)}</div></div>)}</div>
         </div>
       )}
 
-      {loading && <div className="glass-card p-8 text-center text-sm text-gray-400">Scanning live 5m data across the full available universe…</div>}
+      {loading && <div className="glass-card p-8 text-center text-sm text-gray-400">Scanning strict 95+ live 5m technical signals across the full available universe…</div>}
       {error && !loading && <div className="glass-card p-6 text-center text-sm text-red-400">{error}</div>}
-      {!loading && !error && displayedRecommendations.length === 0 && <div className="glass-card p-8 text-center text-sm text-gray-400">No qualified intraday signal right now. TitanX prefers NO-TRADE over weak signals.</div>}
+      {!loading && !error && displayedRecommendations.length === 0 && <div className="glass-card p-8 text-center text-sm text-gray-400">No stock currently passes the strict 95+ technical gate. Titan X will show a recommendation only when the threshold is met.</div>}
       {!loading && !error && displayedRecommendations.length > 0 && <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">{displayedRecommendations.map((rec) => <RecommendationCard key={`${rec.segment}-${rec.symbol}-${rec.instrument}`} rec={rec} />)}</div>}
 
-      <div className="text-[10px] text-gray-600 px-1">Intraday signals are generated from live 5-minute OHLCV data and are separate from TitanX delivery/short-term recommendations.</div>
+      <div className="text-[10px] text-gray-600 px-1">Strict recommendations require a directional technical conviction score of at least 95. This is a screening rule, not a guarantee of returns.</div>
     </div>
   )
 }
