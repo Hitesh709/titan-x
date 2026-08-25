@@ -13,16 +13,7 @@ from titan_x.services.intraday_recommendation_service import get_intraday_recomm
 STRICT_TECHNICAL_THRESHOLD = 95.0
 
 
-def _technical_conviction(raw_score: float, direction: str | None) -> float:
-    """Convert the 0..100 bullish technical score into directional conviction."""
-    if direction == "BUY":
-        return round(raw_score, 2)
-    if direction == "SELL":
-        return round(100.0 - raw_score, 2)
-    return 0.0
-
-
-def _rec_dict(r: Recommendation, technical_score: float, technical_conviction: float) -> dict:
+def _rec_dict(r: Recommendation, technical_score: float) -> dict:
     return {
         "id": r.id,
         "symbol": r.symbol,
@@ -53,7 +44,7 @@ def _rec_dict(r: Recommendation, technical_score: float, technical_conviction: f
         "expires_at": r.expires_at.isoformat() if r.expires_at else None,
         "created_at": r.created_at.isoformat() if r.created_at else None,
         "technical_score": round(technical_score, 2),
-        "technical_conviction_score": round(technical_conviction, 2),
+        "technical_pillar_score": round(technical_score, 2),
         "strict_technical_gate": True,
     }
 
@@ -62,7 +53,7 @@ async def _daily_technical_gate(
     symbol: str,
     yahoo: YahooFinanceProvider,
     stooq: StooqProvider,
-) -> tuple[float, float] | None:
+) -> float | None:
     points = None
     try:
         points = await yahoo.get_historical_prices(
@@ -85,8 +76,7 @@ async def _daily_technical_gate(
     if not points:
         return None
     pillar = _technical_pillar(bars_from_records(points))
-    raw = float(pillar.score)
-    return raw, raw
+    return float(pillar.score)
 
 
 async def get_strict_recommendations(
@@ -96,14 +86,16 @@ async def get_strict_recommendations(
     segment: str = "equity",
     limit: int = 100,
 ) -> dict:
-    """Return only recommendations passing the strict 95+ technical gate.
+    """Return recommendations only when the Technical pillar score is >=95.
 
-    Delivery mode requires the same stock to have directional technical
-    conviction >=95 on BOTH the daily/delivery model and the live 5-minute
-    intraday model, with the two directions agreeing.
+    The gate uses the actual Technical pillar score shown in Titan X's
+    ``Pillar scores`` section. It does NOT use confidence, probability, or a
+    direction-adjusted conviction score.
 
-    Intraday mode scans the full available universe and returns only live
-    5-minute BUY/SELL signals whose directional technical conviction is >=95.
+    Delivery mode requires the same stock to have Technical pillar score >=95
+    on the daily/delivery model AND >=95 on the live 5-minute intraday model.
+    Intraday mode applies the same >=95 Technical pillar score gate directly
+    to the live 5-minute model.
     """
     mode = mode.lower().strip()
     segment = segment.lower().strip()
@@ -118,16 +110,15 @@ async def get_strict_recommendations(
         qualified = []
         for item in result.get("recommendations", []):
             direction = item.get("direction")
-            raw = float(item.get("score") or 0.0)
-            conviction = _technical_conviction(raw, direction)
-            if direction in {"BUY", "SELL"} and conviction >= STRICT_TECHNICAL_THRESHOLD:
-                item["technical_score"] = raw
-                item["technical_conviction_score"] = conviction
+            technical_score = float(item.get("score") or 0.0)
+            if direction in {"BUY", "SELL"} and technical_score >= STRICT_TECHNICAL_THRESHOLD:
+                item["technical_score"] = round(technical_score, 2)
+                item["technical_pillar_score"] = round(technical_score, 2)
                 item["strict_technical_gate"] = True
                 qualified.append(item)
         result["recommendations"] = qualified[:limit]
         result["strict_technical_threshold"] = STRICT_TECHNICAL_THRESHOLD
-        result["strict_gate"] = "technical_conviction >= 95 in intraday"
+        result["strict_gate"] = "technical pillar score >= 95 in intraday"
         return result
 
     if mode != "delivery":
@@ -149,14 +140,10 @@ async def get_strict_recommendations(
     try:
         async def verify(rec: Recommendation):
             async with semaphore:
-                daily = await _daily_technical_gate(rec.symbol, yahoo, stooq)
-                if daily is None:
+                daily_score = await _daily_technical_gate(rec.symbol, yahoo, stooq)
+                if daily_score is None or daily_score < STRICT_TECHNICAL_THRESHOLD:
                     return None
-                raw_daily, _ = daily
-                daily_conviction = _technical_conviction(raw_daily, rec.direction)
-                if daily_conviction < STRICT_TECHNICAL_THRESHOLD:
-                    return None
-                return rec, raw_daily, daily_conviction
+                return rec, daily_score
 
         verified = await asyncio.gather(*(verify(r) for r in rows))
     finally:
@@ -173,11 +160,9 @@ async def get_strict_recommendations(
             "scanned": len(rows),
             "recommendations": [],
             "strict_technical_threshold": STRICT_TECHNICAL_THRESHOLD,
-            "strict_gate": "delivery technical conviction >=95 AND intraday technical conviction >=95",
+            "strict_gate": "delivery Technical pillar score >=95 AND intraday Technical pillar score >=95",
         }
 
-    # Verify the SAME symbols on the live 5-minute model. A stock is displayed
-    # only when both horizons pass and the direction agrees.
     symbols = [x[0].symbol for x in delivery_candidates]
     intraday = await get_intraday_recommendations(
         segment="equity",
@@ -187,28 +172,25 @@ async def get_strict_recommendations(
     intraday_by_symbol = {x["symbol"]: x for x in intraday.get("recommendations", [])}
 
     recommendations = []
-    for rec, daily_raw, daily_conviction in delivery_candidates:
+    for rec, daily_score in delivery_candidates:
         intra = intraday_by_symbol.get(rec.symbol)
         if not intra:
             continue
-        intra_raw = float(intra.get("score") or 0.0)
-        intra_conviction = _technical_conviction(intra_raw, intra.get("direction"))
+        intraday_score = float(intra.get("score") or 0.0)
+        if intraday_score < STRICT_TECHNICAL_THRESHOLD:
+            continue
         if intra.get("direction") not in {"BUY", "SELL"}:
             continue
-        if intra_conviction < STRICT_TECHNICAL_THRESHOLD:
-            continue
-        if intra.get("direction") != rec.direction:
-            continue
-        item = _rec_dict(rec, daily_raw, daily_conviction)
-        item["intraday_technical_score"] = round(intra_raw, 2)
-        item["intraday_technical_conviction_score"] = round(intra_conviction, 2)
+        item = _rec_dict(rec, daily_score)
+        item["intraday_technical_score"] = round(intraday_score, 2)
+        item["intraday_technical_pillar_score"] = round(intraday_score, 2)
         item["intraday"] = intra
         recommendations.append(item)
 
     recommendations.sort(
         key=lambda r: min(
-            r["technical_conviction_score"],
-            r["intraday_technical_conviction_score"],
+            r["technical_pillar_score"],
+            r["intraday_technical_pillar_score"],
         ),
         reverse=True,
     )
@@ -221,5 +203,5 @@ async def get_strict_recommendations(
         "scanned": len(rows),
         "recommendations": recommendations[:limit],
         "strict_technical_threshold": STRICT_TECHNICAL_THRESHOLD,
-        "strict_gate": "delivery technical conviction >=95 AND intraday technical conviction >=95",
+        "strict_gate": "delivery Technical pillar score >=95 AND intraday Technical pillar score >=95",
     }
