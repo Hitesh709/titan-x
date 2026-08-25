@@ -29,15 +29,15 @@ export default function RecommendationsPage() {
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
     try {
-      const res = await api.get<{ items: StockRecommendation[]; total: number }>(
-        "/recommendations?limit=100&skip=0",
+      const res = await api.get<{ recommendations: StockRecommendation[]; strict_technical_threshold?: number }>(
+        "/recommendations/strict?mode=delivery&limit=100",
       )
       if (!mounted.current) return
-      setRecommendations(res.items ?? [])
+      setRecommendations(res.recommendations ?? [])
       setError(null)
     } catch (e) {
       if (!mounted.current) return
-      setError(e instanceof Error ? e.message : "Failed to load recommendations")
+      setError(e instanceof Error ? e.message : "Failed to load strict recommendations")
     } finally {
       if (mounted.current) {
         setLoading(false)
@@ -144,7 +144,7 @@ export default function RecommendationsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">Recommendations</h1>
-          <p className="text-gray-500 text-sm mt-1">Delivery/short-term ideas and separate intraday trading opportunities</p>
+          <p className="text-gray-500 text-sm mt-1">Titan X strict stock recommendations — technical conviction must be ≥95 in both delivery and intraday</p>
         </div>
         {mode === "delivery" && (
           <div className="flex items-center gap-2">
@@ -172,6 +172,7 @@ export default function RecommendationsPage() {
         <>
           {error && <WidgetError message={error} onRetry={() => load(false)} />}
           {scanInfo && <div className="glass-card p-3 text-sm text-titan-300 border border-titan-500/20">{scanInfo}</div>}
+          <div className="glass-card p-3 text-xs text-titan-300 border border-titan-500/20">Strict gate: the same stock must have directional technical conviction ≥95 on the delivery model and the live 5-minute intraday model, with matching BUY/SELL direction.</div>
           <SymbolAnalyzer />
 
           {loading ? (
@@ -205,8 +206,9 @@ export default function RecommendationsPage() {
               {filtered.length === 0 ? (
                 <div className="glass-card p-10 text-center">
                   <Brain size={28} className="mx-auto text-titan-500/60 mb-3" />
-                  <p className="text-gray-400">No recommendations yet.</p>
-                  <button onClick={handleScan} className="btn-primary mt-4 text-sm inline-flex items-center gap-2"><Play size={14} /> Run your first scan</button>
+                  <p className="text-gray-400">No stock currently passes the strict 95+ delivery + intraday technical gate.</p>
+                  <p className="text-gray-600 text-xs mt-2">Titan X will intentionally show no recommendation when the threshold is not met.</p>
+                  <button onClick={handleScan} className="btn-primary mt-4 text-sm inline-flex items-center gap-2"><Play size={14} /> Run fresh market scan</button>
                 </div>
               ) : (
                 <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
