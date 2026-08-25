@@ -5,6 +5,8 @@ import { RefreshCw, TrendingDown, TrendingUp, Zap, Clock3, AlertTriangle } from 
 import api from "@/lib/api"
 import type { IntradayRecommendation, IntradayRecommendationsResponse } from "@/types"
 
+type StrictIntradayRecommendation = IntradayRecommendation & { technical_conviction_score?: number }
+
 function money(value: number) {
   return `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`
 }
@@ -19,10 +21,11 @@ function fnoPriority(symbol: string) {
   return index === -1 ? 999 : index
 }
 
-function RecommendationCard({ rec }: { rec: IntradayRecommendation }) {
+function RecommendationCard({ rec }: { rec: StrictIntradayRecommendation }) {
   const bullish = rec.direction === "BUY"
   const bearish = rec.direction === "SELL"
   const directionClass = bullish ? "badge-green" : bearish ? "badge-red" : "badge-blue"
+  const technicalScore = rec.technical_conviction_score ?? rec.score
 
   return (
     <div className="glass-card p-5">
@@ -46,7 +49,7 @@ function RecommendationCard({ rec }: { rec: IntradayRecommendation }) {
 
       <div className="mt-4 flex items-center justify-between">
         <div><div className="text-[11px] text-gray-500">Current</div><div className="text-lg font-semibold text-white">{money(rec.current_price)}</div></div>
-        <div className="text-right"><div className="text-[11px] text-gray-500">Technical ≥95 / confidence</div><div className="text-sm font-semibold text-titan-300">{(rec.technical_conviction_score ?? rec.score).toFixed(0)} / {rec.confidence.toFixed(0)}%</div></div>
+        <div className="text-right"><div className="text-[11px] text-gray-500">Technical ≥95 / confidence</div><div className="text-sm font-semibold text-titan-300">{technicalScore.toFixed(0)} / {rec.confidence.toFixed(0)}%</div></div>
       </div>
 
       <div className="grid grid-cols-3 gap-2 mt-4">
@@ -101,7 +104,7 @@ export function IntradayRecommendations() {
   useEffect(() => { void load() }, [load])
 
   const displayedRecommendations = useMemo(() => {
-    const recommendations = data?.recommendations ?? []
+    const recommendations = (data?.recommendations ?? []) as StrictIntradayRecommendation[]
     if (segment !== "fno") return recommendations
     return [...recommendations].sort((a, b) => {
       const priorityDiff = fnoPriority(a.symbol) - fnoPriority(b.symbol)
