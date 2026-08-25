@@ -29,8 +29,6 @@ _ROUTER_SPECS: tuple[tuple[str, str | None], ...] = (
     ("fundamental_scanner", "router"), ("fundamentals", "fund_router"), ("global_market", "router"),
     ("health", "health_router"), ("historical_similarity", "hist_sim_router"), ("indices", "router"),
     ("institutional_analysis", "inst_router"), ("intraday", "intraday_router"),
-    # This router owns /recommendations/strict and /recommendations/intraday.
-    # It MUST appear before the generic recommendation router below.
     ("intraday_recommendation", "router"), ("knowledge_graph", "kg_router"), ("learning", "learning_router"),
     ("live_market_websocket", "router"), ("macro", "router"), ("market_breadth", "market_breadth_router"),
     ("market_data", "router"), ("market_data_collector", "router"), ("market_heatmap", "router"),
@@ -45,10 +43,10 @@ _ROUTER_SPECS: tuple[tuple[str, str | None], ...] = (
     ("recommendation", "router"), ("research", "router"), ("regime_detection", "router"), ("reports", "router"),
     ("risk", "risk_router"), ("scheduler", "scheduler_router"), ("search", "router"),
     ("sector_rotation", "router"), ("sectors", "sector_router"), ("strategy", "strategy_router"),
-    ("technical_indicators", "tech_ind_router"), ("timescaledb", "router"), ("top_picks", "router"),
-    ("trade_journal", "router"), ("trading_calendar", "router"), ("trading_portfolio", "router"),
-    ("users", "users_router"), ("valuation", "router"), ("version", "version_router"), ("watchlists", "router"),
-    ("public_market", "router"),
+    ("technical_indicators", "tech_ind_router"), ("technical_strength", "router"), ("timescaledb", "router"),
+    ("top_picks", "router"), ("trade_journal", "router"), ("trading_calendar", "router"),
+    ("trading_portfolio", "router"), ("users", "users_router"), ("valuation", "router"),
+    ("version", "version_router"), ("watchlists", "router"), ("public_market", "router"),
 )
 
 
