@@ -6,7 +6,7 @@ from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from titan_x.infrastructure.market_data_providers import YahooFinanceProvider
-from titan_x.services.ai_recommendation_engine import bars_from_records
+from titan_x.services.ai_recommendation_engine import _technical_pillar, bars_from_records
 
 # Fallback/liquid equity universe. The API normally replaces this with the
 # active company universe from the database so the recommendation screen is
@@ -19,9 +19,6 @@ EQUITY_UNIVERSE = [
     "TITAN", "ONGC", "COALINDIA", "BEL",
 ]
 
-# Common liquid NSE F&O underlyings plus major Indian indices. Contract
-# eligibility/lot/expiry data should still come from a licensed derivatives
-# feed before any real order is placed.
 FNO_UNIVERSE = [
     "NIFTY", "BANKNIFTY", "SENSEX", "FINNIFTY", "MIDCPNIFTY", "NIFTYNXT50",
     "RELIANCE", "HDFCBANK", "ICICIBANK", "SBIN", "AXISBANK", "KOTAKBANK",
@@ -31,7 +28,6 @@ FNO_UNIVERSE = [
     "ONGC", "COALINDIA", "JSWSTEEL", "VEDL", "JINDALSTEL",
 ]
 
-# Yahoo Finance ticker mapping for the index names shown in Titan X.
 YAHOO_INDEX_TICKERS = {
     "NIFTY": "^NSEI",
     "BANKNIFTY": "^NSEBANK",
@@ -132,6 +128,8 @@ def _score_intraday(points: list) -> dict | None:
     avg_volume = sum(volumes[-21:-1]) / max(1, len(volumes[-21:-1]))
     volume_ratio = volumes[-1] / avg_volume if avg_volume > 0 else 1.0
 
+    # Discovery score: used to rank the live intraday scanner. This is kept
+    # separate from the six-pillar Technical score used by strict gates.
     score = 50.0
     score += max(-15.0, min(15.0, momentum * 8.0))
     if price > ema20:
@@ -160,6 +158,11 @@ def _score_intraday(points: list) -> dict | None:
     body_strength = candle_body / candle_range
     score += max(-6.0, min(6.0, body_strength * 6.0))
     score = max(0.0, min(100.0, score))
+
+    # IMPORTANT: this is the exact Technical Pillar Score shown by the
+    # Symbol Analyzer. Strict recommendations must gate on this value,
+    # never on confidence and never on the discovery score above.
+    technical_pillar_score = float(_technical_pillar(bars).score)
 
     if score >= 62:
         direction = "BUY"
@@ -206,6 +209,8 @@ def _score_intraday(points: list) -> dict | None:
         "direction": direction,
         "signal": signal,
         "score": round(score, 2),
+        "technical_score": round(technical_pillar_score, 2),
+        "technical_pillar_score": round(technical_pillar_score, 2),
         "confidence": round(confidence, 2),
         "current_price": round(price, 2),
         "entry_price": round(price, 2),
@@ -236,16 +241,13 @@ async def get_intraday_recommendations(
     if not universe:
         universe = FNO_UNIVERSE if segment == "fno" else EQUITY_UNIVERSE
 
-    # Do not allow an accidental enormous request to create an unbounded scan.
-    # Titan X currently has ~2.3k active NSE symbols, so 3000 is a safe upper bound.
     limit = max(1, min(int(limit), 3000))
     provider = YahooFinanceProvider()
     start = date.today() - timedelta(days=30)
     end = date.today() + timedelta(days=1)
 
-    # Yahoo/Render can become unstable when hundreds of requests are opened at
-    # once. A bounded worker pool lets the full universe be scanned without the
-    # old all-at-once gather fan-out.
+    # Bounded concurrency avoids the old all-at-once request fan-out that
+    # caused provider/session instability on Render.
     semaphore = asyncio.Semaphore(8)
 
     async def scan(display_symbol: str):
@@ -294,8 +296,6 @@ async def get_intraday_recommendations(
         item["generated_at"] = generated
         recommendations.append(item)
 
-    # Keep major indices first in the F&O response, then rank all other
-    # derivatives by confidence.
     if segment == "fno":
         priority = {name: i for i, name in enumerate(FNO_UNIVERSE[:6])}
         recommendations.sort(key=lambda r: (priority.get(r["symbol"], 999), -r["confidence"]))
