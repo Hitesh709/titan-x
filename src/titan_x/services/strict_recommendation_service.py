@@ -10,7 +10,7 @@ from sqlalchemy import select
 from titan_x.infrastructure.market_data_providers import StooqProvider, YahooFinanceProvider
 from titan_x.models.company import Company
 from titan_x.services.ai_recommendation_engine import AIRecommendationEngine, _technical_pillar, bars_from_records
-from titan_x.services.intraday_recommendation_service import FNO_UNIVERSE, get_intraday_recommendations
+from titan_x.services.intraday_recommendation_service import FNO_UNIVERSE, YAHOO_INDEX_TICKERS, _score_intraday
 
 STRICT_TECHNICAL_THRESHOLD = 95.0
 MAX_MARKET_SCAN = 3000
@@ -28,8 +28,6 @@ def _daily_recommendation(symbol: str, points: list[Any]) -> tuple[float, dict] 
     if technical.score < STRICT_TECHNICAL_THRESHOLD or technical.direction == 0:
         return float(technical.score), {}
 
-    # Delivery is intentionally independent from the intraday model.
-    # The only recommendation gate here is the DELIVERY Technical Pillar >=95.
     engine = AIRecommendationEngine()
     try:
         rec = engine.build(symbol, bars)
@@ -39,6 +37,9 @@ def _daily_recommendation(symbol: str, points: list[Any]) -> tuple[float, dict] 
     direction = "BUY" if technical.direction > 0 else "SELL"
     now = datetime.now().astimezone().isoformat()
     detail = technical.detail or {}
+    factors = rec.get("factors") or {
+        "technical": {"score": float(technical.score), "direction": int(technical.direction), "confidence": float(technical.confidence)}
+    }
     item = {
         "id": f"strict-delivery-{symbol}",
         "symbol": symbol,
@@ -48,7 +49,7 @@ def _daily_recommendation(symbol: str, points: list[Any]) -> tuple[float, dict] 
         "price_target": rec.get("price_target"),
         "current_price": rec.get("current_price") or (bars[-1].close if bars else None),
         "timeframe": "Delivery / Short Term",
-        "reasoning": "Delivery recommendation passed the Technical Pillar threshold.",
+        "reasoning": "Delivery recommendation passed the Delivery Technical Pillar threshold.",
         "recommendation_type": "STRICT_DELIVERY",
         "status": "active",
         "score": round(float(technical.score), 2),
@@ -63,13 +64,9 @@ def _daily_recommendation(symbol: str, points: list[Any]) -> tuple[float, dict] 
             ],
             "caution": ["Intraday Technical Pillar is not part of the Delivery gate."],
             "technical_detail": detail,
+            "factors": factors,
         }, default=str),
-        "inputs_json": json.dumps({
-            "technical": {
-                "score": float(technical.score),
-                "direction": int(technical.direction),
-            }
-        }),
+        "inputs_json": json.dumps(factors, default=str),
         "generated_at": now,
         "created_at": now,
         "technical_score": round(float(technical.score), 2),
@@ -84,38 +81,29 @@ def _daily_recommendation(symbol: str, points: list[Any]) -> tuple[float, dict] 
 async def _daily_technical_gate(symbol: str, yahoo: YahooFinanceProvider, stooq: StooqProvider) -> tuple[float | None, dict]:
     points = None
     try:
-        points = await yahoo.get_historical_prices(
-            symbol, interval="1d", start=date.today() - timedelta(days=400), synthetic_ok=False
-        )
+        points = await yahoo.get_historical_prices(symbol, interval="1d", start=date.today() - timedelta(days=400), synthetic_ok=False)
     except Exception:
         points = None
     if not points:
         try:
-            points = await stooq.get_historical_prices(
-                symbol, interval="1d", start=date.today() - timedelta(days=400)
-            )
+            points = await stooq.get_historical_prices(symbol, interval="1d", start=date.today() - timedelta(days=400))
         except Exception:
             points = None
     if not points:
         return None, {}
-    result = _daily_recommendation(symbol, points)
-    if result is None:
-        return None, {}
-    return result
+    return _daily_recommendation(symbol, points) or (None, {})
 
 
 async def _full_market_universe(session, segment: str) -> list[str]:
     if segment == "fno":
         return list(dict.fromkeys(FNO_UNIVERSE))
-    rows = (
-        await session.execute(
-            select(Company.symbol)
-            .where(Company.status == "active")
-            .where(Company.exchange.in_(["NSE", "BSE"]))
-            .order_by(Company.symbol.asc())
-            .limit(MAX_MARKET_SCAN)
-        )
-    ).all()
+    rows = (await session.execute(
+        select(Company.symbol)
+        .where(Company.status == "active")
+        .where(Company.exchange.in_(["NSE", "BSE"]))
+        .order_by(Company.symbol.asc())
+        .limit(MAX_MARKET_SCAN)
+    )).all()
     return list(dict.fromkeys(str(row[0]).upper().strip() for row in rows if row[0]))
 
 
@@ -149,54 +137,90 @@ async def _scan_daily_scores(symbols: list[str], state: dict[str, Any]) -> tuple
     return scores, items
 
 
+async def _scan_intraday_scores(symbols: list[str], state: dict[str, Any], segment: str) -> list[dict]:
+    provider = YahooFinanceProvider()
+    semaphore = asyncio.Semaphore(8)
+    total = len(symbols)
+    completed = 0
+    start = date.today() - timedelta(days=30)
+    end = date.today() + timedelta(days=1)
+
+    async def scan(display_symbol: str):
+        nonlocal completed
+        async with semaphore:
+            try:
+                ticker = YAHOO_INDEX_TICKERS.get(display_symbol, display_symbol)
+                points = await provider.get_historical_prices(ticker, interval="5m", start=start, end=end, synthetic_ok=False)
+                scored = _score_intraday(points)
+                if not scored or scored.get("direction") not in {"BUY", "SELL"}:
+                    return None
+                technical_score = float(scored.get("technical_pillar_score") or scored.get("technical_score") or 0.0)
+                if technical_score < STRICT_TECHNICAL_THRESHOLD:
+                    return None
+
+                bars = bars_from_records(points)
+                try:
+                    engine_rec = AIRecommendationEngine().build(display_symbol, bars)
+                except Exception:
+                    engine_rec = {}
+                factors = engine_rec.get("factors") or {
+                    "technical": {"score": technical_score, "direction": 1 if scored["direction"] == "BUY" else -1, "confidence": 0.5}
+                }
+                scored["factors"] = factors
+                scored["risk_level"] = engine_rec.get("risk_level") or ("Medium" if scored.get("risk_reward", 0) < 2 else "Low")
+                scored["generated_at"] = datetime.now().astimezone().isoformat()
+                scored["segment"] = segment
+                scored["instrument"] = "INDEX" if display_symbol in YAHOO_INDEX_TICKERS else ("FUTURES" if segment == "fno" else "EQUITY")
+                scored["option_bias"] = "CALL" if scored["direction"] == "BUY" else "PUT"
+                scored["option_strike"] = None
+                scored["timeframe"] = "Intraday · 5m"
+                scored["strict_technical_gate"] = True
+                return scored
+            except Exception:
+                return None
+            finally:
+                completed += 1
+                state["scanned"] = completed
+                state["progress_pct"] = round(completed * 100.0 / max(total, 1), 1)
+
+    try:
+        results = await asyncio.gather(*(scan(symbol) for symbol in symbols))
+    finally:
+        await provider.close()
+    qualified = [r for r in results if r is not None]
+    qualified.sort(key=lambda r: (float(r.get("technical_pillar_score", 0)), float(r.get("confidence", 0))), reverse=True)
+    return qualified
+
+
 async def _compute_strict_recommendations(*, session, mode: str, segment: str, limit: int, state: dict[str, Any]) -> dict:
     universe_symbols = await _full_market_universe(session, segment)
     state["universe_size"] = len(universe_symbols)
     state["scan_scope"] = "FULL_ACTIVE_NSE_BSE_UNIVERSE" if segment == "equity" else "FULL_FNO_UNIVERSE"
 
     if mode == "intraday":
-        result = await get_intraday_recommendations(
-            segment=segment,
-            limit=MAX_MARKET_SCAN,
-            universe_symbols=universe_symbols,
-        )
-        qualified = []
-        for item in result.get("recommendations", []):
-            technical_score = float(item.get("technical_pillar_score") or item.get("technical_score") or 0.0)
-            if item.get("direction") not in {"BUY", "SELL"} or technical_score < STRICT_TECHNICAL_THRESHOLD:
-                continue
-            item["technical_score"] = round(technical_score, 2)
-            item["technical_pillar_score"] = round(technical_score, 2)
-            item["strict_technical_gate"] = True
-            qualified.append(item)
-        qualified.sort(key=lambda r: (r.get("technical_pillar_score", 0.0), r.get("confidence", 0.0)), reverse=True)
-        result["recommendations"] = qualified[:limit]
-        result["universe_size"] = len(universe_symbols)
-        result["scanned_universe"] = len(universe_symbols)
-        result["strict_technical_threshold"] = STRICT_TECHNICAL_THRESHOLD
-        result["strict_gate"] = "actual Intraday Technical pillar score >=95"
-        result["scan_scope"] = "FULL_ACTIVE_NSE_BSE_UNIVERSE" if segment == "equity" else "FULL_FNO_UNIVERSE"
-        return result
+        qualified = await _scan_intraday_scores(universe_symbols, state, segment)
+        return {
+            "mode": "intraday",
+            "segment": segment,
+            "generated_at": datetime.now().astimezone().isoformat(),
+            "universe_size": len(universe_symbols),
+            "scanned": len(universe_symbols),
+            "recommendations": qualified[:limit],
+            "strict_technical_threshold": STRICT_TECHNICAL_THRESHOLD,
+            "strict_gate": "Intraday Technical pillar score >=95 only; Delivery is independent",
+            "scan_scope": "FULL_ACTIVE_NSE_BSE_UNIVERSE" if segment == "equity" else "FULL_FNO_UNIVERSE",
+        }
 
     if mode != "delivery":
         raise ValueError("mode must be delivery or intraday")
 
-    # DELIVERY IS INDEPENDENT: do not run or require the intraday model.
-    # A stock qualifies here solely because its Delivery Technical Pillar >=95.
     daily_scores, daily_items = await _scan_daily_scores(universe_symbols, state)
-    daily_qualified = {
-        symbol: score for symbol, score in daily_scores.items()
-        if score >= STRICT_TECHNICAL_THRESHOLD and daily_items.get(symbol)
-    }
+    daily_qualified = {symbol: score for symbol, score in daily_scores.items() if score >= STRICT_TECHNICAL_THRESHOLD and daily_items.get(symbol)}
     state["delivery_scored"] = len(daily_scores)
     state["delivery_qualified"] = len(daily_qualified)
     state["progress_pct"] = 100.0
-
     recommendations = [daily_items[symbol] for symbol in daily_qualified]
-    recommendations.sort(
-        key=lambda r: (r.get("delivery_technical_pillar_score", 0.0), r.get("confidence", 0.0)),
-        reverse=True,
-    )
+    recommendations.sort(key=lambda r: (r.get("delivery_technical_pillar_score", 0.0), r.get("confidence", 0.0)), reverse=True)
     return {
         "mode": "delivery",
         "segment": segment,
@@ -219,9 +243,7 @@ async def _run_strict_scan(session_factory, mode: str, segment: str, limit: int)
     state.update({"running": True, "error": None, "scanned": 0, "progress_pct": 0.0, "started_at": datetime.now().astimezone().isoformat()})
     try:
         async with session_factory() as session:
-            result = await _compute_strict_recommendations(
-                session=session, mode=mode, segment=segment, limit=limit, state=state
-            )
+            result = await _compute_strict_recommendations(session=session, mode=mode, segment=segment, limit=limit, state=state)
         state.update({"running": False, "result": result, "finished_at": datetime.now().astimezone().isoformat(), "error": None})
     except asyncio.CancelledError:
         state.update({"running": False, "error": "Scan cancelled"})
@@ -269,7 +291,7 @@ async def get_strict_recommendations(*, session=None, session_factory=None, mode
         "scanned": state.get("scanned", 0),
         "recommendations": [],
         "strict_technical_threshold": STRICT_TECHNICAL_THRESHOLD,
-        "strict_gate": "Delivery Technical pillar score >=95 only" if mode == "delivery" else "Intraday Technical pillar score >=95",
+        "strict_gate": "Delivery Technical pillar score >=95 only" if mode == "delivery" else "Intraday Technical pillar score >=95 only",
         "scan_scope": "FULL_ACTIVE_NSE_BSE_UNIVERSE" if segment == "equity" else "FULL_FNO_UNIVERSE",
     }
     result = dict(result)
