@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import select
 
 from titan_x.infrastructure.market_data_providers import StooqProvider, YahooFinanceProvider
 from titan_x.models.recommendation import Recommendation
 from titan_x.services.ai_recommendation_engine import _technical_pillar, bars_from_records
-from titan_x.services.intraday_recommendation_service import get_intraday_recommendations
+from titan_x.services.intraday_recommendation_service import YAHOO_INDEX_TICKERS, get_intraday_recommendations
 
 STRICT_TECHNICAL_THRESHOLD = 95.0
 
@@ -79,6 +79,50 @@ async def _daily_technical_gate(
     return float(pillar.score)
 
 
+async def _intraday_technical_scores(items: list[dict]) -> dict[str, float]:
+    """Recalculate the exact Technical pillar used by Pillar Scores.
+
+    The intraday scanner has its own market-structure score used to discover
+    candidates. That score is NOT the six-pillar Technical score shown by the
+    analyzer. Strict recommendations must use the latter, otherwise a card can
+    display Technical=100 while the gate is actually testing a different score.
+    """
+    if not items:
+        return {}
+
+    provider = YahooFinanceProvider()
+    semaphore = asyncio.Semaphore(8)
+    start = date.today() - timedelta(days=30)
+    end = date.today() + timedelta(days=1)
+
+    async def calculate(item: dict) -> tuple[str, float | None]:
+        symbol = str(item.get("symbol") or "").upper()
+        ticker = YAHOO_INDEX_TICKERS.get(symbol, symbol)
+        if not ticker:
+            return symbol, None
+        async with semaphore:
+            try:
+                points = await provider.get_historical_prices(
+                    ticker,
+                    interval="5m",
+                    start=start,
+                    end=end,
+                    synthetic_ok=False,
+                )
+                if not points:
+                    return symbol, None
+                pillar = _technical_pillar(bars_from_records(points))
+                return symbol, float(pillar.score)
+            except Exception:
+                return symbol, None
+
+    try:
+        pairs = await asyncio.gather(*(calculate(item) for item in items))
+    finally:
+        await provider.close()
+    return {symbol: score for symbol, score in pairs if score is not None}
+
+
 async def get_strict_recommendations(
     *,
     session,
@@ -86,11 +130,11 @@ async def get_strict_recommendations(
     segment: str = "equity",
     limit: int = 100,
 ) -> dict:
-    """Return recommendations only when the Technical pillar score is >=95.
+    """Return recommendations only when the actual Technical pillar score is >=95.
 
-    The gate uses the actual Technical pillar score shown in Titan X's
-    ``Pillar scores`` section. It does NOT use confidence, probability, or a
-    direction-adjusted conviction score.
+    The gate uses the same ``_technical_pillar`` calculation rendered by the
+    Symbol Analyzer's Pillar Scores section. It does NOT use confidence,
+    probability, directional conviction, or the scanner's discovery score.
 
     Delivery mode requires the same stock to have Technical pillar score >=95
     on the daily/delivery model AND >=95 on the live 5-minute intraday model.
@@ -107,18 +151,32 @@ async def get_strict_recommendations(
             limit=3000,
             universe_symbols=None,
         )
+        candidates = [
+            item for item in result.get("recommendations", [])
+            if item.get("direction") in {"BUY", "SELL"}
+        ]
+        technical_scores = await _intraday_technical_scores(candidates)
         qualified = []
-        for item in result.get("recommendations", []):
-            direction = item.get("direction")
-            technical_score = float(item.get("score") or 0.0)
-            if direction in {"BUY", "SELL"} and technical_score >= STRICT_TECHNICAL_THRESHOLD:
-                item["technical_score"] = round(technical_score, 2)
-                item["technical_pillar_score"] = round(technical_score, 2)
-                item["strict_technical_gate"] = True
-                qualified.append(item)
+        for item in candidates:
+            symbol = str(item.get("symbol") or "").upper()
+            technical_score = technical_scores.get(symbol)
+            if technical_score is None or technical_score < STRICT_TECHNICAL_THRESHOLD:
+                continue
+            item["technical_score"] = round(technical_score, 2)
+            item["technical_pillar_score"] = round(technical_score, 2)
+            item["strict_technical_gate"] = True
+            qualified.append(item)
+
+        qualified.sort(
+            key=lambda r: (
+                r.get("technical_pillar_score", 0.0),
+                r.get("confidence", 0.0),
+            ),
+            reverse=True,
+        )
         result["recommendations"] = qualified[:limit]
         result["strict_technical_threshold"] = STRICT_TECHNICAL_THRESHOLD
-        result["strict_gate"] = "technical pillar score >= 95 in intraday"
+        result["strict_gate"] = "actual Technical pillar score >=95 in intraday"
         return result
 
     if mode != "delivery":
@@ -169,22 +227,27 @@ async def get_strict_recommendations(
         limit=3000,
         universe_symbols=symbols,
     )
-    intraday_by_symbol = {x["symbol"]: x for x in intraday.get("recommendations", [])}
+    intraday_candidates = [
+        item for item in intraday.get("recommendations", [])
+        if item.get("direction") in {"BUY", "SELL"}
+    ]
+    intraday_scores = await _intraday_technical_scores(intraday_candidates)
+    intraday_by_symbol = {x["symbol"]: x for x in intraday_candidates}
 
     recommendations = []
     for rec, daily_score in delivery_candidates:
         intra = intraday_by_symbol.get(rec.symbol)
         if not intra:
             continue
-        intraday_score = float(intra.get("score") or 0.0)
-        if intraday_score < STRICT_TECHNICAL_THRESHOLD:
+        intraday_score = intraday_scores.get(rec.symbol)
+        if intraday_score is None or intraday_score < STRICT_TECHNICAL_THRESHOLD:
             continue
         if intra.get("direction") not in {"BUY", "SELL"}:
             continue
         item = _rec_dict(rec, daily_score)
         item["intraday_technical_score"] = round(intraday_score, 2)
         item["intraday_technical_pillar_score"] = round(intraday_score, 2)
-        item["intraday"] = intra
+        item["intraday"] = {**intra, "technical_score": round(intraday_score, 2), "technical_pillar_score": round(intraday_score, 2)}
         recommendations.append(item)
 
     recommendations.sort(
