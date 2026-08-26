@@ -1,117 +1,19 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
-import { useAuth } from "@/contexts/AuthContext"
-import { Eye, EyeOff, Shield, Loader2 } from "lucide-react"
+import { Eye, EyeOff, Shield, Loader2, QrCode, RefreshCw } from "lucide-react"
+import api from "@/lib/api"
+
+type QRCreate = { challenge_id: string; qr_data_url: string; expires_in_seconds: number; sms_number?: string | null }
+type QRStatus = { status: "PENDING" | "APPROVED" | "DECLINED" | "EXPIRED" | "CANCELLED" | "USED"; access_token?: string | null; refresh_token?: string | null }
 
 export default function RegisterPage() {
-  const { register } = useAuth()
-  const [fullName, setFullName] = useState("")
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [confirmPassword, setConfirmPassword] = useState("")
-  const [showPassword, setShowPassword] = useState(false)
-  const [error, setError] = useState("")
-  const [loading, setLoading] = useState(false)
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError("")
-
-    if (password !== confirmPassword) {
-      setError("Passwords do not match")
-      return
-    }
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters")
-      return
-    }
-
-    setLoading(true)
-    try {
-      await register(email, password)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Registration failed")
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div className="min-h-screen flex">
-      <div className="hidden lg:flex flex-1 bg-gradient-to-br from-titan-900 to-titan-950 items-center justify-center p-12 relative overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-titan-600/20 via-transparent to-transparent" />
-        <div className="relative text-center max-w-md">
-          <Shield className="w-16 h-16 text-titan-400 mx-auto mb-6" />
-          <h2 className="text-2xl font-bold text-white mb-3">Enterprise-Grade Security</h2>
-          <p className="text-gray-400 leading-relaxed">
-            Your data is protected with bank-grade encryption, SOC 2 compliant infrastructure, and multi-factor authentication.
-          </p>
-        </div>
-      </div>
-
-      <div className="flex-1 flex items-center justify-center px-4 sm:px-6 lg:px-8">
-        <div className="w-full max-w-sm">
-          <div className="mb-8">
-            <Link href="/" className="flex items-center gap-2 mb-8">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-titan-500 to-titan-700 flex items-center justify-center">
-                <span className="text-white font-bold text-xs">TX</span>
-              </div>
-              <span className="text-lg font-bold text-white">TITAN <span className="text-titan-400">X</span></span>
-            </Link>
-            <h1 className="text-2xl font-bold text-white">Create your account</h1>
-            <p className="text-gray-500 mt-1">Start your 14-day free trial</p>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
-              <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{error}</div>
-            )}
-
-            <div>
-              <label className="block text-sm font-medium text-gray-400 mb-1.5">Full Name</label>
-              <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} className="input-field" placeholder="John Doe" required />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-400 mb-1.5">Email</label>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="input-field" placeholder="you@company.com" required />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-400 mb-1.5">Password</label>
-              <div className="relative">
-                <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} className="input-field pr-10" placeholder="Min. 8 characters" required />
-                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300">
-                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-400 mb-1.5">Confirm Password</label>
-              <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="input-field" placeholder="Repeat your password" required />
-            </div>
-
-            <div className="text-xs text-gray-500 leading-relaxed">
-              By creating an account, you agree to our{" "}
-              <a href="#" className="text-titan-400 hover:text-titan-300">Terms of Service</a> and{" "}
-              <a href="#" className="text-titan-400 hover:text-titan-300">Privacy Policy</a>.
-            </div>
-
-            <button type="submit" disabled={loading} className="btn-primary w-full">
-              {loading ? <Loader2 size={16} className="animate-spin" /> : null}
-              {loading ? "Creating account..." : "Create Account"}
-            </button>
-          </form>
-
-          <p className="mt-6 text-center text-sm text-gray-500">
-            Already have an account?{" "}
-            <Link href="/login" className="text-titan-400 hover:text-titan-300 font-medium">Sign in</Link>
-          </p>
-        </div>
-      </div>
-    </div>
-  )
+  const [username, setUsername] = useState(""); const [email, setEmail] = useState(""); const [phone, setPhone] = useState(""); const [password, setPassword] = useState(""); const [confirmPassword, setConfirmPassword] = useState(""); const [showPassword, setShowPassword] = useState(false)
+  const [error, setError] = useState(""); const [notice, setNotice] = useState(""); const [loading, setLoading] = useState(false); const [qr, setQr] = useState<QRCreate | null>(null); const [seconds, setSeconds] = useState(0); const [status, setStatus] = useState<QRStatus["status"] | null>(null)
+  useEffect(() => { if (!qr || seconds <= 0 || status !== "PENDING") return; const t = window.setInterval(() => setSeconds(v => Math.max(0, v - 1)), 1000); return () => window.clearInterval(t) }, [qr, seconds, status])
+  useEffect(() => { if (!qr || seconds <= 0 || status !== "PENDING") return; const t = window.setInterval(async () => { try { const data = await api.get<QRStatus>(`/auth/qr/status/${encodeURIComponent(qr.challenge_id)}`); setStatus(data.status); if (data.status === "USED" && data.access_token && data.refresh_token) { api.setToken(data.access_token); api.setRefreshToken(data.refresh_token); window.location.href = "/dashboard" } } catch {} }, 1500); return () => window.clearInterval(t) }, [qr, seconds, status])
+  useEffect(() => { if (qr && seconds === 0 && status === "PENDING") setStatus("EXPIRED") }, [qr, seconds, status])
+  const createQr = async () => { setError(""); setNotice(""); if (!username.trim() || password !== confirmPassword || password.length < 8 || (!email.trim() && !phone.trim())) { setError("Enter username, matching 8+ character passwords, and email or phone."); return } setLoading(true); try { const data = await api.post<QRCreate>("/auth/qr/register/create", { username: username.trim(), password, confirm_password: confirmPassword, email: email.trim() || null, phone: phone.trim() || null }); setQr(data); setStatus("PENDING"); setSeconds(data.expires_in_seconds); setNotice("Scan with any smartphone camera and send the prefilled SMS from the phone being registered.") } catch (err) { setError(err instanceof Error ? err.message : "Could not create registration QR") } finally { setLoading(false) } }
+  return <div className="min-h-screen flex"><div className="hidden lg:flex flex-1 bg-gradient-to-br from-titan-900 to-titan-950 items-center justify-center p-12"><div className="text-center max-w-md"><Shield className="w-16 h-16 text-titan-400 mx-auto mb-6" /><h2 className="text-2xl font-bold text-white mb-3">Secure Account Registration</h2><p className="text-gray-400 leading-relaxed">Verify the phone you control before Titan-X creates the account.</p></div></div><div className="flex-1 flex items-center justify-center px-4 sm:px-6 lg:px-8"><div className="w-full max-w-sm"><div className="mb-8"><Link href="/" className="text-lg font-bold text-white">TITAN <span className="text-titan-400">X</span></Link><h1 className="text-2xl font-bold text-white mt-8">Create your account</h1><p className="text-gray-500 mt-1">Verify by QR + SMS</p></div>{error && <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{error}</div>}{notice && <div className="mb-4 p-3 rounded-lg bg-titan-500/10 border border-titan-500/20 text-titan-300 text-sm">{notice}</div>}{!qr || ["EXPIRED", "DECLINED"].includes(status || "") ? <div className="space-y-4"><input value={username} onChange={e => setUsername(e.target.value)} className="input-field" placeholder="Username" required /><input value={email} onChange={e => setEmail(e.target.value)} className="input-field" placeholder="Email (optional if phone is provided)" type="email" /><input value={phone} onChange={e => setPhone(e.target.value)} className="input-field" placeholder="Mobile number (optional if email is provided)" type="tel" /><div className="relative"><input type={showPassword ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} className="input-field pr-10" placeholder="Password" required /><button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500">{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button></div><input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className="input-field" placeholder="Re-enter password" required /><button type="button" onClick={() => void createQr()} disabled={loading} className="btn-primary w-full">{loading ? <Loader2 size={16} className="animate-spin" /> : <QrCode size={16} />}{loading ? "Generating..." : "Generate QR & Verify Phone"}</button></div> : <div className="space-y-4"><div className="rounded-2xl bg-white p-4 mx-auto w-fit"><img src={qr.qr_data_url} alt="Registration QR code" className="w-56 h-56" /></div><p className="text-center text-sm text-gray-400">Scan with any smartphone camera, then send the prefilled SMS from the phone being registered.</p><p className="text-center text-white font-medium">{status === "PENDING" ? `Expires in ${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}` : status}</p>{status === "EXPIRED" && <button type="button" onClick={() => { setQr(null); setStatus(null); setSeconds(0) }} className="w-full rounded-xl border border-white/10 py-3 text-gray-300"><RefreshCw className="inline mr-2 h-4 w-4" />Generate New QR</button>}</div>}<p className="mt-6 text-center text-sm text-gray-500">Already have an account? <Link href="/login" className="text-titan-400 hover:text-titan-300 font-medium">Sign in</Link></p></div></div></div>
 }
