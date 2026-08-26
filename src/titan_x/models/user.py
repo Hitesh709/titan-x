@@ -8,6 +8,7 @@ from titan_x.db.mixins import PrimaryKeyMixin, SoftDeleteMixin, TimestampMixin
 class User(PrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     __tablename__ = "users"
 
+    username: Mapped[str | None] = mapped_column(String(80), unique=True, index=True, nullable=True)
     email: Mapped[str] = mapped_column(String(320), unique=True, index=True, nullable=False)
     hashed_password: Mapped[str] = mapped_column(String(256), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -17,10 +18,8 @@ class User(PrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
     fcm_token: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    # MFA state. Store the TOTP secret encrypted at rest; never expose it from API responses.
     mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     mfa_secret_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # JSON-encoded SHA-256 recovery-code hashes. Recovery codes are single-use.
     mfa_recovery_codes_hashes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     audit_logs: Mapped[list["AuditLog"]] = relationship(back_populates="user", cascade="all, delete-orphan")  # type: ignore[name-defined]
@@ -28,9 +27,5 @@ class User(PrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     broker_connections: Mapped[list["BrokerConnection"]] = relationship(back_populates="user", cascade="all, delete-orphan")  # type: ignore[name-defined]
     orders: Mapped[list["Order"]] = relationship(back_populates="user", cascade="all, delete-orphan")  # type: ignore[name-defined]
     positions: Mapped[list["Position"]] = relationship(back_populates="user", cascade="all, delete-orphan")  # type: ignore[name-defined]
-    refresh_tokens: Mapped[list["RefreshToken"]] = relationship(
-        "RefreshToken", back_populates="user", cascade="all, delete-orphan",
-    )
-    devices: Mapped[list["UserDevice"]] = relationship(
-        "UserDevice", back_populates="customer", cascade="all, delete-orphan",
-    )
+    refresh_tokens: Mapped[list["RefreshToken"]] = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
+    devices: Mapped[list["UserDevice"]] = relationship("UserDevice", back_populates="customer", cascade="all, delete-orphan")
