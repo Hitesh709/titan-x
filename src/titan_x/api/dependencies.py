@@ -26,7 +26,6 @@ from titan_x.infrastructure.session_store import RedisSessionStore
 from titan_x.infrastructure.task_queue import TaskQueue
 from titan_x.models.user import User
 from titan_x.services.ai_registry_service import AIModelRegistryService
-from titan_x.services.alert_evaluation_service import AlertEvaluationService
 from titan_x.services.audit_service import AuditService
 from titan_x.services.auth_service import AuthService
 from titan_x.services.backtest_engine import BacktestEngine
@@ -62,6 +61,7 @@ from titan_x.services.portfolio_engine import PortfolioEngine
 from titan_x.services.prediction_engine import PredictionEngine
 from titan_x.services.preference_service import PreferenceService
 from titan_x.services.price_service import CorporateActionService, PriceService
+from titan_x.services.qr_auth_service import QRAuthService
 from titan_x.services.report_generator import ReportGenerator
 from titan_x.services.risk_engine import RiskEngine
 from titan_x.services.scheduler_service import SchedulerService
@@ -74,22 +74,12 @@ api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
-async def require_api_key(
-    supplied_key: Annotated[str | None, Security(api_key_header)],
-    credentials: Annotated[HTTPAuthorizationCredentials | None, Security(bearer_scheme)],
-    settings: Annotated[Settings, Depends(get_settings)],
-) -> None:
-    if supplied_key is not None and secrets.compare_digest(
-        supplied_key, settings.api_key.get_secret_value()
-    ):
+async def require_api_key(supplied_key: Annotated[str | None, Security(api_key_header)], credentials: Annotated[HTTPAuthorizationCredentials | None, Security(bearer_scheme)], settings: Annotated[Settings, Depends(get_settings)]) -> None:
+    if supplied_key is not None and secrets.compare_digest(supplied_key, settings.api_key.get_secret_value()):
         return
     if credentials is not None:
         try:
-            payload = decode_token(
-                credentials.credentials,
-                settings.jwt_secret_key.get_secret_value(),
-                settings.jwt_algorithm,
-            )
+            payload = decode_token(credentials.credentials, settings.jwt_secret_key.get_secret_value(), settings.jwt_algorithm)
         except ValueError:
             payload = None
         if payload and payload.get("type") == "access":
@@ -106,56 +96,26 @@ async def request_session(request: Request) -> AsyncIterator[AsyncSession]:
 get_db = request_session
 
 
-async def get_current_user(
-    credentials: Annotated[HTTPAuthorizationCredentials | None, Security(bearer_scheme)],
-    session: Annotated[AsyncSession, Depends(request_session)],
-    settings: Annotated[Settings, Depends(get_settings)],
-) -> User:
+async def get_current_user(credentials: Annotated[HTTPAuthorizationCredentials | None, Security(bearer_scheme)], session: Annotated[AsyncSession, Depends(request_session)], settings: Annotated[Settings, Depends(get_settings)]) -> User:
     if credentials is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated", headers={"WWW-Authenticate": "Bearer"})
     try:
-        payload = decode_token(
-            credentials.credentials,
-            settings.jwt_secret_key.get_secret_value(),
-            settings.jwt_algorithm,
-        )
+        payload = decode_token(credentials.credentials, settings.jwt_secret_key.get_secret_value(), settings.jwt_algorithm)
     except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-            headers={"WWW-Authenticate": "Bearer"},
-        ) from exc
-
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token", headers={"WWW-Authenticate": "Bearer"}) from exc
     if payload.get("type") not in ("access",):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token type",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token type", headers={"WWW-Authenticate": "Bearer"})
     user_id = int(payload["sub"])
     repo = BaseRepository(session, User)
     user = await repo.get(user_id)
     if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return user
 
 
-async def get_current_active_user(
-    current_user: Annotated[User, Depends(get_current_user)],
-) -> User:
+async def get_current_active_user(current_user: Annotated[User, Depends(get_current_user)]) -> User:
     if not current_user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Inactive user",
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")
     return current_user
 
 
@@ -163,45 +123,34 @@ def get_redis(request: Request) -> Redis:
     return request.app.state.redis
 
 
-async def get_user_repository(
-    session: Annotated[AsyncSession, Depends(request_session)],
-) -> BaseRepository[User]:
+async def get_user_repository(session: Annotated[AsyncSession, Depends(request_session)]) -> BaseRepository[User]:
     return BaseRepository(session, User)
 
 
-def get_health_service(
-    session: Annotated[AsyncSession, Depends(request_session)],
-    redis: Annotated[Redis, Depends(get_redis)],
-) -> HealthService:
+def get_health_service(session: Annotated[AsyncSession, Depends(request_session)], redis: Annotated[Redis, Depends(get_redis)]) -> HealthService:
     return HealthService(SqlAlchemyRedisHealthRepository(session, redis))
 
 
-def get_auth_service(
-    session: Annotated[AsyncSession, Depends(request_session)],
-    settings: Annotated[Settings, Depends(get_settings)],
-) -> AuthService:
+def get_auth_service(session: Annotated[AsyncSession, Depends(request_session)], settings: Annotated[Settings, Depends(get_settings)]) -> AuthService:
     return AuthService(session, settings)
 
 
-def get_user_service(
-    session: Annotated[AsyncSession, Depends(request_session)],
-    settings: Annotated[Settings, Depends(get_settings)],
-) -> UserService:
+def get_user_service(session: Annotated[AsyncSession, Depends(request_session)], settings: Annotated[Settings, Depends(get_settings)]) -> UserService:
     return UserService(session, settings)
+
+
+def get_qr_auth_service(session: Annotated[AsyncSession, Depends(request_session)], settings: Annotated[Settings, Depends(get_settings)]) -> QRAuthService:
+    return QRAuthService(session, settings)
 
 
 def get_rate_limiter(request: Request) -> RateLimiter | None:
     redis = getattr(request.app.state, "redis", None)
-    if redis is None:
-        return None
-    return RateLimiter(redis)
+    return RateLimiter(redis) if redis is not None else None
 
 
 def get_brute_force_protector(request: Request) -> BruteForceProtector | None:
     redis = getattr(request.app.state, "redis", None)
-    if redis is None:
-        return None
-    return BruteForceProtector(redis)
+    return BruteForceProtector(redis) if redis is not None else None
 
 
 def get_cache(request: Request) -> RedisCache:
@@ -216,80 +165,38 @@ def get_task_queue(request: Request) -> TaskQueue | None:
     return getattr(request.app.state, "task_queue", None)
 
 
-def get_notification_delivery_service(
-    settings: Annotated[Settings, Depends(get_settings)],
-) -> NotificationDeliveryService:
+def get_notification_delivery_service(settings: Annotated[Settings, Depends(get_settings)]) -> NotificationDeliveryService:
     return NotificationDeliveryService(settings)
 
 
-def get_alert_evaluation_service(
-    session: Annotated[AsyncSession, Depends(request_session)],
-    delivery: Annotated[NotificationDeliveryService, Depends(get_notification_delivery_service)],
-) -> AlertEvaluationService:
+def get_alert_evaluation_service(session: Annotated[AsyncSession, Depends(request_session)], delivery: Annotated[NotificationDeliveryService, Depends(get_notification_delivery_service)]) -> AlertEvaluationService:
     return AlertEvaluationService(session, delivery)
 
 
-def get_notification_service(
-    session: Annotated[AsyncSession, Depends(request_session)],
-    settings: Annotated[Settings, Depends(get_settings)],
-) -> NotificationService:
+def get_notification_service(session: Annotated[AsyncSession, Depends(request_session)], settings: Annotated[Settings, Depends(get_settings)]) -> NotificationService:
     return NotificationService(session, settings)
 
 
-# --- session-only service factories (generated) ---------------------------
-#
-# Services constructed solely from the request session are declared here and
-# exposed as ``get_<name>`` dependencies, keeping routers unchanged.
-
 _SESSION_SERVICE_REGISTRY: dict[str, type] = {
-    "ai_registry_service": AIModelRegistryService,
-    "audit_service": AuditService,
-    "scheduler_service": SchedulerService,
-    "company_service": CompanyService,
-    "price_service": PriceService,
-    "corporate_action_service": CorporateActionService,
-    "news_engine": NewsEngine,
-    "portfolio_engine": PortfolioEngine,
-    "report_generator": ReportGenerator,
-    "prediction_engine": PredictionEngine,
-    "explainability_engine": ExplainabilityEngine,
-    "explainability_dashboard_service": ExplainabilityDashboardService,
-    "ensemble_ai_engine": EnsembleAIEngine,
-    "decision_engine": DecisionEngine,
-    "risk_engine": RiskEngine,
-    "historical_similarity_engine": HistoricalSimilarityEngine,
-    "pattern_recognition_engine": PatternRecognitionEngine,
-    "market_breadth_engine": MarketBreadthEngine,
-    "sector_engine": SectorEngine,
-    "fundamental_engine": FundamentalEngine,
-    "technical_indicator_engine": TechnicalIndicatorEngine,
-    "news_nlp_engine": NewsNLPEngine,
-    "financial_statement_engine": FinancialStatementEngine,
-    "data_io_service": DataImportExportService,
-    "financial_analysis_service": FinancialAnalysisService,
-    "corporate_action_detector": CorporateActionDetector,
-    "corporate_action_engine": CorporateActionEngine,
-    "intraday_service": IntradayService,
-    "preference_service": PreferenceService,
-    "broker_integration_service": BrokerIntegrationService,
-    "backtest_engine": BacktestEngine,
-    "strategy_builder": StrategyBuilder,
-    "optimization_engine": OptimizationEngine,
-    "market_data_service": MarketDataService,
-    "learning_engine": LearningEngine,
-    "knowledge_graph_service": KnowledgeGraphService,
-    "corporate_tracking_service": CorporateTrackingService,
-    "order_service": OrderService,
-    "institutional_analysis_service": InstitutionalAnalysisService,
+    "ai_registry_service": AIModelRegistryService, "audit_service": AuditService, "scheduler_service": SchedulerService,
+    "company_service": CompanyService, "price_service": PriceService, "corporate_action_service": CorporateActionService,
+    "news_engine": NewsEngine, "portfolio_engine": PortfolioEngine, "report_generator": ReportGenerator, "prediction_engine": PredictionEngine,
+    "explainability_engine": ExplainabilityEngine, "explainability_dashboard_service": ExplainabilityDashboardService, "ensemble_ai_engine": EnsembleAIEngine,
+    "decision_engine": DecisionEngine, "risk_engine": RiskEngine, "historical_similarity_engine": HistoricalSimilarityEngine,
+    "pattern_recognition_engine": PatternRecognitionEngine, "market_breadth_engine": MarketBreadthEngine, "sector_engine": SectorEngine,
+    "fundamental_engine": FundamentalEngine, "technical_indicator_engine": TechnicalIndicatorEngine, "news_nlp_engine": NewsNLPEngine,
+    "financial_statement_engine": FinancialStatementEngine, "data_io_service": DataImportExportService, "financial_analysis_service": FinancialAnalysisService,
+    "corporate_action_detector": CorporateActionDetector, "corporate_action_engine": CorporateActionEngine, "intraday_service": IntradayService,
+    "preference_service": PreferenceService, "broker_integration_service": BrokerIntegrationService, "backtest_engine": BacktestEngine,
+    "strategy_builder": StrategyBuilder, "optimization_engine": OptimizationEngine, "market_data_service": MarketDataService,
+    "learning_engine": LearningEngine, "knowledge_graph_service": KnowledgeGraphService, "corporate_tracking_service": CorporateTrackingService,
+    "order_service": OrderService, "institutional_analysis_service": InstitutionalAnalysisService,
 }
 
 
 def _make_session_factory(name: str, service_cls: type) -> Callable[..., object]:
-    """Build a dependency provider that constructs ``service_cls(session)``."""
-
     async def _factory(session: Annotated[AsyncSession, Depends(request_session)]) -> object:
         return service_cls(session)
-
     _factory.__name__ = f"get_{name}"
     _factory.__qualname__ = _factory.__name__
     _factory.__doc__ = f"Provide a {service_cls.__name__} bound to the request session."
@@ -299,26 +206,4 @@ def _make_session_factory(name: str, service_cls: type) -> Callable[..., object]
 for _service_name, _service_cls in _SESSION_SERVICE_REGISTRY.items():
     globals()[f"get_{_service_name}"] = _make_session_factory(_service_name, _service_cls)
 
-__all__ = [  # noqa: F822
-    "api_key_header",
-    "bearer_scheme",
-    "require_api_key",
-    "request_session",
-    "get_db",
-    "get_current_user",
-    "get_current_active_user",
-    "get_redis",
-    "get_user_repository",
-    "get_health_service",
-    "get_auth_service",
-    "get_user_service",
-    "get_rate_limiter",
-    "get_brute_force_protector",
-    "get_cache",
-    "get_session_store",
-    "get_task_queue",
-    "get_notification_delivery_service",
-    "get_alert_evaluation_service",
-    "get_notification_service",
-    *(f"get_{name}" for name in _SESSION_SERVICE_REGISTRY),
-]
+__all__ = ["api_key_header", "bearer_scheme", "require_api_key", "request_session", "get_db", "get_current_user", "get_current_active_user", "get_redis", "get_user_repository", "get_health_service", "get_auth_service", "get_user_service", "get_qr_auth_service", "get_rate_limiter", "get_brute_force_protector", "get_cache", "get_session_store", "get_task_queue", "get_notification_delivery_service", "get_alert_evaluation_service", "get_notification_service", *(f"get_{name}" for name in _SESSION_SERVICE_REGISTRY)]
