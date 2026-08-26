@@ -31,3 +31,6 @@ class User(PrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     refresh_tokens: Mapped[list["RefreshToken"]] = relationship(
         "RefreshToken", back_populates="user", cascade="all, delete-orphan",
     )
+    devices: Mapped[list["UserDevice"]] = relationship(
+        "UserDevice", back_populates="customer", cascade="all, delete-orphan",
+    )
