@@ -20,6 +20,8 @@ class User(PrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     # MFA state. Store the TOTP secret encrypted at rest; never expose it from API responses.
     mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     mfa_secret_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # JSON-encoded SHA-256 recovery-code hashes. Recovery codes are single-use.
+    mfa_recovery_codes_hashes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     audit_logs: Mapped[list["AuditLog"]] = relationship(back_populates="user", cascade="all, delete-orphan")  # type: ignore[name-defined]
     preferences: Mapped[list["UserPreference"]] = relationship(back_populates="user", cascade="all, delete-orphan")  # type: ignore[name-defined]
