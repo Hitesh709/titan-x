@@ -7,7 +7,7 @@ from starlette.responses import PlainTextResponse, RedirectResponse, Response
 from starlette.types import ASGIApp
 
 from titan_x.core.config import Settings
-from titan_x.security.rate_limit import RateLimiter
+from titan_x.infrastructure.rate_limiter import RateLimiter
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -50,15 +50,22 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     def __init__(self, app: ASGIApp, settings: Settings) -> None:
         super().__init__(app)
         self.enabled = settings.rate_limit_enabled
-        self.limiter = RateLimiter(
-            settings.rate_limit_requests,
-            settings.rate_limit_window_seconds,
-            str(settings.redis_url),
-        )
+        self.max_requests = settings.rate_limit_requests
+        self.window_seconds = settings.rate_limit_window_seconds
 
     async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         if self.enabled and request.url.path.startswith("/api/"):
-            await self.limiter.check(request)
+            redis = getattr(request.app.state, "redis", None)
+            if redis is not None:
+                limiter = RateLimiter(redis, prefix="titanx:middleware:ratelimit")
+                client_key = request.client.host if request.client else "unknown"
+                allowed, _, _ = await limiter.check(
+                    f"ip:{client_key}",
+                    self.max_requests,
+                    self.window_seconds,
+                )
+                if not allowed:
+                    return PlainTextResponse("Rate limit exceeded", status_code=429)
         return await call_next(request)
 
 
