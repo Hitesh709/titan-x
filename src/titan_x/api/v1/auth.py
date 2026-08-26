@@ -37,10 +37,7 @@ auth_router = APIRouter(tags=["auth"])
 
 
 @auth_router.post("/auth/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
-async def register(
-    body: RegisterRequest,
-    service: Annotated[AuthService, Depends(get_auth_service)],
-) -> RegisterResponse:
+async def register(body: RegisterRequest, service: Annotated[AuthService, Depends(get_auth_service)]) -> RegisterResponse:
     try:
         user = await service.register(email=body.email, password=body.password)
     except ValueError as exc:
@@ -49,80 +46,49 @@ async def register(
 
 
 @auth_router.post("/auth/login", response_model=TokenResponse)
-async def login(
-    body: LoginRequest,
-    service: Annotated[AuthService, Depends(get_auth_service)],
-    rate_limiter: Annotated[RateLimiter | None, Depends(get_rate_limiter)],
-    brute_force: Annotated[BruteForceProtector | None, Depends(get_brute_force_protector)],
-    settings: Annotated[Settings, Depends(get_settings)],
-) -> TokenResponse:
+async def login(body: LoginRequest, service: Annotated[AuthService, Depends(get_auth_service)], rate_limiter: Annotated[RateLimiter | None, Depends(get_rate_limiter)], brute_force: Annotated[BruteForceProtector | None, Depends(get_brute_force_protector)], settings: Annotated[Settings, Depends(get_settings)]) -> TokenResponse:
     if rate_limiter is not None and settings.rate_limit_enabled:
-        allowed, _, _ = await rate_limiter.check(
-            f"login:{body.email}", settings.rate_limit_requests, settings.rate_limit_window_seconds,
-        )
+        allowed, _, _ = await rate_limiter.check(f"login:{body.email}", settings.rate_limit_requests, settings.rate_limit_window_seconds)
         if not allowed:
             raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many requests")
-
     if brute_force is not None:
-        blocked = await brute_force.is_blocked(
-            body.email, settings.brute_force_max_attempts, settings.brute_force_window_minutes, settings.brute_force_block_minutes,
-        )
+        blocked = await brute_force.is_blocked(body.email, settings.brute_force_max_attempts, settings.brute_force_window_minutes, settings.brute_force_block_minutes)
         if blocked:
             raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Account temporarily blocked. Try again later.")
-
     try:
         user = await service.authenticate(email=body.email, password=body.password)
     except ValueError as exc:
         if brute_force is not None and settings.rate_limit_enabled:
-            await brute_force.record_failure_sorted(
-                body.email, settings.brute_force_max_attempts, settings.brute_force_window_minutes, settings.brute_force_block_minutes,
-            )
+            await brute_force.record_failure_sorted(body.email, settings.brute_force_max_attempts, settings.brute_force_window_minutes, settings.brute_force_block_minutes)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc))
-
     if brute_force is not None:
         await brute_force.reset_attempts(body.email)
-
     if user.mfa_enabled:
         challenge = create_mfa_challenge_token(user.id, settings)
         return TokenResponse(mfa_required=True, mfa_challenge=challenge)
-
     access, refresh, _ = await service.issue_tokens(user)
     return TokenResponse(access_token=access, refresh_token=refresh)
 
 
 @auth_router.post("/auth/mfa-login", response_model=TokenResponse)
-async def mfa_login(
-    body: MFALoginRequest,
-    service: Annotated[AuthService, Depends(get_auth_service)],
-    rate_limiter: Annotated[RateLimiter | None, Depends(get_rate_limiter)],
-    settings: Annotated[Settings, Depends(get_settings)],
-) -> TokenResponse:
+async def mfa_login(body: MFALoginRequest, service: Annotated[AuthService, Depends(get_auth_service)], rate_limiter: Annotated[RateLimiter | None, Depends(get_rate_limiter)], settings: Annotated[Settings, Depends(get_settings)]) -> TokenResponse:
     user_id = service.decode_mfa_challenge(body.challenge)
-
     if rate_limiter is not None and settings.rate_limit_enabled:
-        allowed, _, _ = await rate_limiter.check(
-            f"mfa-login:{user_id}", 5, 300,
-        )
+        allowed, _, _ = await rate_limiter.check(f"mfa-login:{user_id}", 5, 300)
         if not allowed:
             raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many MFA attempts")
-
     user = await service.get_user(user_id)
     if user is None or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid MFA challenge")
-
     try:
         access, refresh, _ = await service.complete_mfa_login(user, body.code.strip())
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc))
-
     return TokenResponse(access_token=access, refresh_token=refresh)
 
 
 @auth_router.post("/auth/refresh", response_model=RefreshTokenResponse)
-async def refresh(
-    body: RefreshTokenRequest,
-    service: Annotated[AuthService, Depends(get_auth_service)],
-) -> RefreshTokenResponse:
+async def refresh(body: RefreshTokenRequest, service: Annotated[AuthService, Depends(get_auth_service)]) -> RefreshTokenResponse:
     try:
         jti, user_id = service.decode_refresh_token(body.refresh_token)
         access, new_refresh, _ = await service.refresh(jti, user_id)
@@ -132,10 +98,7 @@ async def refresh(
 
 
 @auth_router.post("/auth/logout", response_model=MessageResponse)
-async def logout(
-    body: LogoutRequest,
-    service: Annotated[AuthService, Depends(get_auth_service)],
-) -> MessageResponse:
+async def logout(body: LogoutRequest, service: Annotated[AuthService, Depends(get_auth_service)]) -> MessageResponse:
     try:
         jti, user_id = service.decode_refresh_token(body.refresh_token)
         await service.logout(jti, user_id)
@@ -144,12 +107,17 @@ async def logout(
     return MessageResponse(message="Logged out successfully")
 
 
-@auth_router.post("/auth/forgot-password", response_model=ForgotPasswordResponse)
-async def forgot_password(
-    body: ForgotPasswordRequest,
+@auth_router.post("/auth/logout-all", response_model=MessageResponse)
+async def logout_all(
+    current_user: Annotated[User, Depends(get_current_active_user)],
     service: Annotated[AuthService, Depends(get_auth_service)],
-    settings: Annotated[Settings, Depends(get_settings)],
-) -> ForgotPasswordResponse:
+) -> MessageResponse:
+    count = await service.revoke_all_sessions(current_user.id)
+    return MessageResponse(message=f"Revoked {count} active sessions")
+
+
+@auth_router.post("/auth/forgot-password", response_model=ForgotPasswordResponse)
+async def forgot_password(body: ForgotPasswordRequest, service: Annotated[AuthService, Depends(get_auth_service)], settings: Annotated[Settings, Depends(get_settings)]) -> ForgotPasswordResponse:
     token = await service.forgot_password(email=body.email)
     reset_url = None
     if token is not None:
@@ -158,10 +126,7 @@ async def forgot_password(
 
 
 @auth_router.post("/auth/reset-password", response_model=MessageResponse)
-async def reset_password(
-    body: ResetPasswordRequest,
-    service: Annotated[AuthService, Depends(get_auth_service)],
-) -> MessageResponse:
+async def reset_password(body: ResetPasswordRequest, service: Annotated[AuthService, Depends(get_auth_service)]) -> MessageResponse:
     try:
         await service.reset_password(token=body.token, new_password=body.new_password)
     except ValueError as exc:
@@ -170,11 +135,7 @@ async def reset_password(
 
 
 @auth_router.post("/auth/send-verification", response_model=SendVerificationResponse)
-async def send_verification(
-    body: SendVerificationRequest,
-    service: Annotated[AuthService, Depends(get_auth_service)],
-    settings: Annotated[Settings, Depends(get_settings)],
-) -> SendVerificationResponse:
+async def send_verification(body: SendVerificationRequest, service: Annotated[AuthService, Depends(get_auth_service)], settings: Annotated[Settings, Depends(get_settings)]) -> SendVerificationResponse:
     result = await service.get_user_for_verification(email=body.email)
     if result is None:
         return SendVerificationResponse(message="If the email exists, a verification link has been sent")
@@ -184,10 +145,7 @@ async def send_verification(
 
 
 @auth_router.post("/auth/verify-email", response_model=MessageResponse)
-async def verify_email(
-    body: VerifyEmailRequest,
-    service: Annotated[AuthService, Depends(get_auth_service)],
-) -> MessageResponse:
+async def verify_email(body: VerifyEmailRequest, service: Annotated[AuthService, Depends(get_auth_service)]) -> MessageResponse:
     try:
         await service.verify_email(token=body.token)
     except ValueError as exc:
@@ -196,13 +154,5 @@ async def verify_email(
 
 
 @auth_router.get("/auth/me", response_model=RegisterResponse)
-async def get_me(
-    current_user: Annotated[User, Depends(get_current_active_user)],
-) -> RegisterResponse:
-    return RegisterResponse(
-        id=current_user.id,
-        email=current_user.email,
-        role=current_user.role,
-        is_active=current_user.is_active,
-        is_verified=current_user.is_verified,
-    )
+async def get_me(current_user: Annotated[User, Depends(get_current_active_user)]) -> RegisterResponse:
+    return RegisterResponse(id=current_user.id, email=current_user.email, role=current_user.role, is_active=current_user.is_active, is_verified=current_user.is_verified)
