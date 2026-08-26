@@ -1,108 +1,203 @@
 from __future__ import annotations
-import base64, hashlib, secrets
+
+import hashlib
+import hmac
+import secrets
 from datetime import datetime, timedelta, timezone
+
 import qrcode
 from qrcode.image.svg import SvgPathImage
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from cryptography.exceptions import InvalidSignature
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat, load_pem_public_key
+
 from titan_x.core.config import Settings
-from titan_x.core.security import create_access_token, create_refresh_token
+from titan_x.core.security import create_access_token, create_refresh_token, hash_password
 from titan_x.db.repository import BaseRepository
 from titan_x.models.auth_challenge import AuthChallenge
 from titan_x.models.refresh_token import RefreshToken
 from titan_x.models.user import User
-from titan_x.models.user_device import UserDevice
+
 
 class QRAuthService:
     CHALLENGE_TTL_SECONDS = 60
     BROWSER_COOKIE = "titan_x_qr_session"
-    QR_PREFIX = "titan-x:qr-login:"
+    SMS_PREFIX = "TXQR:"
+
     def __init__(self, session: AsyncSession, settings: Settings) -> None:
-        self._session = session; self._settings = settings; self._challenge_repo = BaseRepository(session, AuthChallenge); self._device_repo = BaseRepository(session, UserDevice); self._token_repo = BaseRepository(session, RefreshToken)
+        self._session = session
+        self._settings = settings
+        self._challenge_repo = BaseRepository(session, AuthChallenge)
+        self._token_repo = BaseRepository(session, RefreshToken)
+
     @staticmethod
-    def _hash(value: str) -> str: return hashlib.sha256(value.encode("utf-8")).hexdigest()
+    def _hash(value: str) -> str:
+        return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
     @staticmethod
-    def _now() -> datetime: return datetime.now(timezone.utc)
-    def create_browser_session(self) -> str: return secrets.token_urlsafe(32)
-    async def create_challenge(self, browser_session: str, ip_address: str | None, user_agent: str | None) -> tuple[AuthChallenge, str, str]:
-        raw_challenge = secrets.token_urlsafe(32); public_id = secrets.token_urlsafe(18); now = self._now()
-        challenge = await self._challenge_repo.create(challenge_id=public_id, challenge_hash=self._hash(raw_challenge), browser_session_id=self._hash(browser_session), status="PENDING", expires_at=now + timedelta(seconds=self.CHALLENGE_TTL_SECONDS), ip_address=ip_address, user_agent=user_agent)
-        qr_target = f"{self._settings.frontend_url.rstrip('/')}/mobile-auth?challenge={raw_challenge}"
-        qr_svg = qrcode.make(qr_target, image_factory=SvgPathImage).to_string(encoding="unicode")
-        qr_data_url = "data:image/svg+xml;base64," + base64.b64encode(qr_svg.encode("utf-8")).decode("ascii")
-        return challenge, raw_challenge, qr_data_url
-    async def register_device(self, user: User, device_name: str, public_key: str) -> UserDevice:
-        try: key = load_pem_public_key(public_key.encode("utf-8"))
-        except (ValueError, TypeError) as exc: raise ValueError("Invalid device public key") from exc
-        if not isinstance(key, Ed25519PublicKey): raise ValueError("Only Ed25519 device public keys are supported")
-        normalized = key.public_bytes(Encoding.PEM, PublicFormat.SubjectPublicKeyInfo).decode("utf-8")
-        existing = await self._session.execute(select(UserDevice).where(UserDevice.customer_id == user.id, UserDevice.device_public_key == normalized, UserDevice.revoked_at.is_(None)))
-        if existing.scalar_one_or_none() is not None: raise ValueError("Device is already registered")
-        return await self._device_repo.create(customer_id=user.id, device_name=device_name.strip()[:120] or "Registered mobile", device_public_key=normalized, device_status="active")
-    async def revoke_device(self, user: User, device_id: int) -> None:
-        device = await self._device_repo.get(device_id)
-        if device is None or device.customer_id != user.id: raise ValueError("Device not found")
-        device.device_status = "revoked"; device.revoked_at = self._now()
-    async def _get_by_raw(self, raw_challenge: str) -> AuthChallenge:
-        if not raw_challenge or len(raw_challenge) > 128: raise ValueError("Invalid QR challenge")
-        result = await self._session.execute(select(AuthChallenge).where(AuthChallenge.challenge_hash == self._hash(raw_challenge)))
+    def _now() -> datetime:
+        return datetime.now(timezone.utc)
+
+    @staticmethod
+    def normalize_phone(value: str) -> str:
+        raw = value.strip()
+        digits = "".join(ch for ch in raw if ch.isdigit())
+        if raw.startswith("+") and 7 <= len(digits) <= 15:
+            return "+" + digits
+        if 7 <= len(digits) <= 15:
+            return "+" + digits
+        raise ValueError("Invalid phone number")
+
+    def create_browser_session(self) -> str:
+        return secrets.token_urlsafe(32)
+
+    def _qr(self, raw_challenge: str) -> str:
+        target = f"{self._settings.frontend_url.rstrip('/')}/mobile-auth?challenge={raw_challenge}"
+        svg = qrcode.make(target, image_factory=SvgPathImage).to_string(encoding="unicode")
+        import base64
+        return "data:image/svg+xml;base64," + base64.b64encode(svg.encode()).decode("ascii")
+
+    async def create_login_challenge(self, identifier: str, browser_session: str, ip_address: str | None, user_agent: str | None) -> tuple[AuthChallenge, str]:
+        identifier = identifier.strip()
+        result = await self._session.execute(select(User).where((User.email == identifier.lower()) | (User.username == identifier)))
+        user = result.scalar_one_or_none()
+        if user is None or not user.is_active or not user.phone:
+            raise ValueError("QR login is not available for this account")
+        phone = self.normalize_phone(user.phone)
+        return await self._create_challenge(browser_session, "LOGIN", user.id, phone, None, None, None, None, ip_address, user_agent)
+
+    async def create_registration_challenge(self, username: str, password: str, confirm_password: str, email: str | None, phone: str | None, browser_session: str, ip_address: str | None, user_agent: str | None) -> tuple[AuthChallenge, str]:
+        if password != confirm_password:
+            raise ValueError("Passwords do not match")
+        email_value = email.lower().strip() if email else None
+        phone_value = self.normalize_phone(phone) if phone else None
+        if not email_value and not phone_value:
+            raise ValueError("Email or phone is required")
+        checks = [select(User).where(User.username == username.strip())]
+        if email_value:
+            checks.append(select(User).where(User.email == email_value))
+        if phone_value:
+            checks.append(select(User).where(User.phone == phone_value))
+        for query in checks:
+            if (await self._session.execute(query)).scalar_one_or_none() is not None:
+                raise ValueError("Account information is already registered")
+        if not email_value:
+            email_value = f"{phone_value.replace('+', '')}@phone.titanx.local"
+        return await self._create_challenge(browser_session, "REGISTRATION", None, phone_value, username.strip(), email_value, phone_value, hash_password(password), ip_address, user_agent)
+
+    async def _create_challenge(self, browser_session: str, operation: str, customer_id: int | None, verification_phone: str | None, registration_username: str | None, registration_email: str | None, registration_phone: str | None, registration_password_hash: str | None, ip_address: str | None, user_agent: str | None) -> tuple[AuthChallenge, str]:
+        raw = secrets.token_urlsafe(32)
+        public_id = secrets.token_urlsafe(18)
+        now = self._now()
+        challenge = await self._challenge_repo.create(
+            challenge_id=public_id,
+            challenge_hash=self._hash(raw),
+            customer_id=customer_id,
+            browser_session_id=self._hash(browser_session),
+            status="PENDING",
+            operation=operation,
+            expires_at=now + timedelta(seconds=self.CHALLENGE_TTL_SECONDS),
+            verification_phone=verification_phone,
+            registration_username=registration_username,
+            registration_email=registration_email,
+            registration_phone=registration_phone,
+            registration_password_hash=registration_password_hash,
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
+        return challenge, raw
+
+    async def create_challenge(self, *args, **kwargs):
+        # Backward-compatible alias retained so callers do not create a second QR implementation.
+        return await self.create_login_challenge(*args, **kwargs)
+
+    async def _get_by_raw(self, raw: str) -> AuthChallenge:
+        if not raw or len(raw) > 128:
+            raise ValueError("Invalid QR challenge")
+        result = await self._session.execute(select(AuthChallenge).where(AuthChallenge.challenge_hash == self._hash(raw)))
         challenge = result.scalar_one_or_none()
-        if challenge is None: raise ValueError("Invalid QR challenge")
-        if challenge.expires_at <= self._now() and challenge.status in {"PENDING", "SCANNED"}: challenge.status = "EXPIRED"; raise ValueError("QR challenge expired")
+        if challenge is None:
+            raise ValueError("Invalid QR challenge")
+        if challenge.expires_at <= self._now() and challenge.status in {"PENDING", "SCANNED"}:
+            challenge.status = "EXPIRED"
+            await self._session.flush()
+            raise ValueError("QR challenge expired")
         return challenge
-    async def _get_by_public_id(self, challenge_id: str) -> AuthChallenge:
-        if not challenge_id or len(challenge_id) > 64: raise ValueError("Invalid QR challenge")
+
+    async def sms_approve(self, raw_challenge: str, from_number: str) -> AuthChallenge:
+        challenge = await self._get_by_raw(raw_challenge)
+        phone = self.normalize_phone(from_number)
+        if challenge.status != "PENDING":
+            raise ValueError("QR challenge is no longer pending")
+        if not challenge.verification_phone or not hmac.compare_digest(phone, self.normalize_phone(challenge.verification_phone)):
+            raise ValueError("SMS sender does not match the verified mobile number")
+        now = self._now()
+        result = await self._session.execute(
+            update(AuthChallenge)
+            .where(AuthChallenge.id == challenge.id, AuthChallenge.status == "PENDING", AuthChallenge.expires_at > now)
+            .values(status="APPROVED", customer_id=challenge.customer_id, scanned_at=now, approved_at=now)
+        )
+        if result.rowcount != 1:
+            raise ValueError("QR challenge was already used or expired")
+        await self._session.flush()
+        return challenge
+
+    async def decline(self, raw_challenge: str, from_number: str) -> None:
+        challenge = await self._get_by_raw(raw_challenge)
+        phone = self.normalize_phone(from_number)
+        if challenge.status != "PENDING" or not challenge.verification_phone or not hmac.compare_digest(phone, self.normalize_phone(challenge.verification_phone)):
+            raise ValueError("Invalid QR decline request")
+        result = await self._session.execute(update(AuthChallenge).where(AuthChallenge.id == challenge.id, AuthChallenge.status == "PENDING").values(status="DECLINED", declined_at=self._now()))
+        if result.rowcount != 1:
+            raise ValueError("QR challenge could not be declined")
+
+    async def cancel(self, challenge_id: str, browser_session: str) -> None:
         result = await self._session.execute(select(AuthChallenge).where(AuthChallenge.challenge_id == challenge_id))
         challenge = result.scalar_one_or_none()
-        if challenge is None: raise ValueError("Invalid QR challenge")
-        if challenge.expires_at <= self._now() and challenge.status in {"PENDING", "SCANNED"}: challenge.status = "EXPIRED"; raise ValueError("QR challenge expired")
-        return challenge
-    async def scan(self, raw_challenge: str, user: User, device_id: int) -> AuthChallenge:
-        device = await self._device_repo.get(device_id)
-        if device is None or device.customer_id != user.id or not device.is_active: raise ValueError("Invalid or revoked device")
-        challenge = await self._get_by_raw(raw_challenge)
-        if challenge.status != "PENDING": raise ValueError("QR challenge is no longer pending")
-        now = self._now(); result = await self._session.execute(update(AuthChallenge).where(AuthChallenge.id == challenge.id, AuthChallenge.status == "PENDING", AuthChallenge.expires_at > now).values(status="SCANNED", customer_id=user.id, device_id=device.id, scanned_at=now))
-        if result.rowcount != 1: raise ValueError("QR challenge was already claimed")
-        device.last_seen_at = now; await self._session.flush(); return challenge
-    async def approve(self, raw_challenge: str, user: User, device_id: int, signature_b64: str) -> AuthChallenge:
-        device = await self._device_repo.get(device_id)
-        if device is None or device.customer_id != user.id or not device.is_active: raise ValueError("Invalid or revoked device")
-        challenge = await self._get_by_raw(raw_challenge)
-        if challenge.status != "SCANNED" or challenge.customer_id != user.id or challenge.device_id != device.id: raise ValueError("QR challenge is not awaiting approval")
-        try:
-            public_key = load_pem_public_key(device.device_public_key.encode("utf-8"))
-            if not isinstance(public_key, Ed25519PublicKey): raise ValueError("Unsupported device key")
-            signature = base64.b64decode(signature_b64, validate=True); public_key.verify(signature, (self.QR_PREFIX + raw_challenge).encode("utf-8"))
-        except (ValueError, InvalidSignature, UnicodeError) as exc: raise ValueError("Invalid device signature") from exc
-        now = self._now(); result = await self._session.execute(update(AuthChallenge).where(AuthChallenge.id == challenge.id, AuthChallenge.status == "SCANNED", AuthChallenge.customer_id == user.id, AuthChallenge.device_id == device.id, AuthChallenge.expires_at > now).values(status="APPROVED", approved_at=now))
-        if result.rowcount != 1: raise ValueError("QR challenge could not be approved")
-        device.last_seen_at = now; await self._session.flush(); return challenge
-    async def decline(self, raw_challenge: str, user: User, device_id: int) -> None:
-        device = await self._device_repo.get(device_id)
-        if device is None or device.customer_id != user.id or not device.is_active: raise ValueError("Invalid or revoked device")
-        challenge = await self._get_by_raw(raw_challenge)
-        if challenge.status != "SCANNED" or challenge.customer_id != user.id or challenge.device_id != device.id: raise ValueError("QR challenge is not awaiting decision")
-        result = await self._session.execute(update(AuthChallenge).where(AuthChallenge.id == challenge.id, AuthChallenge.status == "SCANNED").values(status="DECLINED", declined_at=self._now()))
-        if result.rowcount != 1: raise ValueError("QR challenge could not be declined")
-    async def cancel(self, challenge_id: str, browser_session: str) -> None:
-        challenge = await self._get_by_public_id(challenge_id)
-        if challenge.browser_session_id != self._hash(browser_session): raise ValueError("Invalid browser challenge session")
-        if challenge.status in {"PENDING", "SCANNED"}: challenge.status = "CANCELLED"; challenge.cancelled_at = self._now()
+        if challenge is None or not hmac.compare_digest(challenge.browser_session_id, self._hash(browser_session)):
+            raise ValueError("Invalid browser challenge session")
+        if challenge.status in {"PENDING", "SCANNED"}:
+            challenge.status = "CANCELLED"
+            challenge.cancelled_at = self._now()
+            await self._session.flush()
+
+    def verify_webhook(self, from_number: str, body: str, signature: str | None) -> bool:
+        secret = self._settings.qr_sms_webhook_secret
+        if secret is None:
+            return self._settings.environment != "production"
+        if not signature:
+            return False
+        expected = hmac.new(secret.get_secret_value().encode(), f"{from_number}|{body}".encode(), hashlib.sha256).hexdigest()
+        return hmac.compare_digest(expected, signature)
+
     async def status_and_consume(self, challenge_id: str, browser_session: str) -> tuple[str, User | None, tuple[str, str] | None]:
-        challenge = await self._get_by_public_id(challenge_id)
-        if not secrets.compare_digest(challenge.browser_session_id, self._hash(browser_session)): raise ValueError("Invalid browser challenge session")
-        if challenge.status in {"PENDING", "SCANNED"} and challenge.expires_at <= self._now(): challenge.status = "EXPIRED"; return "EXPIRED", None, None
-        if challenge.status == "DECLINED": return "DECLINED", None, None
-        if challenge.status != "APPROVED" or challenge.customer_id is None: return challenge.status, None, None
-        result = await self._session.execute(update(AuthChallenge).where(AuthChallenge.id == challenge.id, AuthChallenge.status == "APPROVED").values(status="USED", used_at=self._now()).returning(AuthChallenge.customer_id))
-        row = result.first()
-        if row is None: return "USED", None, None
-        user = await self._session.get(User, int(row[0]))
-        if user is None or not user.is_active: raise ValueError("Account is inactive")
-        access = create_access_token(user.id, self._settings); refresh, jti, expires_at = create_refresh_token(user.id, self._settings)
-        await self._token_repo.create(token_jti=jti, user_id=user.id, expires_at=expires_at); await self._session.flush()
+        result = await self._session.execute(select(AuthChallenge).where(AuthChallenge.challenge_id == challenge_id))
+        challenge = result.scalar_one_or_none()
+        if challenge is None or not hmac.compare_digest(challenge.browser_session_id, self._hash(browser_session)):
+            raise ValueError("Invalid browser challenge session")
+        if challenge.status in {"PENDING", "SCANNED"} and challenge.expires_at <= self._now():
+            challenge.status = "EXPIRED"
+            await self._session.flush()
+            return "EXPIRED", None, None
+        if challenge.status == "DECLINED":
+            return "DECLINED", None, None
+        if challenge.status != "APPROVED":
+            return challenge.status, None, None
+        if challenge.operation == "REGISTRATION":
+            existing = await self._session.execute(select(User).where(User.username == challenge.registration_username))
+            if existing.scalar_one_or_none() is not None:
+                raise ValueError("Username is already registered")
+            user = User(username=challenge.registration_username, email=challenge.registration_email or f"{challenge.registration_phone.replace('+', '')}@phone.titanx.local", phone=challenge.registration_phone, hashed_password=challenge.registration_password_hash or "", is_active=True, is_verified=True, role="normal")
+            self._session.add(user)
+            await self._session.flush()
+        else:
+            user = await self._session.get(User, challenge.customer_id) if challenge.customer_id else None
+            if user is None or not user.is_active:
+                raise ValueError("Account is inactive")
+        consumed = await self._session.execute(update(AuthChallenge).where(AuthChallenge.id == challenge.id, AuthChallenge.status == "APPROVED").values(status="USED", used_at=self._now()).returning(AuthChallenge.id))
+        if consumed.first() is None:
+            return "USED", None, None
+        access = create_access_token(user.id, self._settings)
+        refresh, jti, expires_at = create_refresh_token(user.id, self._settings)
+        await self._token_repo.create(token_jti=jti, user_id=user.id, expires_at=expires_at)
+        await self._session.flush()
         return "USED", user, (access, refresh)
