@@ -70,6 +70,16 @@ def create_refresh_token(
     return token, jti, expires_at
 
 
+def create_mfa_challenge_token(user_id: int, settings: Settings) -> str:
+    """Create a five-minute token that can only be exchanged for MFA login."""
+    return _create_token(
+        payload={"sub": str(user_id), "type": "mfa_challenge", "jti": generate_jti()},
+        secret_key=settings.jwt_secret_key.get_secret_value(),
+        algorithm=settings.jwt_algorithm,
+        expires_delta=timedelta(minutes=5),
+    )
+
+
 def create_password_reset_token(user_id: int, email: str, settings: Settings) -> str:
     expire = timedelta(minutes=settings.password_reset_token_expire_minutes)
     return _create_token(
