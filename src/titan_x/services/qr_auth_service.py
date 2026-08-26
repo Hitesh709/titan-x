@@ -50,8 +50,11 @@ class QRAuthService:
     def create_browser_session(self) -> str:
         return secrets.token_urlsafe(32)
 
-    def _qr(self, raw_challenge: str) -> str:
-        target = f"{self._settings.frontend_url.rstrip('/')}/mobile-auth?challenge={raw_challenge}"
+    def _qr(self, raw_challenge: str, operation: str = "LOGIN") -> str:
+        # The QR contains only a short-lived challenge reference and its flow type.
+        # It never contains passwords, OTPs, access tokens, or customer data.
+        flow = "registration" if operation == "REGISTRATION" else "login"
+        target = f"{self._settings.frontend_url.rstrip('/')}/mobile-auth?challenge={raw_challenge}&flow={flow}"
         svg = qrcode.make(target, image_factory=SvgPathImage).to_string(encoding="unicode")
         import base64
         return "data:image/svg+xml;base64," + base64.b64encode(svg.encode()).decode("ascii")
