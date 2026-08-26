@@ -6,8 +6,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Validated runtime configuration loaded exclusively from environment."""
-
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     app_name: str = "TITAN X"
@@ -56,9 +54,6 @@ class Settings(BaseSettings):
     task_queue_enabled: bool = True
     task_queue_poll_interval: int = Field(default=1, ge=1, le=60)
     task_queue_max_retries: int = Field(default=3, ge=0, le=10)
-    # Run the task-queue consumer inside the API process instead of a separate
-    # (paid) worker service. Keep True on Render's free tier; set False if you
-    # deploy a dedicated worker.
     run_worker_in_process: bool = True
 
     scheduler_enabled: bool = True
@@ -75,17 +70,9 @@ class Settings(BaseSettings):
 
     push_enabled: bool = False
     push_config_json: str = "{}"
-
     sms_enabled: bool = False
     sms_provider: str = "log"
     sms_config_json: str = "{}"
-
-    alert_evaluation_interval_seconds: int = Field(default=300, ge=30, le=86400)
-    notification_log_only: bool = Field(default=True, description="Log notifications instead of sending when True")
-
-    firebase_credentials_json: str | None = None
-    firebase_enabled: bool = False
-
     sms_twilio_account_sid: str | None = None
     sms_twilio_auth_token: str | None = None
     sms_twilio_from_number: str | None = None
@@ -93,17 +80,22 @@ class Settings(BaseSettings):
     sms_aws_secret_key: str | None = None
     sms_aws_region: str = "us-east-1"
 
+    # Inbound SMS number used by the browser's sms: link. The SMS gateway must
+    # forward inbound messages to /api/v1/auth/qr/sms/webhook.
+    qr_sms_number: str | None = None
+    qr_sms_webhook_secret: SecretStr | None = None
+
+    alert_evaluation_interval_seconds: int = Field(default=300, ge=30, le=86400)
+    notification_log_only: bool = Field(default=True, description="Log notifications instead of sending when True")
+    firebase_credentials_json: str | None = None
+    firebase_enabled: bool = False
     retry_queue_enabled: bool = True
     retry_max_attempts: int = Field(default=3, ge=1, le=10)
     retry_base_delay_seconds: int = Field(default=60, ge=10, le=3600)
     retry_max_delay_seconds: int = Field(default=86400, ge=60, le=604800)
     retry_batch_size: int = Field(default=50, ge=1, le=500)
     retry_poll_interval_seconds: int = Field(default=30, ge=5, le=300)
-
     notification_history_retention_days: int = Field(default=90, ge=1, le=730)
-
-    # S3-compatible database backups (AWS S3 / Cloudflare R2 / MinIO).
-    # Disabled by default; the API runs a scheduled pg_dump upload loop when enabled.
     backup_enabled: bool = False
     backup_s3_endpoint: str | None = None
     backup_s3_bucket: str | None = None
