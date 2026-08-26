@@ -1,6 +1,7 @@
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from titan_x.api.dependencies import get_current_active_user, get_qr_auth_service, request_session
 from titan_x.api.schemas import MessageResponse, QRApproveRequest, QRChallengeRequest, QRCreateResponse, QRDeviceRegisterRequest, QRDeviceResponse, QRScanRequest, QRStatusResponse, RegisterResponse
 from titan_x.core.audit import audit_event_later
@@ -9,7 +10,6 @@ from titan_x.infrastructure.rate_limiter import RateLimiter
 from titan_x.models.user import User
 from titan_x.models.user_device import UserDevice
 from titan_x.services.qr_auth_service import QRAuthService
-from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(tags=["qr-auth"])
 def _rate_key(request: Request) -> str: return request.client.host if request.client else "unknown"
@@ -37,6 +37,8 @@ async def qr_status(challenge_id: str, request: Request, service: Annotated[QRAu
     if tokens and user:
         access, refresh = tokens; audit_event_later(request, action="LOGIN_QR_APPROVED", entity_type="auth_challenge", entity_id=user.id, category="security", severity="info")
         return QRStatusResponse(status="USED", access_token=access, refresh_token=refresh, user=RegisterResponse(id=user.id, email=user.email, role=user.role, is_active=user.is_active, is_verified=user.is_verified))
+    if state == "EXPIRED": audit_event_later(request, action="LOGIN_QR_EXPIRED", entity_type="auth_challenge", category="security", severity="info")
+    if state == "USED": audit_event_later(request, action="LOGIN_QR_REPLAY_BLOCKED", entity_type="auth_challenge", category="security", severity="warning")
     return QRStatusResponse(status=state)
 
 @router.post("/auth/qr/cancel", response_model=MessageResponse)
@@ -50,9 +52,10 @@ async def cancel_qr(body: QRChallengeRequest, request: Request, service: Annotat
 @router.post("/auth/qr/scan", response_model=MessageResponse)
 async def scan_qr(body: QRScanRequest, request: Request, current_user: Annotated[User, Depends(get_current_active_user)], service: Annotated[QRAuthService, Depends(get_qr_auth_service)], settings: Annotated[Settings, Depends(get_settings)]) -> MessageResponse:
     await _check_rate(request, settings, "scan", 20)
-    try: await service.scan(body.challenge_id, current_user, body.device_id)
+    try: challenge = await service.scan(body.challenge_id, current_user, body.device_id)
     except ValueError as exc: audit_event_later(request, action="LOGIN_QR_FAILED", entity_type="auth_challenge", category="security", severity="warning", user_id=current_user.id); raise HTTPException(status_code=400, detail=str(exc)) from exc
-    audit_event_later(request, action="LOGIN_QR_SCANNED", entity_type="auth_challenge", category="security", severity="info", user_id=current_user.id); return MessageResponse(message="Login request scanned. Awaiting approval.")
+    audit_event_later(request, action="LOGIN_QR_SCANNED", entity_type="auth_challenge", category="security", severity="info", user_id=current_user.id)
+    return MessageResponse(message="Login request scanned. Awaiting approval.", data={"application": "Xecaps / TITAN X", "request_time": challenge.created_at.isoformat(), "browser": (challenge.user_agent or "Unknown browser")[:160], "expires_at": challenge.expires_at.isoformat()})
 
 @router.post("/auth/qr/approve", response_model=MessageResponse)
 async def approve_qr(body: QRApproveRequest, request: Request, current_user: Annotated[User, Depends(get_current_active_user)], service: Annotated[QRAuthService, Depends(get_qr_auth_service)], settings: Annotated[Settings, Depends(get_settings)]) -> MessageResponse:
