@@ -1,4 +1,3 @@
-import asyncio
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -7,7 +6,6 @@ from uuid import uuid4
 import structlog
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from titan_x.api.router import api_router
 from titan_x.core.audit import audit_event_later
@@ -15,7 +13,13 @@ from titan_x.core.config import Settings, get_settings
 from titan_x.core.events import on_shutdown, on_startup
 from titan_x.core.exceptions import register_exception_handlers
 from titan_x.core.logging import configure_logging
-from titan_x.core.middleware import HTTPSRedirectMiddleware, SecurityHeadersMiddleware, TrustedHostMiddleware
+from titan_x.core.middleware import (
+    HTTPSRedirectMiddleware,
+    RateLimitMiddleware,
+    RequestSizeLimitMiddleware,
+    SecurityHeadersMiddleware,
+    TrustedHostMiddleware,
+)
 
 settings: Settings = get_settings()
 configure_logging(settings.log_level, settings.log_format)
@@ -29,10 +33,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
     finally:
         await on_shutdown(app, settings)
-
-
-# Audit recording for every API call is handled by
-# ``titan_x.core.audit.audit_event_later`` from the request_logging middleware.
 
 
 def create_app() -> FastAPI:
@@ -60,15 +60,17 @@ def create_app() -> FastAPI:
         allow_origins=settings.parsed_cors_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-        allow_headers=["Content-Type", "X-API-Key", "X-Request-ID", "Authorization"],
+        allow_headers=["Content-Type", "X-API-Key", "X-Request-ID", "X-Correlation-ID", "Authorization"],
     )
+    _app.add_middleware(RequestSizeLimitMiddleware, max_bytes=2 * 1024 * 1024)
+    _app.add_middleware(RateLimitMiddleware, settings=settings)
     _app.add_middleware(SecurityHeadersMiddleware)
     _app.add_middleware(TrustedHostMiddleware, settings=settings)
     _app.add_middleware(HTTPSRedirectMiddleware, settings=settings)
     register_exception_handlers(_app)
 
     @_app.middleware("http")
-    async def request_logging(request: Request, call_next: object) -> object:
+    async def request_logging(request: Request, call_next):
         request_id = request.headers.get("X-Request-ID") or str(uuid4())
         correlation_id = request.headers.get("X-Correlation-ID") or request_id
         structlog.contextvars.bind_contextvars(
@@ -97,11 +99,7 @@ def create_app() -> FastAPI:
                 and not request.url.path.startswith(("/api/v1/health", "/api/v1/docs"))
             ):
                 req_logger = logger.bind(request_id=request_id, correlation_id=correlation_id)
-                req_logger.info(
-                    "request_completed",
-                    status_code=status_code,
-                    duration_ms=duration_ms,
-                )
+                req_logger.info("request_completed", status_code=status_code, duration_ms=duration_ms)
                 if duration_ms >= settings.log_slow_request_ms:
                     req_logger.warning("slow_request", status_code=status_code, duration_ms=duration_ms)
                 audit_event_later(
