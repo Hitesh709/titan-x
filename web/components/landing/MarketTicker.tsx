@@ -20,7 +20,6 @@ type Snapshot = {
 }
 
 // TITAN X website market feature is INDEX-ONLY.
-// No individual stocks, commodities, FX pairs or crypto assets are shown here.
 const globalIndexUniverse: MarketRow[] = [
   { name: "NIFTY 50", symbol: "^NSEI", price: null, change_pct: null, region: "India" },
   { name: "SENSEX", symbol: "^BSESN", price: null, change_pct: null, region: "India" },
@@ -49,12 +48,23 @@ const globalIndexUniverse: MarketRow[] = [
 function mergeUniverse(apiMarkets: MarketRow[] | undefined) {
   const incoming = apiMarkets ?? []
   return globalIndexUniverse.map((base) => {
-    const match = incoming.find((m) =>
-      m.symbol?.toUpperCase() === base.symbol.toUpperCase() ||
-      m.name?.toUpperCase() === base.name.toUpperCase()
-    )
+    const match = incoming.find((m) => m.symbol?.toUpperCase() === base.symbol.toUpperCase() || m.name?.toUpperCase() === base.name.toUpperCase())
     return match ? { ...base, ...match, region: match.region ?? base.region } : base
   })
+}
+
+/**
+ * Live homepage score derived from the current index feed.
+ * This intentionally does not fall back to a hard-coded 50.
+ */
+export function calculateLiveMarketScore(markets: MarketRow[]) {
+  const live = markets.filter((m) => typeof m.change_pct === "number")
+  if (!live.length) return null
+  const averageChange = live.reduce((sum, m) => sum + Number(m.change_pct || 0), 0) / live.length
+  const up = live.filter((m) => Number(m.change_pct || 0) > 0).length
+  const down = live.filter((m) => Number(m.change_pct || 0) < 0).length
+  const breadth = (up - down) / live.length
+  return Math.round(Math.max(0, Math.min(100, 50 + averageChange * 18 + breadth * 25)))
 }
 
 export function usePublicMarket() {
@@ -78,7 +88,8 @@ export function usePublicMarket() {
   }, [])
 
   const markets = useMemo(() => mergeUniverse(snapshot.markets), [snapshot.markets])
-  return { ...snapshot, markets }
+  const liveScore = useMemo(() => calculateLiveMarketScore(markets), [markets])
+  return { ...snapshot, markets, liveScore }
 }
 
 function formatPrice(value: number | null) {
