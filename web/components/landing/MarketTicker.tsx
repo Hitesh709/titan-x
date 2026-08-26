@@ -19,7 +19,6 @@ type Snapshot = {
   markets?: MarketRow[]
 }
 
-// TITAN X website market feature is INDEX-ONLY.
 const globalIndexUniverse: MarketRow[] = [
   { name: "NIFTY 50", symbol: "^NSEI", price: null, change_pct: null, region: "India" },
   { name: "SENSEX", symbol: "^BSESN", price: null, change_pct: null, region: "India" },
@@ -53,10 +52,7 @@ function mergeUniverse(apiMarkets: MarketRow[] | undefined) {
   })
 }
 
-/**
- * Live homepage score derived from the current index feed.
- * This intentionally does not fall back to a hard-coded 50.
- */
+/** Live 0-100 market score derived from the current index feed. */
 export function calculateLiveMarketScore(markets: MarketRow[]) {
   const live = markets.filter((m) => typeof m.change_pct === "number")
   if (!live.length) return null
@@ -89,7 +85,9 @@ export function usePublicMarket() {
 
   const markets = useMemo(() => mergeUniverse(snapshot.markets), [snapshot.markets])
   const liveScore = useMemo(() => calculateLiveMarketScore(markets), [markets])
-  return { ...snapshot, markets, liveScore }
+  // The homepage score is always derived from the current live index feed.
+  // This removes the previous hard-coded 50 fallback.
+  return { ...snapshot, score: liveScore, markets, liveScore }
 }
 
 function formatPrice(value: number | null) {
