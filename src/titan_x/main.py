@@ -20,6 +20,7 @@ from titan_x.core.middleware import (
     SecurityHeadersMiddleware,
     TrustedHostMiddleware,
 )
+from titan_x.security.security_events import SecurityEvent
 
 settings: Settings = get_settings()
 configure_logging(settings.log_level, settings.log_format)
@@ -102,10 +103,50 @@ def create_app() -> FastAPI:
                 req_logger.info("request_completed", status_code=status_code, duration_ms=duration_ms)
                 if duration_ms >= settings.log_slow_request_ms:
                     req_logger.warning("slow_request", status_code=status_code, duration_ms=duration_ms)
+
+                path = request.url.path
+                event = None
+                category = "api_call"
+                severity = "info" if status_code < 400 else "warning" if status_code < 500 else "critical"
+
+                if path.endswith("/auth/login"):
+                    if status_code == 200:
+                        event = SecurityEvent.LOGIN_SUCCESS
+                        category = "security"
+                        severity = "info"
+                    elif status_code in (401, 403, 429):
+                        event = SecurityEvent.LOGIN_FAILURE if status_code != 429 else SecurityEvent.RATE_LIMITED
+                        category = "security"
+                        severity = "warning"
+                elif path.endswith("/auth/mfa-login"):
+                    if status_code == 200:
+                        event = SecurityEvent.LOGIN_SUCCESS
+                        category = "security"
+                    elif status_code in (401, 403, 429):
+                        event = SecurityEvent.MFA_CHALLENGE_FAILURE if status_code != 429 else SecurityEvent.RATE_LIMITED
+                        category = "security"
+                        severity = "warning"
+                elif path.endswith("/auth/refresh") and status_code == 401:
+                    event = SecurityEvent.TOKEN_REVOKED
+                    category = "security"
+                    severity = "critical"
+                elif status_code == 429:
+                    event = SecurityEvent.RATE_LIMITED
+                    category = "security"
+                    severity = "warning"
+                elif status_code == 403:
+                    event = SecurityEvent.AUTHZ_DENIED
+                    category = "security"
+                    severity = "warning"
+                elif status_code == 401:
+                    event = SecurityEvent.SUSPICIOUS_REQUEST
+                    category = "security"
+                    severity = "warning"
+
                 audit_event_later(
                     request,
-                    action=request.method.lower(),
-                    entity_type="api_call",
+                    action=event.value if event is not None else request.method.lower(),
+                    entity_type="security_event" if event is not None else "api_call",
                     details={
                         "method": request.method,
                         "path": request.url.path,
@@ -115,9 +156,10 @@ def create_app() -> FastAPI:
                         "request_id": request_id,
                         "correlation_id": correlation_id,
                         "user_agent": request.headers.get("User-Agent"),
+                        "event": event.value if event is not None else None,
                     },
-                    category="api_call",
-                    severity="info" if status_code < 400 else "warning" if status_code < 500 else "critical",
+                    category=category,
+                    severity=severity,
                 )
             structlog.contextvars.clear_contextvars()
 
