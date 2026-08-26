@@ -5,183 +5,48 @@ from pydantic import BaseModel, EmailStr, Field
 
 T = TypeVar("T")
 
-
-class LivenessResponse(BaseModel):
-    status: Literal["alive"]
-
-
+class LivenessResponse(BaseModel): status: Literal["alive"]
 class ReadinessResponse(BaseModel):
     status: Literal["ready", "unavailable"]
     database: Literal["available", "unavailable"]
     redis: Literal["available", "unavailable"]
-
-
-class VersionResponse(BaseModel):
-    version: str
-    build_date: str
-    environment: str
-
-
-class RegisterRequest(BaseModel):
-    email: EmailStr
-    password: str = Field(min_length=8, max_length=128)
-
-
-class RegisterResponse(BaseModel):
-    id: int
-    email: str
-    role: str
-    is_active: bool
-    is_verified: bool
-
-
-class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str
-
-
+class VersionResponse(BaseModel): version: str; build_date: str; environment: str
+class RegisterRequest(BaseModel): email: EmailStr; password: str = Field(min_length=8, max_length=128)
+class RegisterResponse(BaseModel): id: int; email: str; role: str; is_active: bool; is_verified: bool
+class LoginRequest(BaseModel): email: EmailStr; password: str
 class TokenResponse(BaseModel):
-    access_token: str | None = None
-    refresh_token: str | None = None
-    token_type: str = "bearer"
-    mfa_required: bool = False
-    mfa_challenge: str | None = None
-
-
-class MFALoginRequest(BaseModel):
-    challenge: str
-    code: str = Field(min_length=6, max_length=64)
-
-
-class RefreshTokenRequest(BaseModel):
-    refresh_token: str
-
-
-class RefreshTokenResponse(BaseModel):
-    access_token: str
-    refresh_token: str
-    token_type: str = "bearer"
-
-
-class LogoutRequest(BaseModel):
-    refresh_token: str
-
-
-class ForgotPasswordRequest(BaseModel):
-    email: EmailStr
-
-
-class ForgotPasswordResponse(BaseModel):
-    message: str
-    reset_url: str | None = None
-
-
-class ResetPasswordRequest(BaseModel):
-    token: str
-    new_password: str = Field(min_length=8, max_length=128)
-
-
-class VerifyEmailRequest(BaseModel):
-    token: str
-
-
-class SendVerificationRequest(BaseModel):
-    email: EmailStr
-
-
-class SendVerificationResponse(BaseModel):
-    message: str
-    verification_url: str | None = None
-
-
-class MessageResponse(BaseModel):
-    message: str
-    data: dict | list | None = None
-
-
-class PaginatedResponse(BaseModel, Generic[T]):
-    items: list[T]
-    total: int
-    skip: int
-    limit: int
-
-
+    access_token: str | None = None; refresh_token: str | None = None; token_type: str = "bearer"; mfa_required: bool = False; mfa_challenge: str | None = None
+class MFALoginRequest(BaseModel): challenge: str; code: str = Field(min_length=6, max_length=64)
+class RefreshTokenRequest(BaseModel): refresh_token: str
+class RefreshTokenResponse(BaseModel): access_token: str; refresh_token: str; token_type: str = "bearer"
+class LogoutRequest(BaseModel): refresh_token: str
+class ForgotPasswordRequest(BaseModel): email: EmailStr
+class ForgotPasswordResponse(BaseModel): message: str; reset_url: str | None = None
+class ResetPasswordRequest(BaseModel): token: str; new_password: str = Field(min_length=8, max_length=128)
+class VerifyEmailRequest(BaseModel): token: str
+class SendVerificationRequest(BaseModel): email: EmailStr
+class SendVerificationResponse(BaseModel): message: str; verification_url: str | None = None
+class MessageResponse(BaseModel): message: str; data: dict | list | None = None
+class PaginatedResponse(BaseModel, Generic[T]): items: list[T]; total: int; skip: int; limit: int
 class UserResponse(BaseModel):
-    id: int
-    email: str
-    role: str
-    is_active: bool
-    is_verified: bool
-    is_superuser: bool
-    created_at: datetime
-    updated_at: datetime
-
-
+    id: int; email: str; role: str; is_active: bool; is_verified: bool; is_superuser: bool; created_at: datetime; updated_at: datetime
 class BrokerConnectionResponse(BaseModel):
-    """Broker connection summary that never exposes credentials or tokens."""
-    id: int
-    broker_name: str
-    label: str
-    is_active: bool
-    has_api_key: bool = False
-    has_api_secret: bool = False
-    token_expires_at: datetime | None = None
-    created_at: datetime | None = None
-
-
+    id: int; broker_name: str; label: str; is_active: bool; has_api_key: bool = False; has_api_secret: bool = False; token_expires_at: datetime | None = None; created_at: datetime | None = None
 class UserCreateRequest(BaseModel):
-    email: EmailStr
-    password: str = Field(min_length=8, max_length=128)
-    role: str = Field(default="normal", pattern=r"^(normal|premium|analyst|admin)$")
-    is_active: bool = True
-    is_superuser: bool = False
-    is_verified: bool = False
-
-
+    email: EmailStr; password: str = Field(min_length=8, max_length=128); role: str = Field(default="normal", pattern=r"^(normal|premium|analyst|admin)$"); is_active: bool = True; is_superuser: bool = False; is_verified: bool = False
 class UserUpdateRequest(BaseModel):
-    email: EmailStr | None = None
-    password: str | None = Field(default=None, min_length=8, max_length=128)
-    role: str | None = Field(default=None, pattern=r"^(normal|premium|analyst|admin)$")
-    is_active: bool | None = None
-    is_superuser: bool | None = None
-    is_verified: bool | None = None
-
-
-class QRCreateResponse(BaseModel):
-    challenge_id: str
-    qr_data_url: str
-    expires_at: datetime
-    expires_in_seconds: int
-
-
+    email: EmailStr | None = None; password: str | None = Field(default=None, min_length=8, max_length=128); role: str | None = Field(default=None, pattern=r"^(normal|premium|analyst|admin)$"); is_active: bool | None = None; is_superuser: bool | None = None; is_verified: bool | None = None
+class QRCreateResponse(BaseModel): challenge_id: str; qr_data_url: str; expires_at: datetime; expires_in_seconds: int
 class QRStatusResponse(BaseModel):
-    status: Literal["PENDING", "SCANNED", "APPROVED", "DECLINED", "EXPIRED", "CANCELLED", "USED"]
-    access_token: str | None = None
-    refresh_token: str | None = None
-    token_type: str = "bearer"
-    user: RegisterResponse | None = None
-
-
-class QRChallengeRequest(BaseModel):
-    challenge_id: str = Field(min_length=32, max_length=128)
-
-
-class QRScanRequest(QRChallengeRequest):
-    device_id: int
-
-
-class QRApproveRequest(QRScanRequest):
-    signature: str = Field(min_length=32, max_length=1024)
-
-
-class QRDeviceRegisterRequest(BaseModel):
-    device_name: str = Field(min_length=1, max_length=120)
-    public_key: str = Field(min_length=80, max_length=4096)
-
-
-class QRDeviceResponse(BaseModel):
-    id: int
-    device_name: str
-    device_status: str
-    created_at: datetime
-    last_seen_at: datetime | None = None
+    status: Literal["PENDING", "SCANNED", "APPROVED", "DECLINED", "EXPIRED", "CANCELLED", "USED"]; access_token: str | None = None; refresh_token: str | None = None; token_type: str = "bearer"; user: RegisterResponse | None = None
+class QRChallengeRequest(BaseModel): challenge_id: str = Field(min_length=16, max_length=128)
+class QRSMSWebhookRequest(BaseModel): from_number: str = Field(min_length=7, max_length=32); body: str = Field(min_length=1, max_length=512)
+class QRRegistrationRequest(BaseModel):
+    username: str = Field(min_length=3, max_length=80, pattern=r"^[A-Za-z0-9_.-]+$")
+    password: str = Field(min_length=8, max_length=128)
+    confirm_password: str = Field(min_length=8, max_length=128)
+    email: EmailStr | None = None
+    phone: str | None = Field(default=None, min_length=7, max_length=32)
+class QRRegistrationCreateResponse(BaseModel): challenge_id: str; qr_data_url: str; expires_at: datetime; expires_in_seconds: int; sms_number: str | None = None
+class QRDeviceRegisterRequest(BaseModel): device_name: str = Field(min_length=1, max_length=120); public_key: str = Field(min_length=80, max_length=4096)
+class QRDeviceResponse(BaseModel): id: int; device_name: str; device_status: str; created_at: datetime; last_seen_at: datetime | None = None
