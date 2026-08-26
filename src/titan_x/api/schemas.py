@@ -41,9 +41,16 @@ class LoginRequest(BaseModel):
 
 
 class TokenResponse(BaseModel):
-    access_token: str
-    refresh_token: str
+    access_token: str | None = None
+    refresh_token: str | None = None
     token_type: str = "bearer"
+    mfa_required: bool = False
+    mfa_challenge: str | None = None
+
+
+class MFALoginRequest(BaseModel):
+    challenge: str
+    code: str = Field(min_length=6, max_length=64)
 
 
 class RefreshTokenRequest(BaseModel):
