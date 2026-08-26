@@ -32,8 +32,7 @@ class AuthService:
         existing = await self._user_repo.get_multi(email=email, limit=1)
         if existing:
             raise ValueError("Email already registered")
-        user = await self._user_repo.create(email=email, hashed_password=hash_password(password))
-        return user
+        return await self._user_repo.create(email=email, hashed_password=hash_password(password))
 
     async def authenticate(self, email: str, password: str) -> User:
         result = await self._session.execute(select(User).where(User.email == email))
@@ -59,11 +58,9 @@ class AuthService:
     async def complete_mfa_login(self, user: User, code: str) -> tuple[str, str, str]:
         if not user.mfa_enabled or not user.mfa_secret_encrypted:
             raise ValueError("MFA is not enabled")
-
         secret = decrypt_mfa_secret(user.mfa_secret_encrypted)
         if verify_totp(secret, code):
             return await self.issue_tokens(user)
-
         candidate = hash_recovery_code(code)
         hashes: list[str] = []
         if user.mfa_recovery_codes_hashes:
@@ -74,7 +71,6 @@ class AuthService:
                 hashes = []
         if candidate not in hashes:
             raise ValueError("Invalid MFA code")
-
         hashes.remove(candidate)
         user.mfa_recovery_codes_hashes = json.dumps(hashes, separators=(",", ":"))
         await self._session.flush()
@@ -88,8 +84,13 @@ class AuthService:
             )
         )
         token_record = result.scalar_one_or_none()
-        if token_record is None or token_record.is_revoked:
+        if token_record is None:
             raise ValueError("Invalid or revoked refresh token")
+        if token_record.is_revoked:
+            # A rotated refresh token was presented again. Treat this as token
+            # reuse/theft and revoke every active session for the account.
+            await self.revoke_all_sessions(user_id)
+            raise ValueError("Refresh token reuse detected; all sessions revoked")
         if token_record.is_expired:
             raise ValueError("Refresh token expired")
 
@@ -111,6 +112,14 @@ class AuthService:
         if token_record is not None:
             token_record.revoked_at = datetime.now(timezone.utc)
 
+    async def revoke_all_sessions(self, user_id: int) -> int:
+        result = await self._session.execute(
+            update(RefreshToken)
+            .where(RefreshToken.user_id == user_id, RefreshToken.revoked_at.is_(None))
+            .values(revoked_at=datetime.now(timezone.utc))
+        )
+        return int(result.rowcount or 0)
+
     async def forgot_password(self, email: str) -> str | None:
         result = await self._session.execute(select(User).where(User.email == email))
         user = result.scalar_one_or_none()
@@ -130,11 +139,7 @@ class AuthService:
         if user is None:
             raise ValueError("User not found")
         await self._user_repo.update(user.id, hashed_password=hash_password(new_password))
-        await self._session.execute(
-            update(RefreshToken)
-            .where(RefreshToken.user_id == user.id, RefreshToken.revoked_at.is_(None))
-            .values(revoked_at=datetime.now(timezone.utc))
-        )
+        await self.revoke_all_sessions(user.id)
 
     async def verify_email(self, token: str) -> None:
         try:
