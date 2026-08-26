@@ -10,6 +10,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
   "alembic==1.16.5",
+  "argon2-cffi==25.1.0",
   "asyncpg==0.30.0",
   "bcrypt==4.3.0",
   "email-validator==2.2.0",
@@ -41,8 +42,6 @@ prepend_sys_path = "src"
 asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = ["smoke: smoke tests that verify a deployed instance"]
-# Always import titan_x from this repository's src/, regardless of any
-# editable install that may also be present on sys.path.
 pythonpath = ["src"]
 
 [tool.ruff]
