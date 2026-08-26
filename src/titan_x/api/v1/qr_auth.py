@@ -1,88 +1,103 @@
+import hmac
 from typing import Annotated
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from titan_x.api.dependencies import get_current_active_user, get_qr_auth_service, request_session
-from titan_x.api.schemas import MessageResponse, QRApproveRequest, QRChallengeRequest, QRCreateResponse, QRDeviceRegisterRequest, QRDeviceResponse, QRScanRequest, QRStatusResponse, RegisterResponse
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
+
+from titan_x.api.dependencies import get_qr_auth_service
+from titan_x.api.schemas import QRChallengeRequest, QRCreateResponse, QRLoginRequest, QRRegistrationCreateResponse, QRRegistrationRequest, QRSMSWebhookRequest, QRStatusResponse, RegisterResponse
 from titan_x.core.audit import audit_event_later
 from titan_x.core.config import Settings, get_settings
 from titan_x.infrastructure.rate_limiter import RateLimiter
-from titan_x.models.user import User
-from titan_x.models.user_device import UserDevice
 from titan_x.services.qr_auth_service import QRAuthService
 
 router = APIRouter(tags=["qr-auth"])
-def _rate_key(request: Request) -> str: return request.client.host if request.client else "unknown"
+
+
+def _rate_key(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
+
+
 async def _check_rate(request: Request, settings: Settings, suffix: str, limit: int) -> None:
-    if not settings.rate_limit_enabled: return
+    if not settings.rate_limit_enabled:
+        return
     redis = getattr(request.app.state, "redis", None)
-    if redis is None: return
+    if redis is None:
+        return
     allowed, _, _ = await RateLimiter(redis).check(f"qr:{suffix}:{_rate_key(request)}", limit, 60)
-    if not allowed: raise HTTPException(status_code=429, detail="Too many QR authentication requests")
+    if not allowed:
+        raise HTTPException(status_code=429, detail="Too many QR authentication requests")
+
+
+async def _set_browser_cookie(response: Response, request: Request, browser_session: str, settings: Settings) -> None:
+    response.set_cookie(QRAuthService.BROWSER_COOKIE, browser_session, max_age=QRAuthService.CHALLENGE_TTL_SECONDS + 30, httponly=True, secure=request.url.scheme == "https" or settings.environment == "production", samesite="lax", path="/api/v1/auth/qr")
+
 
 @router.post("/auth/qr/create", response_model=QRCreateResponse)
-async def create_qr(request: Request, response: Response, settings: Annotated[Settings, Depends(get_settings)], service: Annotated[QRAuthService, Depends(get_qr_auth_service)]) -> QRCreateResponse:
-    await _check_rate(request, settings, "create", 10); browser_session = service.create_browser_session()
-    challenge, _, qr_data_url = await service.create_challenge(browser_session, request.client.host if request.client else None, request.headers.get("User-Agent"))
-    response.set_cookie(QRAuthService.BROWSER_COOKIE, browser_session, max_age=QRAuthService.CHALLENGE_TTL_SECONDS + 30, httponly=True, secure=request.url.scheme == "https" or settings.environment == "production", samesite="lax", path="/api/v1/auth/qr")
-    audit_event_later(request, action="LOGIN_QR_CREATED", entity_type="auth_challenge", details={"challenge_id": "redacted"}, category="security", severity="info")
-    return QRCreateResponse(challenge_id=challenge.challenge_id, qr_data_url=qr_data_url, expires_at=challenge.expires_at, expires_in_seconds=QRAuthService.CHALLENGE_TTL_SECONDS)
+async def create_qr(body: QRLoginRequest, request: Request, response: Response, settings: Annotated[Settings, Depends(get_settings)], service: Annotated[QRAuthService, Depends(get_qr_auth_service)]) -> QRCreateResponse:
+    await _check_rate(request, settings, "create", 10)
+    browser_session = service.create_browser_session()
+    try:
+        challenge, raw = await service.create_login_challenge(body.identifier, browser_session, request.client.host if request.client else None, request.headers.get("User-Agent"))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await _set_browser_cookie(response, request, browser_session, settings)
+    audit_event_later(request, action="LOGIN_QR_CREATED", entity_type="auth_challenge", category="security", severity="info")
+    return QRCreateResponse(challenge_id=challenge.challenge_id, qr_data_url=service._qr(raw), expires_at=challenge.expires_at, expires_in_seconds=service.CHALLENGE_TTL_SECONDS, sms_number=settings.qr_sms_number)
+
+
+@router.post("/auth/qr/register/create", response_model=QRRegistrationCreateResponse)
+async def create_registration_qr(body: QRRegistrationRequest, request: Request, response: Response, settings: Annotated[Settings, Depends(get_settings)], service: Annotated[QRAuthService, Depends(get_qr_auth_service)]) -> QRRegistrationCreateResponse:
+    await _check_rate(request, settings, "register", 5)
+    browser_session = service.create_browser_session()
+    try:
+        challenge, raw = await service.create_registration_challenge(body.username, body.password, body.confirm_password, body.email, body.phone, browser_session, request.client.host if request.client else None, request.headers.get("User-Agent"))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await _set_browser_cookie(response, request, browser_session, settings)
+    audit_event_later(request, action="LOGIN_QR_CREATED", entity_type="registration_challenge", category="security", severity="info")
+    return QRRegistrationCreateResponse(challenge_id=challenge.challenge_id, qr_data_url=service._qr(raw), expires_at=challenge.expires_at, expires_in_seconds=service.CHALLENGE_TTL_SECONDS, sms_number=settings.qr_sms_number)
+
+
+@router.post("/auth/qr/sms/webhook", response_model=dict)
+async def sms_webhook(body: QRSMSWebhookRequest, request: Request, settings: Annotated[Settings, Depends(get_settings)], service: Annotated[QRAuthService, Depends(get_qr_auth_service)], x_qr_sms_signature: str | None = Header(default=None)) -> dict:
+    await _check_rate(request, settings, "sms-webhook", 60)
+    if not service.verify_webhook(body.from_number, body.body, x_qr_sms_signature):
+        raise HTTPException(status_code=401, detail="Invalid SMS webhook signature")
+    message = body.body.strip()
+    if not message.startswith(QRAuthService.SMS_PREFIX):
+        raise HTTPException(status_code=400, detail="Unsupported SMS verification message")
+    raw = message[len(QRAuthService.SMS_PREFIX):].strip()
+    try:
+        challenge = await service.sms_approve(raw, body.from_number)
+    except ValueError as exc:
+        audit_event_later(request, action="LOGIN_QR_FAILED", entity_type="auth_challenge", category="security", severity="warning")
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    audit_event_later(request, action="LOGIN_QR_APPROVED", entity_type="auth_challenge", category="security", severity="info", user_id=challenge.customer_id)
+    return {"status": "approved"}
+
 
 @router.get("/auth/qr/status/{challenge_id}", response_model=QRStatusResponse)
 async def qr_status(challenge_id: str, request: Request, service: Annotated[QRAuthService, Depends(get_qr_auth_service)]) -> QRStatusResponse:
     browser_session = request.cookies.get(QRAuthService.BROWSER_COOKIE)
-    if not browser_session: raise HTTPException(status_code=401, detail="QR browser session missing")
-    try: state, user, tokens = await service.status_and_consume(challenge_id, browser_session)
-    except ValueError as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not browser_session:
+        raise HTTPException(status_code=401, detail="QR browser session missing")
+    try:
+        state, user, tokens = await service.status_and_consume(challenge_id, browser_session)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if tokens and user:
-        access, refresh = tokens; audit_event_later(request, action="LOGIN_QR_APPROVED", entity_type="auth_challenge", entity_id=user.id, category="security", severity="info")
+        access, refresh = tokens
         return QRStatusResponse(status="USED", access_token=access, refresh_token=refresh, user=RegisterResponse(id=user.id, email=user.email, role=user.role, is_active=user.is_active, is_verified=user.is_verified))
-    if state == "EXPIRED": audit_event_later(request, action="LOGIN_QR_EXPIRED", entity_type="auth_challenge", category="security", severity="info")
-    if state == "USED": audit_event_later(request, action="LOGIN_QR_REPLAY_BLOCKED", entity_type="auth_challenge", category="security", severity="warning")
     return QRStatusResponse(status=state)
 
-@router.post("/auth/qr/cancel", response_model=MessageResponse)
-async def cancel_qr(body: QRChallengeRequest, request: Request, service: Annotated[QRAuthService, Depends(get_qr_auth_service)]) -> MessageResponse:
+
+@router.post("/auth/qr/cancel")
+async def cancel_qr(body: QRChallengeRequest, request: Request, service: Annotated[QRAuthService, Depends(get_qr_auth_service)]) -> dict:
     browser_session = request.cookies.get(QRAuthService.BROWSER_COOKIE)
-    if not browser_session: raise HTTPException(status_code=401, detail="QR browser session missing")
-    try: await service.cancel(body.challenge_id, browser_session)
-    except ValueError as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
-    audit_event_later(request, action="LOGIN_QR_CANCELLED", entity_type="auth_challenge", category="security", severity="info"); return MessageResponse(message="QR login cancelled")
-
-@router.post("/auth/qr/scan", response_model=MessageResponse)
-async def scan_qr(body: QRScanRequest, request: Request, current_user: Annotated[User, Depends(get_current_active_user)], service: Annotated[QRAuthService, Depends(get_qr_auth_service)], settings: Annotated[Settings, Depends(get_settings)]) -> MessageResponse:
-    await _check_rate(request, settings, "scan", 20)
-    try: challenge = await service.scan(body.challenge_id, current_user, body.device_id)
-    except ValueError as exc: audit_event_later(request, action="LOGIN_QR_FAILED", entity_type="auth_challenge", category="security", severity="warning", user_id=current_user.id); raise HTTPException(status_code=400, detail=str(exc)) from exc
-    audit_event_later(request, action="LOGIN_QR_SCANNED", entity_type="auth_challenge", category="security", severity="info", user_id=current_user.id)
-    return MessageResponse(message="Login request scanned. Awaiting approval.", data={"application": "Xecaps / TITAN X", "request_time": challenge.created_at.isoformat(), "browser": (challenge.user_agent or "Unknown browser")[:160], "expires_at": challenge.expires_at.isoformat()})
-
-@router.post("/auth/qr/approve", response_model=MessageResponse)
-async def approve_qr(body: QRApproveRequest, request: Request, current_user: Annotated[User, Depends(get_current_active_user)], service: Annotated[QRAuthService, Depends(get_qr_auth_service)], settings: Annotated[Settings, Depends(get_settings)]) -> MessageResponse:
-    await _check_rate(request, settings, "approve", 10)
-    try: await service.approve(body.challenge_id, current_user, body.device_id, body.signature)
-    except ValueError as exc: audit_event_later(request, action="LOGIN_QR_FAILED", entity_type="auth_challenge", category="security", severity="warning", user_id=current_user.id); raise HTTPException(status_code=400, detail=str(exc)) from exc
-    audit_event_later(request, action="LOGIN_QR_APPROVED", entity_type="auth_challenge", category="security", severity="info", user_id=current_user.id); return MessageResponse(message="Login approved")
-
-@router.post("/auth/qr/decline", response_model=MessageResponse)
-async def decline_qr(body: QRScanRequest, request: Request, current_user: Annotated[User, Depends(get_current_active_user)], service: Annotated[QRAuthService, Depends(get_qr_auth_service)]) -> MessageResponse:
-    try: await service.decline(body.challenge_id, current_user, body.device_id)
-    except ValueError as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
-    audit_event_later(request, action="LOGIN_QR_DECLINED", entity_type="auth_challenge", category="security", severity="info", user_id=current_user.id); return MessageResponse(message="Login request declined")
-
-@router.post("/auth/qr/devices", response_model=QRDeviceResponse, status_code=status.HTTP_201_CREATED)
-async def register_device(body: QRDeviceRegisterRequest, current_user: Annotated[User, Depends(get_current_active_user)], service: Annotated[QRAuthService, Depends(get_qr_auth_service)]) -> QRDeviceResponse:
-    try: device = await service.register_device(current_user, body.device_name, body.public_key)
-    except ValueError as exc: raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return QRDeviceResponse(id=device.id, device_name=device.device_name, device_status=device.device_status, created_at=device.created_at, last_seen_at=device.last_seen_at)
-
-@router.get("/auth/qr/devices", response_model=list[QRDeviceResponse])
-async def list_devices(current_user: Annotated[User, Depends(get_current_active_user)], session: Annotated[AsyncSession, Depends(request_session)]) -> list[QRDeviceResponse]:
-    result = await session.execute(select(UserDevice).where(UserDevice.customer_id == current_user.id, UserDevice.revoked_at.is_(None)).order_by(UserDevice.created_at.desc()))
-    return [QRDeviceResponse(id=d.id, device_name=d.device_name, device_status=d.device_status, created_at=d.created_at, last_seen_at=d.last_seen_at) for d in result.scalars().all()]
-
-@router.delete("/auth/qr/devices/{device_id}", response_model=MessageResponse)
-async def revoke_device(device_id: int, request: Request, current_user: Annotated[User, Depends(get_current_active_user)], service: Annotated[QRAuthService, Depends(get_qr_auth_service)]) -> MessageResponse:
-    try: await service.revoke_device(current_user, device_id)
-    except ValueError as exc: raise HTTPException(status_code=404, detail=str(exc)) from exc
-    audit_event_later(request, action="DEVICE_REVOKED", entity_type="user_device", entity_id=device_id, category="security", severity="warning", user_id=current_user.id); return MessageResponse(message="Device revoked")
+    if not browser_session:
+        raise HTTPException(status_code=401, detail="QR browser session missing")
+    try:
+        await service.cancel(body.challenge_id, browser_session)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"message": "QR login cancelled"}
