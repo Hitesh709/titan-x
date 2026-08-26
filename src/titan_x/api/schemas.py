@@ -119,7 +119,6 @@ class UserResponse(BaseModel):
 
 class BrokerConnectionResponse(BaseModel):
     """Broker connection summary that never exposes credentials or tokens."""
-
     id: int
     broker_name: str
     label: str
@@ -146,3 +145,43 @@ class UserUpdateRequest(BaseModel):
     is_active: bool | None = None
     is_superuser: bool | None = None
     is_verified: bool | None = None
+
+
+class QRCreateResponse(BaseModel):
+    challenge_id: str
+    qr_data_url: str
+    expires_at: datetime
+    expires_in_seconds: int
+
+
+class QRStatusResponse(BaseModel):
+    status: Literal["PENDING", "SCANNED", "APPROVED", "DECLINED", "EXPIRED", "CANCELLED", "USED"]
+    access_token: str | None = None
+    refresh_token: str | None = None
+    token_type: str = "bearer"
+    user: RegisterResponse | None = None
+
+
+class QRChallengeRequest(BaseModel):
+    challenge_id: str = Field(min_length=32, max_length=128)
+
+
+class QRScanRequest(QRChallengeRequest):
+    device_id: int
+
+
+class QRApproveRequest(QRScanRequest):
+    signature: str = Field(min_length=32, max_length=1024)
+
+
+class QRDeviceRegisterRequest(BaseModel):
+    device_name: str = Field(min_length=1, max_length=120)
+    public_key: str = Field(min_length=80, max_length=4096)
+
+
+class QRDeviceResponse(BaseModel):
+    id: int
+    device_name: str
+    device_status: str
+    created_at: datetime
+    last_seen_at: datetime | None = None

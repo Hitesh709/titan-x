@@ -43,7 +43,7 @@ _ROUTER_SPECS: tuple[tuple[str, str | None], ...] = (
     ("top_picks", "router"), ("trade_journal", "router"), ("trading_calendar", "router"),
     ("trading_portfolio", "router"), ("users", "users_router"), ("valuation", "router"),
     ("version", "version_router"), ("watchlists", "router"), ("public_market", "router"),
-    ("mfa", "router"),
+    ("mfa", "router"), ("qr_auth", "router"),
 )
 
 

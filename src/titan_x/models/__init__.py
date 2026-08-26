@@ -1,5 +1,7 @@
 """Domain models registered with SQLAlchemy metadata."""
 
+from titan_x.models.auth_challenge import AuthChallenge
+from titan_x.models.user_device import UserDevice
 from titan_x.models.company import Company
 from titan_x.models.financial import FinancialLineItem, FinancialStatement
 from titan_x.models.fundamental import FundamentalMetric
@@ -323,4 +325,5 @@ __all__ = [
     "PaperTrade",
     "StrategyShare",
     "StrategyExecution",
+    "AuthChallenge", "UserDevice",
 ]

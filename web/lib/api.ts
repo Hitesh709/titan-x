@@ -61,11 +61,6 @@ class ApiClient {
     }
   }
 
-  /**
-   * Rotate the refresh token and replace both credentials atomically.
-   * Concurrent requests share the same refresh operation, preventing a
-   * refresh-token rotation race when several API calls receive 401 together.
-   */
   async refreshAccessToken(): Promise<string | null> {
     const storedRefresh = this.getRefreshToken()
     if (!storedRefresh) return null
@@ -75,6 +70,7 @@ class ApiClient {
       try {
         const response = await fetch(`${API_BASE}/auth/refresh`, {
           method: "POST",
+          credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ refresh_token: storedRefresh }),
         })
@@ -94,8 +90,6 @@ class ApiClient {
         this.setRefreshToken(data.refresh_token)
         return data.access_token
       } catch {
-        // Do not destroy a valid refresh token on a transient network error.
-        // The next API request can retry the refresh operation.
         return null
       } finally {
         this.refreshPromise = null
@@ -119,12 +113,11 @@ class ApiClient {
     const normalizedEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`
     const res = await fetch(`${API_BASE}${normalizedEndpoint}`, {
       method,
+      credentials: "include",
       headers: h,
       body: body ? JSON.stringify(body) : undefined,
     })
 
-    // Access tokens are intentionally short-lived. If one expires, rotate
-    // the refresh token automatically and retry the original request once.
     if (res.status === 401 && !skipAuthRefresh && normalizedEndpoint !== "/auth/refresh") {
       const newToken = await this.refreshAccessToken()
       if (newToken) {
@@ -134,31 +127,17 @@ class ApiClient {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }))
-      const detail =
-        typeof err?.detail === "string"
-          ? err.detail
-          : `API request failed (${res.status})`
+      const detail = typeof err?.detail === "string" ? err.detail : `API request failed (${res.status})`
       throw new Error(detail || "API Error")
     }
 
     return res.json()
   }
 
-  get<T = unknown>(endpoint: string) {
-    return this.request<T>(endpoint)
-  }
-
-  post<T = unknown>(endpoint: string, body?: unknown) {
-    return this.request<T>(endpoint, { method: "POST", body })
-  }
-
-  put<T = unknown>(endpoint: string, body?: unknown) {
-    return this.request<T>(endpoint, { method: "PUT", body })
-  }
-
-  delete<T = unknown>(endpoint: string) {
-    return this.request<T>(endpoint, { method: "DELETE" })
-  }
+  get<T = unknown>(endpoint: string) { return this.request<T>(endpoint) }
+  post<T = unknown>(endpoint: string, body?: unknown) { return this.request<T>(endpoint, { method: "POST", body }) }
+  put<T = unknown>(endpoint: string, body?: unknown) { return this.request<T>(endpoint, { method: "PUT", body }) }
+  delete<T = unknown>(endpoint: string) { return this.request<T>(endpoint, { method: "DELETE" }) }
 }
 
 export const api = new ApiClient()
@@ -169,10 +148,7 @@ export function decodeTokenPayload(token: string): Record<string, unknown> | nul
     const parts = token.split(".")
     if (parts.length < 2) return null
     const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/")
-    const json =
-      typeof atob === "function"
-        ? atob(b64)
-        : Buffer.from(b64, "base64").toString("utf-8")
+    const json = typeof atob === "function" ? atob(b64) : Buffer.from(b64, "base64").toString("utf-8")
     return JSON.parse(json)
   } catch {
     return null

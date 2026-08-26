@@ -62,6 +62,7 @@ from titan_x.services.portfolio_engine import PortfolioEngine
 from titan_x.services.prediction_engine import PredictionEngine
 from titan_x.services.preference_service import PreferenceService
 from titan_x.services.price_service import CorporateActionService, PriceService
+from titan_x.services.qr_auth_service import QRAuthService
 from titan_x.services.report_generator import ReportGenerator
 from titan_x.services.risk_engine import RiskEngine
 from titan_x.services.scheduler_service import SchedulerService
@@ -190,6 +191,13 @@ def get_user_service(
     return UserService(session, settings)
 
 
+def get_qr_auth_service(
+    session: Annotated[AsyncSession, Depends(request_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> QRAuthService:
+    return QRAuthService(session, settings)
+
+
 def get_rate_limiter(request: Request) -> RateLimiter | None:
     redis = getattr(request.app.state, "redis", None)
     if redis is None:
@@ -312,6 +320,7 @@ __all__ = [  # noqa: F822
     "get_health_service",
     "get_auth_service",
     "get_user_service",
+    "get_qr_auth_service",
     "get_rate_limiter",
     "get_brute_force_protector",
     "get_cache",
