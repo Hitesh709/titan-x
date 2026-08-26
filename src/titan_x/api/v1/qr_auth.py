@@ -42,7 +42,7 @@ async def create_qr(body: QRLoginRequest, request: Request, response: Response, 
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     await _set_browser_cookie(response, request, browser_session, settings)
     audit_event_later(request, action="LOGIN_QR_CREATED", entity_type="auth_challenge", category="security", severity="info")
-    return QRCreateResponse(challenge_id=challenge.challenge_id, qr_data_url=service._qr(raw), expires_at=challenge.expires_at, expires_in_seconds=service.CHALLENGE_TTL_SECONDS, sms_number=settings.qr_sms_number)
+    return QRCreateResponse(challenge_id=challenge.challenge_id, qr_data_url=service._qr(raw, "LOGIN"), expires_at=challenge.expires_at, expires_in_seconds=service.CHALLENGE_TTL_SECONDS, sms_number=settings.qr_sms_number)
 
 
 @router.post("/auth/qr/register/create", response_model=QRRegistrationCreateResponse)
@@ -55,7 +55,7 @@ async def create_registration_qr(body: QRRegistrationRequest, request: Request, 
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     await _set_browser_cookie(response, request, browser_session, settings)
     audit_event_later(request, action="LOGIN_QR_CREATED", entity_type="registration_challenge", category="security", severity="info")
-    return QRRegistrationCreateResponse(challenge_id=challenge.challenge_id, qr_data_url=service._qr(raw), expires_at=challenge.expires_at, expires_in_seconds=service.CHALLENGE_TTL_SECONDS, sms_number=settings.qr_sms_number)
+    return QRRegistrationCreateResponse(challenge_id=challenge.challenge_id, qr_data_url=service._qr(raw, "REGISTRATION"), expires_at=challenge.expires_at, expires_in_seconds=service.CHALLENGE_TTL_SECONDS, sms_number=settings.qr_sms_number)
 
 
 @router.post("/auth/qr/sms/webhook", response_model=dict)
