@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timezone
 
 from sqlalchemy import select, update
@@ -16,6 +17,8 @@ from titan_x.core.security import (
 from titan_x.db.repository import BaseRepository
 from titan_x.models.refresh_token import RefreshToken
 from titan_x.models.user import User
+from titan_x.security.mfa import verify_totp
+from titan_x.security.mfa_storage import decrypt_mfa_secret, hash_recovery_code
 
 
 class AuthService:
@@ -29,11 +32,7 @@ class AuthService:
         existing = await self._user_repo.get_multi(email=email, limit=1)
         if existing:
             raise ValueError("Email already registered")
-
-        user = await self._user_repo.create(
-            email=email,
-            hashed_password=hash_password(password),
-        )
+        user = await self._user_repo.create(email=email, hashed_password=hash_password(password))
         return user
 
     async def authenticate(self, email: str, password: str) -> User:
@@ -43,20 +42,43 @@ class AuthService:
             raise ValueError("Invalid email or password")
         return user
 
+    async def get_user(self, user_id: int) -> User | None:
+        return await self._user_repo.get(user_id)
+
     async def issue_tokens(self, user: User) -> tuple[str, str, str]:
         access_token = create_access_token(user.id, self._settings)
         refresh_token, jti, expires_at = create_refresh_token(user.id, self._settings)
-        await self._token_repo.create(
-            token_jti=jti,
-            user_id=user.id,
-            expires_at=expires_at,
-        )
+        await self._token_repo.create(token_jti=jti, user_id=user.id, expires_at=expires_at)
         return access_token, refresh_token, jti
 
     async def login(self, email: str, password: str) -> tuple[User, str, str, str]:
         user = await self.authenticate(email, password)
         access_token, refresh_token, jti = await self.issue_tokens(user)
         return user, access_token, refresh_token, jti
+
+    async def complete_mfa_login(self, user: User, code: str) -> tuple[str, str, str]:
+        if not user.mfa_enabled or not user.mfa_secret_encrypted:
+            raise ValueError("MFA is not enabled")
+
+        secret = decrypt_mfa_secret(user.mfa_secret_encrypted)
+        if verify_totp(secret, code):
+            return await self.issue_tokens(user)
+
+        candidate = hash_recovery_code(code)
+        hashes: list[str] = []
+        if user.mfa_recovery_codes_hashes:
+            try:
+                loaded = json.loads(user.mfa_recovery_codes_hashes)
+                hashes = [str(value) for value in loaded if isinstance(value, str)]
+            except (TypeError, ValueError):
+                hashes = []
+        if candidate not in hashes:
+            raise ValueError("Invalid MFA code")
+
+        hashes.remove(candidate)
+        user.mfa_recovery_codes_hashes = json.dumps(hashes, separators=(",", ":"))
+        await self._session.flush()
+        return await self.issue_tokens(user)
 
     async def refresh(self, refresh_token_jti: str, user_id: int) -> tuple[str, str, str]:
         result = await self._session.execute(
@@ -74,11 +96,7 @@ class AuthService:
         token_record.revoked_at = datetime.now(timezone.utc)
         new_access = create_access_token(user_id, self._settings)
         new_refresh, new_jti, new_expires = create_refresh_token(user_id, self._settings)
-        await self._token_repo.create(
-            token_jti=new_jti,
-            user_id=user_id,
-            expires_at=new_expires,
-        )
+        await self._token_repo.create(token_jti=new_jti, user_id=user_id, expires_at=new_expires)
         return new_access, new_refresh, new_jti
 
     async def logout(self, refresh_token_jti: str, user_id: int) -> None:
@@ -102,64 +120,38 @@ class AuthService:
 
     async def reset_password(self, token: str, new_password: str) -> None:
         try:
-            payload = decode_token(
-                token,
-                self._settings.jwt_secret_key.get_secret_value(),
-                self._settings.jwt_algorithm,
-            )
+            payload = decode_token(token, self._settings.jwt_secret_key.get_secret_value(), self._settings.jwt_algorithm)
         except ValueError:
             raise ValueError("Invalid or expired reset token")
-
         if payload.get("type") != "password_reset":
             raise ValueError("Invalid token type")
-
         user_id = int(payload["sub"])
         user = await self._user_repo.get(user_id)
         if user is None:
             raise ValueError("User not found")
-
         await self._user_repo.update(user.id, hashed_password=hash_password(new_password))
-
-        # Password reset is a security boundary: immediately invalidate every
-        # outstanding refresh session so a stolen/old session cannot survive a
-        # credential change.
         await self._session.execute(
             update(RefreshToken)
-            .where(
-                RefreshToken.user_id == user.id,
-                RefreshToken.revoked_at.is_(None),
-            )
+            .where(RefreshToken.user_id == user.id, RefreshToken.revoked_at.is_(None))
             .values(revoked_at=datetime.now(timezone.utc))
         )
 
     async def verify_email(self, token: str) -> None:
         try:
-            payload = decode_token(
-                token,
-                self._settings.jwt_secret_key.get_secret_value(),
-                self._settings.jwt_algorithm,
-            )
+            payload = decode_token(token, self._settings.jwt_secret_key.get_secret_value(), self._settings.jwt_algorithm)
         except ValueError:
             raise ValueError("Invalid or expired verification token")
-
         if payload.get("type") != "email_verification":
             raise ValueError("Invalid token type")
-
         user_id = int(payload["sub"])
         user = await self._user_repo.get(user_id)
         if user is None:
             raise ValueError("User not found")
-
         await self._user_repo.update(user.id, is_verified=True)
 
     def decode_refresh_token(self, token: str) -> tuple[str, int]:
-        """Return (jti, user_id) from a refresh token JWT."""
         try:
-            payload = decode_token(
-                token,
-                self._settings.jwt_secret_key.get_secret_value(),
-                self._settings.jwt_algorithm,
-            )
+            payload = decode_token(token, self._settings.jwt_secret_key.get_secret_value(), self._settings.jwt_algorithm)
         except ValueError:
             raise ValueError("Invalid or expired refresh token")
         if payload.get("type") != "refresh":
@@ -168,11 +160,7 @@ class AuthService:
 
     def decode_mfa_challenge(self, token: str) -> int:
         try:
-            payload = decode_token(
-                token,
-                self._settings.jwt_secret_key.get_secret_value(),
-                self._settings.jwt_algorithm,
-            )
+            payload = decode_token(token, self._settings.jwt_secret_key.get_secret_value(), self._settings.jwt_algorithm)
         except ValueError:
             raise ValueError("Invalid or expired MFA challenge")
         if payload.get("type") != "mfa_challenge":
@@ -188,7 +176,6 @@ class AuthService:
         return create_email_verification_token(user.id, user.email, self._settings)
 
     async def get_user_for_verification(self, email: str) -> tuple[User, str] | None:
-        """Return (user, verification_token) for an unverified user, else None."""
         result = await self._session.execute(select(User).where(User.email == email))
         user = result.scalar_one_or_none()
         if user is None or user.is_verified:
