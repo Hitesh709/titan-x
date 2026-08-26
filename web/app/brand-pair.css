@@ -1,0 +1,8 @@
+/* XeCaps + TITAN X paired brand lockup */
+.ref-logo{display:flex!important;align-items:center!important;gap:12px!important;width:auto!important;min-width:0!important;text-decoration:none!important}
+.ref-logo img{display:none!important}
+.ref-logo::before,.ref-logo::after{content:"";display:block;flex:0 0 auto;background-repeat:no-repeat;background-position:center;background-size:contain;filter:drop-shadow(0 0 10px rgba(60,150,255,.14))}
+.ref-logo::before{width:92px;height:42px;background-image:url('/xecaps-logo.svg')}
+.ref-logo::after{width:132px;height:42px;background-image:url('/titan-x-logo.svg')}
+@media (max-width:900px){.ref-logo{gap:8px!important}.ref-logo::before{width:76px;height:36px}.ref-logo::after{width:108px;height:36px}}
+@media (max-width:520px){.ref-logo{gap:6px!important}.ref-logo::before{width:68px;height:32px}.ref-logo::after{width:94px;height:32px}}
