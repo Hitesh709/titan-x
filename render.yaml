@@ -38,7 +38,6 @@ services:
         value: https://titan-x.onrender.com
       - key: SEED_DEMO_ON_STARTUP
         value: "true"
-      # Demo prices must not be used by live-market UI components.
       - key: PAPER_DEMO_PRICES
         value: "false"
       - key: DATABASE_URL
@@ -54,6 +53,8 @@ services:
         generateValue: true
       - key: JWT_SECRET_KEY
         generateValue: true
+      - key: MFA_ENCRYPTION_KEY
+        sync: false
       - key: BACKUP_ENABLED
         value: "false"
       - key: BACKUP_INTERVAL_HOURS
