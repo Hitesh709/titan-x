@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from titan_x.core.config import Settings
@@ -112,6 +112,18 @@ class AuthService:
             raise ValueError("User not found")
 
         await self._user_repo.update(user.id, hashed_password=hash_password(new_password))
+
+        # Password reset is a security boundary: immediately invalidate every
+        # outstanding refresh session so a stolen/old session cannot survive a
+        # credential change.
+        await self._session.execute(
+            update(RefreshToken)
+            .where(
+                RefreshToken.user_id == user.id,
+                RefreshToken.revoked_at.is_(None),
+            )
+            .values(revoked_at=datetime.now(timezone.utc))
+        )
 
     async def verify_email(self, token: str) -> None:
         try:
