@@ -14,6 +14,7 @@ import {
   type OrderRow,
   type PlacedOrder,
 } from "./components"
+import AutoBotPanel from "./AutoBotPanel"
 
 const OPEN_STATUSES = ["pending", "open", "partially_filled"]
 
@@ -188,6 +189,8 @@ export default function TradingPage() {
       ) : (
         <>
           <AccountSummary account={account} />
+
+          <AutoBotPanel initialSymbol={symbol || "RELIANCE"} onSymbolChange={setSymbol} />
 
           <div className="grid lg:grid-cols-2 gap-6">
             <QuickTradeForm
