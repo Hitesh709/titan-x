@@ -1,6 +1,5 @@
 import re
 from collections.abc import Awaitable, Callable
-from typing import Any
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -51,11 +50,15 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     def __init__(self, app: ASGIApp, settings: Settings) -> None:
         super().__init__(app)
         self.enabled = settings.rate_limit_enabled
-        self.limiter = RateLimiter(settings.rate_limit_requests, settings.rate_limit_window_seconds)
+        self.limiter = RateLimiter(
+            settings.rate_limit_requests,
+            settings.rate_limit_window_seconds,
+            str(settings.redis_url),
+        )
 
     async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         if self.enabled and request.url.path.startswith("/api/"):
-            self.limiter.check(request)
+            await self.limiter.check(request)
         return await call_next(request)
 
 
