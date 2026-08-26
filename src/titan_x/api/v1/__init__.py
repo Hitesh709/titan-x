@@ -9,10 +9,6 @@ from fastapi import APIRouter
 
 logger = logging.getLogger(__name__)
 
-# Static recommendation endpoints must be registered before the generic
-# /recommendations/{symbol} route. FastAPI evaluates routes in declaration
-# order; otherwise /recommendations/strict is captured as symbol="strict" and
-# its limit=2000 is rejected by the generic route's le=100 validation (422).
 _ROUTER_SPECS: tuple[tuple[str, str | None], ...] = (
     ("analytics_dashboard", "router"), ("adaptive_stop_loss", "router"), ("admin", "admin_router"),
     ("advanced_screener", "router"), ("ai_ranking_v2", "router"), ("ai_registry", "router"),
@@ -47,6 +43,7 @@ _ROUTER_SPECS: tuple[tuple[str, str | None], ...] = (
     ("top_picks", "router"), ("trade_journal", "router"), ("trading_calendar", "router"),
     ("trading_portfolio", "router"), ("users", "users_router"), ("valuation", "router"),
     ("version", "version_router"), ("watchlists", "router"), ("public_market", "router"),
+    ("mfa", "router"),
 )
 
 
