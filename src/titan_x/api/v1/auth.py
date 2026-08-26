@@ -6,15 +6,14 @@ from titan_x.api.dependencies import (
     get_auth_service,
     get_brute_force_protector,
     get_current_active_user,
-    get_current_user,
     get_rate_limiter,
-    require_api_key,
 )
 from titan_x.api.schemas import (
     ForgotPasswordRequest,
     ForgotPasswordResponse,
     LoginRequest,
     LogoutRequest,
+    MFALoginRequest,
     MessageResponse,
     RefreshTokenRequest,
     RefreshTokenResponse,
@@ -27,10 +26,12 @@ from titan_x.api.schemas import (
     VerifyEmailRequest,
 )
 from titan_x.core.config import Settings, get_settings
+from titan_x.core.security import create_mfa_challenge_token
 from titan_x.infrastructure.brute_force_protection import BruteForceProtector
 from titan_x.infrastructure.rate_limiter import RateLimiter
 from titan_x.models.user import User
 from titan_x.services.auth_service import AuthService
+
 
 auth_router = APIRouter(tags=["auth"])
 
@@ -56,24 +57,64 @@ async def login(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> TokenResponse:
     if rate_limiter is not None and settings.rate_limit_enabled:
-        allowed, remaining, _ = await rate_limiter.check(f"login:{body.email}", settings.rate_limit_requests, settings.rate_limit_window_seconds)
+        allowed, _, _ = await rate_limiter.check(
+            f"login:{body.email}", settings.rate_limit_requests, settings.rate_limit_window_seconds,
+        )
         if not allowed:
             raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many requests")
 
     if brute_force is not None:
-        blocked = await brute_force.is_blocked(body.email, settings.brute_force_max_attempts, settings.brute_force_window_minutes, settings.brute_force_block_minutes)
+        blocked = await brute_force.is_blocked(
+            body.email, settings.brute_force_max_attempts, settings.brute_force_window_minutes, settings.brute_force_block_minutes,
+        )
         if blocked:
             raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Account temporarily blocked. Try again later.")
 
     try:
-        _, access, refresh, _ = await service.login(email=body.email, password=body.password)
+        user = await service.authenticate(email=body.email, password=body.password)
     except ValueError as exc:
         if brute_force is not None and settings.rate_limit_enabled:
-            await brute_force.record_failure_sorted(body.email, settings.brute_force_max_attempts, settings.brute_force_window_minutes, settings.brute_force_block_minutes)
+            await brute_force.record_failure_sorted(
+                body.email, settings.brute_force_max_attempts, settings.brute_force_window_minutes, settings.brute_force_block_minutes,
+            )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc))
 
     if brute_force is not None:
         await brute_force.reset_attempts(body.email)
+
+    if user.mfa_enabled:
+        challenge = create_mfa_challenge_token(user.id, settings)
+        return TokenResponse(mfa_required=True, mfa_challenge=challenge)
+
+    access, refresh, _ = await service.issue_tokens(user)
+    return TokenResponse(access_token=access, refresh_token=refresh)
+
+
+@auth_router.post("/auth/mfa-login", response_model=TokenResponse)
+async def mfa_login(
+    body: MFALoginRequest,
+    service: Annotated[AuthService, Depends(get_auth_service)],
+    rate_limiter: Annotated[RateLimiter | None, Depends(get_rate_limiter)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> TokenResponse:
+    user_id = service.decode_mfa_challenge(body.challenge)
+
+    if rate_limiter is not None and settings.rate_limit_enabled:
+        allowed, _, _ = await rate_limiter.check(
+            f"mfa-login:{user_id}", 5, 300,
+        )
+        if not allowed:
+            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many MFA attempts")
+
+    user = await service.get_user(user_id)
+    if user is None or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid MFA challenge")
+
+    try:
+        access, refresh, _ = await service.complete_mfa_login(user, body.code.strip())
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc))
+
     return TokenResponse(access_token=access, refresh_token=refresh)
 
 
@@ -113,10 +154,7 @@ async def forgot_password(
     reset_url = None
     if token is not None:
         reset_url = f"{settings.frontend_url.rstrip('/')}/reset-password?token={token}"
-    return ForgotPasswordResponse(
-        message="If the email exists, a password reset link has been sent",
-        reset_url=reset_url,
-    )
+    return ForgotPasswordResponse(message="If the email exists, a password reset link has been sent", reset_url=reset_url)
 
 
 @auth_router.post("/auth/reset-password", response_model=MessageResponse)
@@ -142,10 +180,7 @@ async def send_verification(
         return SendVerificationResponse(message="If the email exists, a verification link has been sent")
     user, token = result
     verification_url = f"{settings.frontend_url.rstrip('/')}/verify-email?token={token}"
-    return SendVerificationResponse(
-        message="Verification email sent",
-        verification_url=verification_url,
-    )
+    return SendVerificationResponse(message="Verification email sent", verification_url=verification_url)
 
 
 @auth_router.post("/auth/verify-email", response_model=MessageResponse)
