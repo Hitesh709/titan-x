@@ -6,10 +6,9 @@ import api from "@/lib/api"
 import { SymbolAutocomplete } from "@/components/dashboard/SymbolAutocomplete"
 
 const MAX_RUNTIME_SECONDS = 15 * 60
-
-interface TechnicalResponse { intraday?: { score?: number; direction?: string }; delivery?: { score?: number; direction?: string } }
+interface TechnicalResponse { intraday?: { score?: number; direction?: string; label?: string }; delivery?: { score?: number; direction?: string; label?: string } }
 interface PaperPosition { symbol: string; quantity: number; average_price?: number; market_value?: number; unrealized_pnl?: number }
-interface QuoteResponse { price?: number; last?: number; ltp?: number }
+interface QuoteResponse { price?: number; last?: number; ltp?: number; close?: number; previous_close?: number }
 interface AutoBotPanelProps { initialSymbol?: string; onSymbolChange?: (symbol: string) => void }
 
 function normalizeSignal(value: unknown): "BUY" | "SELL" | "WAIT" {
@@ -47,25 +46,61 @@ export default function AutoBotPanel({ initialSymbol = "RELIANCE", onSymbolChang
   }, [])
 
   const getTradePrice = useCallback(async (sym: string) => {
-    const candidates = [`/stocks/${encodeURIComponent(sym)}/quote`, `/market/quote/${encodeURIComponent(sym)}`, `/quotes/${encodeURIComponent(sym)}`]
-    for (const path of candidates) { try { const q = await api.get<QuoteResponse>(path); const p = Number(q?.price ?? q?.last ?? q?.ltp); if (Number.isFinite(p) && p > 0) return p } catch {} }
+    const candidates = [
+      `/stocks/${encodeURIComponent(sym)}/quote`,
+      `/market/quote/${encodeURIComponent(sym)}`,
+      `/quotes/${encodeURIComponent(sym)}`,
+      `/stocks/${encodeURIComponent(sym)}`,
+      `/public-market/quote/${encodeURIComponent(sym)}`,
+    ]
+    for (const path of candidates) {
+      try {
+        const q = await api.get<QuoteResponse>(path)
+        const p = Number(q?.price ?? q?.last ?? q?.ltp ?? q?.close)
+        if (Number.isFinite(p) && p > 0) return p
+      } catch {}
+    }
     throw new Error("Live price unavailable for this symbol")
   }, [])
+
+  const getSignal = useCallback(async (sym: string) => {
+    try {
+      const technical = await api.get<TechnicalResponse>(`/technical-strength/${encodeURIComponent(sym)}?resolution=5min`)
+      const intradayScore = Number(technical?.intraday?.score ?? 0)
+      const deliveryScore = Number(technical?.delivery?.score ?? 0)
+      const score = Math.max(intradayScore, deliveryScore)
+      const direction = normalizeSignal(technical?.intraday?.direction || technical?.intraday?.label || technical?.delivery?.direction || technical?.delivery?.label)
+      if (Number.isFinite(score) && score > 0) return { score, direction }
+    } catch {}
+
+    // Fallback to the recommendation endpoint so the bot can still use Titan-X's
+    // existing BUY/SELL recommendation when the technical-strength route is unavailable.
+    const paths = [
+      `/recommendations?symbol=${encodeURIComponent(sym)}`,
+      `/recommendations/${encodeURIComponent(sym)}`,
+      `/recommendation/${encodeURIComponent(sym)}`,
+    ]
+    for (const path of paths) {
+      try {
+        const r = await api.get<any>(path)
+        const item = Array.isArray(r) ? r.find((x) => String(x?.symbol ?? x?.ticker ?? "").toUpperCase() === sym) : (r?.recommendation ?? r?.data ?? r)
+        const direction = normalizeSignal(item?.direction ?? item?.signal ?? item?.action ?? item?.recommendation)
+        const score = Number(item?.technical_score ?? item?.score ?? item?.confidence ?? 0)
+        if (direction !== "WAIT") return { score: Number.isFinite(score) && score > 0 ? score : threshold, direction }
+      } catch {}
+    }
+    return { score: 0, direction: "WAIT" as const }
+  }, [threshold])
 
   const executeOnce = useCallback(async () => {
     const sym = symbol.trim().toUpperCase()
     if (!sym || busy) return
     setBusy(true)
     try {
-      const technical = await api.get<TechnicalResponse>(`/technical-strength/${encodeURIComponent(sym)}?resolution=5min`)
-      const intradayScore = Number(technical?.intraday?.score ?? 0)
-      const deliveryScore = Number(technical?.delivery?.score ?? 0)
-      const score = Math.max(intradayScore, deliveryScore)
-      const signal = normalizeSignal(technical?.intraday?.direction || technical?.delivery?.direction)
+      const { score, direction: signal } = await getSignal(sym)
       setLastScore(Number.isFinite(score) ? score : 0)
       setLastDirection(signal)
       if (!Number.isFinite(score) || score < threshold || signal === "WAIT") { setMessage(`No trade · ${signal} · ${Number.isFinite(score) ? score.toFixed(0) : "—"}/100`); return }
-
       await ensureAccount()
       const livePrice = await getTradePrice(sym)
       const requestedAmount = Math.max(1, Number(amount) || 1)
@@ -76,15 +111,14 @@ export default function AutoBotPanel({ initialSymbol = "RELIANCE", onSymbolChang
         tradeQuantity = Math.min(tradeQuantity, sellable)
       }
       if (tradeQuantity < 1) { setMessage(`Amount ₹${requestedAmount.toLocaleString("en-IN")} is below one share of ${sym}`); return }
-
       const actualAmount = tradeQuantity * livePrice
       const params = new URLSearchParams({ symbol: sym, side: signal === "BUY" ? "buy" : "sell", order_type: "market", quantity: String(tradeQuantity), time_in_force: "day" })
-      const order = await api.post<{ status?: string; rejection_reason?: string }>(`/paper-trading/orders?${params.toString()}`, {})
-      if (order?.status === "rejected") { setMessage(order.rejection_reason || "Order rejected"); return }
+      const order = await api.post<{ status?: string; rejection_reason?: string; message?: string }>(`/paper-trading/orders?${params.toString()}`, {})
+      if (order?.status === "rejected") { setMessage(order.rejection_reason || order.message || "Order rejected"); return }
       setExecuted(1)
       setMessage(`${signal} · ₹${actualAmount.toLocaleString("en-IN")} paper trade placed · ${tradeQuantity} shares`)
     } catch (error) { setMessage(error instanceof Error ? error.message : "Auto trade failed") } finally { setBusy(false) }
-  }, [amount, busy, ensureAccount, getSellableQuantity, getTradePrice, symbol, threshold])
+  }, [amount, busy, ensureAccount, getSellableQuantity, getSignal, getTradePrice, symbol, threshold])
 
   const stop = useCallback((reason = "Bot stopped") => { stopTimers(); deadlineRef.current = 0; runningRef.current = false; setRemainingSeconds(0); setRunning(false); setMessage(reason) }, [stopTimers])
   const start = () => {
@@ -92,7 +126,7 @@ export default function AutoBotPanel({ initialSymbol = "RELIANCE", onSymbolChang
     const sym = symbol.trim().toUpperCase()
     if (!sym) { setMessage("Select a stock symbol first"); return }
     if (!Number.isFinite(amount) || amount <= 0) { setMessage("Enter a valid trade amount"); return }
-    stopTimers(); const deadline = Date.now() + MAX_RUNTIME_SECONDS * 1000; deadlineRef.current = deadline; runningRef.current = true; setRemainingSeconds(MAX_RUNTIME_SECONDS); setExecuted(0); setRunning(true); setMessage("Auto trade command accepted · executing once")
+    stopTimers(); const deadline = Date.now() + MAX_RUNTIME_SECONDS * 1000; deadlineRef.current = deadline; runningRef.current = true; setRemainingSeconds(MAX_RUNTIME_SECONDS); setExecuted(0); setRunning(true); setMessage("Auto trade command accepted · evaluating live signal")
     void executeOnce().finally(() => { if (runningRef.current) stop("Auto trade completed") })
     stopTimerRef.current = setTimeout(() => stop("15-minute maximum reached · bot stopped"), MAX_RUNTIME_SECONDS * 1000)
   }
@@ -105,24 +139,10 @@ export default function AutoBotPanel({ initialSymbol = "RELIANCE", onSymbolChang
     <section className="glass-card p-5 border border-titan-500/20 relative overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-br from-titan-500/5 via-transparent to-fuchsia-500/5 pointer-events-none" />
       <div className="relative">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
-          <div><h3 className="text-sm font-semibold text-white flex items-center gap-2"><Bot size={17} className="text-titan-400" /> Auto Bot Trading <span className="text-[9px] uppercase tracking-wider px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">Paper</span></h3><p className="text-xs text-gray-500 mt-1">One automatic BUY/SELL decision per user command using the current Titan-X technical signal.</p></div>
-          <div className="flex items-center gap-2 text-[10px] text-gray-500"><ShieldCheck size={14} className="text-emerald-400" /> 15-minute safety window</div>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-end">
-          <div className="col-span-2 md:col-span-1"><label className="block text-[10px] text-gray-500 mb-1">Search stock</label><SymbolAutocomplete value={symbol} onChange={updateSymbol} placeholder="Search symbol" className="w-full" /></div>
-          <div><label className="block text-[10px] text-gray-500 mb-1">Min technical</label><input type="number" min={70} max={100} value={threshold} onChange={(e) => setThreshold(Math.min(100, Math.max(70, Number(e.target.value) || 85)))} className="input-field w-full text-sm" disabled={running} /></div>
-          <div><label className="block text-[10px] text-gray-500 mb-1">Trade Amount (₹)</label><input type="number" min={1} step={1000} value={amount} onChange={(e) => setAmount(Math.max(1, Number(e.target.value) || 1))} className="input-field w-full text-sm" disabled={running} /></div>
-          <div>{running ? <button onClick={() => stop()} className="w-full px-4 py-2 rounded-lg text-sm font-semibold border border-red-500/30 bg-red-500/10 text-red-400 inline-flex items-center justify-center gap-2"><Pause size={14} /> Stop</button> : <button onClick={start} disabled={busy} className="w-full px-4 py-2 rounded-lg text-sm font-semibold bg-titan-500 text-white inline-flex items-center justify-center gap-2 disabled:opacity-50"><Play size={14} /> Auto Trade Now</button>}</div>
-        </div>
-        <div className="mt-4 grid grid-cols-2 md:grid-cols-5 gap-3">
-          <div className="rounded-lg bg-white/[0.03] border border-white/5 p-3"><div className="text-[10px] text-gray-500">Technical</div><div className="text-lg font-bold text-white">{lastScore == null ? "—" : `${lastScore.toFixed(0)}/100`}</div></div>
-          <div className="rounded-lg bg-white/[0.03] border border-white/5 p-3"><div className="text-[10px] text-gray-500">Signal</div><div className="text-lg font-bold text-titan-300">{lastDirection}</div></div>
-          <div className="rounded-lg bg-white/[0.03] border border-white/5 p-3"><div className="text-[10px] text-gray-500">Executed</div><div className="text-lg font-bold text-white">{executed ? "1" : "0"}</div></div>
-          <div className="rounded-lg bg-white/[0.03] border border-white/5 p-3"><div className="text-[10px] text-gray-500">Window</div><div className="text-lg font-bold text-white flex items-center gap-1"><Clock3 size={14} />{running ? `${mins}:${String(secs).padStart(2, "0")}` : "15:00 max"}</div></div>
-          <div className="rounded-lg bg-white/[0.03] border border-white/5 p-3"><div className="text-[10px] text-gray-500">Status</div><div className="text-xs font-medium text-gray-300 flex items-center gap-1.5 mt-1"><Activity size={12} className={running ? "text-emerald-400" : "text-gray-500"} />{message}</div></div>
-        </div>
-        <div className="mt-4 flex items-start gap-2 text-[10px] leading-4 text-gray-500"><Zap size={12} className="mt-0.5 shrink-0 text-titan-400" /><span>Paper trading only. The command evaluates the current technical signal and sizes the paper order to approximately the requested rupee amount. It does not promise a return.</span></div>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-5"><div><h3 className="text-sm font-semibold text-white flex items-center gap-2"><Bot size={17} className="text-titan-400" /> Auto Bot Trading <span className="text-[9px] uppercase tracking-wider px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">Paper</span></h3><p className="text-xs text-gray-500 mt-1">One automatic BUY/SELL decision per user command using the current Titan-X signal.</p></div><div className="flex items-center gap-2 text-[10px] text-gray-500"><ShieldCheck size={14} className="text-emerald-400" /> 15-minute safety window</div></div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-end"><div className="col-span-2 md:col-span-1"><label className="block text-[10px] text-gray-500 mb-1">Search stock</label><SymbolAutocomplete value={symbol} onChange={updateSymbol} placeholder="Search symbol" className="w-full" /></div><div><label className="block text-[10px] text-gray-500 mb-1">Min technical</label><input type="number" min={70} max={100} value={threshold} onChange={(e) => setThreshold(Math.min(100, Math.max(70, Number(e.target.value) || 85)))} className="input-field w-full text-sm" disabled={running} /></div><div><label className="block text-[10px] text-gray-500 mb-1">Trade Amount (₹)</label><input type="number" min={1} step={1000} value={amount} onChange={(e) => setAmount(Math.max(1, Number(e.target.value) || 1))} className="input-field w-full text-sm" disabled={running} /></div><div>{running ? <button onClick={() => stop()} className="w-full px-4 py-2 rounded-lg text-sm font-semibold border border-red-500/30 bg-red-500/10 text-red-400 inline-flex items-center justify-center gap-2"><Pause size={14} /> Stop</button> : <button onClick={start} disabled={busy} className="w-full px-4 py-2 rounded-lg text-sm font-semibold bg-titan-500 text-white inline-flex items-center justify-center gap-2 disabled:opacity-50"><Play size={14} /> Auto Trade Now</button>}</div></div>
+        <div className="mt-4 grid grid-cols-2 md:grid-cols-5 gap-3"><div className="rounded-lg bg-white/[0.03] border border-white/5 p-3"><div className="text-[10px] text-gray-500">Technical</div><div className="text-lg font-bold text-white">{lastScore == null ? "—" : `${lastScore.toFixed(0)}/100`}</div></div><div className="rounded-lg bg-white/[0.03] border border-white/5 p-3"><div className="text-[10px] text-gray-500">Signal</div><div className="text-lg font-bold text-titan-300">{lastDirection}</div></div><div className="rounded-lg bg-white/[0.03] border border-white/5 p-3"><div className="text-[10px] text-gray-500">Executed</div><div className="text-lg font-bold text-white">{executed ? "1" : "0"}</div></div><div className="rounded-lg bg-white/[0.03] border border-white/5 p-3"><div className="text-[10px] text-gray-500">Window</div><div className="text-lg font-bold text-white flex items-center gap-1"><Clock3 size={14} />{running ? `${mins}:${String(secs).padStart(2, "0")}` : "15:00 max"}</div></div><div className="rounded-lg bg-white/[0.03] border border-white/5 p-3"><div className="text-[10px] text-gray-500">Status</div><div className="text-xs font-medium text-gray-300 flex items-center gap-1.5 mt-1"><Activity size={12} className={running ? "text-emerald-400" : "text-gray-500"} />{message}</div></div></div>
+        <div className="mt-4 flex items-start gap-2 text-[10px] leading-4 text-gray-500"><Zap size={12} className="mt-0.5 shrink-0 text-titan-400" /><span>Paper trading only. The command evaluates the current technical/recommendation signal and sizes the paper order to approximately the requested rupee amount. It does not promise a return.</span></div>
       </div>
     </section>
   )
