@@ -36,12 +36,14 @@ class AuthService:
         )
         return user
 
-    async def login(self, email: str, password: str) -> tuple[User, str, str, str]:
+    async def authenticate(self, email: str, password: str) -> User:
         result = await self._session.execute(select(User).where(User.email == email))
         user = result.scalar_one_or_none()
         if user is None or not verify_password(password, user.hashed_password):
             raise ValueError("Invalid email or password")
+        return user
 
+    async def issue_tokens(self, user: User) -> tuple[str, str, str]:
         access_token = create_access_token(user.id, self._settings)
         refresh_token, jti, expires_at = create_refresh_token(user.id, self._settings)
         await self._token_repo.create(
@@ -49,6 +51,11 @@ class AuthService:
             user_id=user.id,
             expires_at=expires_at,
         )
+        return access_token, refresh_token, jti
+
+    async def login(self, email: str, password: str) -> tuple[User, str, str, str]:
+        user = await self.authenticate(email, password)
+        access_token, refresh_token, jti = await self.issue_tokens(user)
         return user, access_token, refresh_token, jti
 
     async def refresh(self, refresh_token_jti: str, user_id: int) -> tuple[str, str, str]:
@@ -158,6 +165,19 @@ class AuthService:
         if payload.get("type") != "refresh":
             raise ValueError("Invalid token type")
         return str(payload["jti"]), int(payload["sub"])
+
+    def decode_mfa_challenge(self, token: str) -> int:
+        try:
+            payload = decode_token(
+                token,
+                self._settings.jwt_secret_key.get_secret_value(),
+                self._settings.jwt_algorithm,
+            )
+        except ValueError:
+            raise ValueError("Invalid or expired MFA challenge")
+        if payload.get("type") != "mfa_challenge":
+            raise ValueError("Invalid MFA challenge")
+        return int(payload["sub"])
 
     async def create_verification_token(self, user_id: int, email: str) -> str:
         user = await self._user_repo.get(user_id)
