@@ -77,13 +77,19 @@ function LoginInner() {
   }, [])
 
   const createQr = useCallback(async () => {
+    const identifier = email.trim()
+    if (!identifier) {
+      setError("Enter your user ID, email, or registered phone number first.")
+      return
+    }
+
     setError("")
     setNotice("")
     setLoading(true)
 
     try {
       const data = await api.post<QRCreateResponse>("/auth/qr/create", {
-        identifier: email.trim(),
+        identifier,
       })
       setQr(data)
       setQrStatus("PENDING")
@@ -278,15 +284,40 @@ function LoginInner() {
           <FormSuccess message={notice} />
 
           {!qr ? (
-            <button
-              type="button"
-              onClick={createQr}
-              disabled={loading || !email.trim()}
-              className="w-full rounded-xl border border-titan-500/40 bg-titan-500/10 py-3 text-titan-300 disabled:opacity-50"
-            >
-              <QrCode className="inline-block mr-2 h-5 w-5" />
-              {loading ? "Generating secure QR..." : "Generate secure QR"}
-            </button>
+            <>
+              <div>
+                <label
+                  htmlFor="qr-identifier"
+                  className="block text-sm font-medium text-gray-400 mb-1.5"
+                >
+                  User ID / Email / Registered Phone
+                </label>
+                <input
+                  id="qr-identifier"
+                  type="text"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  className="input-field"
+                  placeholder="Enter your user ID, email, or phone"
+                  autoComplete="username"
+                  autoFocus
+                  required
+                />
+                <p className="mt-1.5 text-xs text-gray-500">
+                  Enter the identifier belonging to your registered account.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={createQr}
+                disabled={loading || !email.trim()}
+                className="w-full rounded-xl border border-titan-500/40 bg-titan-500/10 py-3 text-titan-300 disabled:opacity-50"
+              >
+                <QrCode className="inline-block mr-2 h-5 w-5" />
+                {loading ? "Generating secure QR..." : "Generate secure QR"}
+              </button>
+            </>
           ) : (
             <>
               <div className="rounded-2xl bg-white p-4 mx-auto w-fit shadow-xl">
