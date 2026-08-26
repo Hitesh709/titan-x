@@ -17,11 +17,15 @@ class User(PrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
     fcm_token: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # MFA state. Store the TOTP secret encrypted at rest; never expose it from API responses.
+    mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    mfa_secret_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     audit_logs: Mapped[list["AuditLog"]] = relationship(back_populates="user", cascade="all, delete-orphan")  # type: ignore[name-defined]
     preferences: Mapped[list["UserPreference"]] = relationship(back_populates="user", cascade="all, delete-orphan")  # type: ignore[name-defined]
     broker_connections: Mapped[list["BrokerConnection"]] = relationship(back_populates="user", cascade="all, delete-orphan")  # type: ignore[name-defined]
     orders: Mapped[list["Order"]] = relationship(back_populates="user", cascade="all, delete-orphan")  # type: ignore[name-defined]
     positions: Mapped[list["Position"]] = relationship(back_populates="user", cascade="all, delete-orphan")  # type: ignore[name-defined]
-    refresh_tokens: Mapped[list["RefreshToken"]] = relationship(  # type: ignore[name-defined]
+    refresh_tokens: Mapped[list["RefreshToken"]] = relationship(
         "RefreshToken", back_populates="user", cascade="all, delete-orphan",
     )
