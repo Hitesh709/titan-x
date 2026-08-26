@@ -10,6 +10,7 @@ from titan_x.core.config import Settings
 from titan_x.db.base import Base
 from titan_x.db.session import create_engine, create_session_factory
 from titan_x.infrastructure.cache import MemoryCache, RedisCache
+from titan_x.infrastructure.memory_session_store import MemorySessionStore
 from titan_x.infrastructure.scheduler import Scheduler
 from titan_x.infrastructure.session_store import RedisSessionStore
 from titan_x.infrastructure.task_queue import TaskQueue, Worker
@@ -63,7 +64,6 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
 
     if settings.seed_demo_on_startup:
         from titan_x.core.seed_demo import seed_all
-
         await seed_all(session_factory)
         logger.info("demo_seeded_on_startup")
 
@@ -91,10 +91,6 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
                             failed=result.get("symbols_failed"),
                             inserted=result.get("inserted_total"),
                         )
-                        # Always expose per-symbol failures. This is critical on
-                        # Render because the aggregate counter alone cannot tell
-                        # us whether a provider, ticker, network, or parsing issue
-                        # caused the failure.
                         for error in errors:
                             logger.error(
                                 "market_data_symbol_failed",
@@ -121,17 +117,11 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
         async def _ingest_news_later(sf) -> None:
             try:
                 from titan_x.services.news_feed import run_news_ingestion
-
                 result = await run_news_ingestion(sf)
-                logger.info(
-                    "news_ingest_startup",
-                    fetched=result.get("fetched"),
-                    created=result.get("created"),
-                )
+                logger.info("news_ingest_startup", fetched=result.get("fetched"), created=result.get("created"))
             except Exception:  # noqa: BLE001
                 logger.exception("news_ingest_startup_failed")
 
-        # Do not block readiness on the NSE CSV fetch (can be slow from US DCs).
         asyncio.create_task(_universe_load_later())
     except Exception:  # noqa: BLE001
         logger.exception("nse_universe_startup_failed")
@@ -141,21 +131,29 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
         redis = Redis.from_url(str(settings.redis_url), encoding="utf-8", decode_responses=True)
         await redis.ping()
         logger.info("redis_connected")
-    except Exception:
-        logger.warning("redis_unavailable - using null stubs")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "redis_unavailable_using_safe_fallback",
+            error_type=type(exc).__name__,
+            message=str(exc),
+        )
         redis = None
 
     app.state.redis = redis
 
-    from unittest.mock import AsyncMock
-
     if redis is not None:
         cache = RedisCache(redis)
         session_store = RedisSessionStore(redis, default_ttl=settings.session_ttl)
+        logger.info("redis_cache_and_sessions_ready")
     else:
-        logger.warning("redis_unavailable - falling back to in-memory cache")
         cache = MemoryCache()
-        session_store = AsyncMock()
+        session_store = MemorySessionStore(default_ttl=settings.session_ttl)
+        logger.warning(
+            "redis_fallback_active",
+            cache="memory",
+            sessions="memory",
+            note="Configure REDIS_URL for shared production cache and sessions",
+        )
     app.state.cache = cache
     app.state.session_store = session_store
 
@@ -186,7 +184,6 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
         logger.info("scheduler_initialized")
 
         if settings.run_worker_in_process and app.state.task_queue is not None:
-
             async def _handle_task(task: dict) -> None:
                 job_type = task.get("type")
                 job = scheduler._registered_jobs.get(job_type)
@@ -225,7 +222,6 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
 
     if settings.backup_enabled:
         from titan_x.infrastructure.backup import backup_loop
-
         asyncio.create_task(backup_loop(settings))
         logger.info("backup_loop_started", interval_hours=settings.backup_interval_hours)
 
@@ -239,11 +235,11 @@ async def on_shutdown(app: FastAPI, settings: Settings) -> None:
     if worker is not None:
         await worker.stop()
 
-    cache: RedisCache | None = getattr(app.state, "cache", None)
+    cache = getattr(app.state, "cache", None)
     if cache is not None:
         await cache.close()
 
-    session_store: RedisSessionStore | None = getattr(app.state, "session_store", None)
+    session_store = getattr(app.state, "session_store", None)
     if session_store is not None:
         await session_store.close()
 
