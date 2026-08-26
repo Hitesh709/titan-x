@@ -9,15 +9,13 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from titan_x.api.dependencies import get_current_active_user
-from titan_x.db.session import get_db
+from titan_x.api.dependencies import get_current_active_user, get_db
 from titan_x.models.user import User
 from titan_x.security.mfa import verify_totp
 from titan_x.security.mfa_enrollment import begin_enrollment
-from titan_x.security.mfa_storage import decrypt_mfa_secret, encrypt_mfa_secret, hash_recovery_code
+from titan_x.security.mfa_storage import decrypt_mfa_secret
 
 router = APIRouter(prefix="/mfa", tags=["MFA"])
 
@@ -38,11 +36,9 @@ async def enroll_mfa(
 ):
     if current_user.mfa_enabled:
         raise HTTPException(status_code=409, detail="MFA is already enabled")
-    secret, encrypted, uri, recovery_codes = begin_enrollment(current_user.email)
+    _, encrypted, uri, recovery_codes = begin_enrollment(current_user.email)
     current_user.mfa_secret_encrypted = encrypted
     await db.commit()
-    # The plaintext secret is deliberately not returned. The provisioning URI
-    # contains the secret and is shown once to the authenticated user.
     return EnrollmentResponse(provisioning_uri=uri, recovery_codes=recovery_codes)
 
 
