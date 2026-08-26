@@ -43,11 +43,9 @@ class RateLimiter:
         if self.redis is not None:
             redis_key = f"titanx:ratelimit:{client_key}"
             try:
-                async with self.redis.pipeline(transaction=True) as pipe:
-                    pipe.incr(redis_key)
-                    pipe.expire(redis_key, self.window)
-                    result = await pipe.execute()
-                count = int(result[0])
+                count = int(await self.redis.incr(redis_key))
+                if count == 1:
+                    await self.redis.expire(redis_key, self.window)
                 if count > self.limit:
                     raise HTTPException(status_code=429, detail="Rate limit exceeded")
                 return
