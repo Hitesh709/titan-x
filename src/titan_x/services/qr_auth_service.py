@@ -144,11 +144,7 @@ class QRAuthService:
         message["Subject"] = "Titan X email verification code"
         message["From"] = f"{self._settings.smtp_from_name} <{self._settings.smtp_from_email}>"
         message["To"] = challenge.registration_email
-        message.set_content(
-            f"Your Titan X verification code is {otp}.\n\n"
-            f"This code expires in {self.EMAIL_OTP_TTL_SECONDS // 60} minutes.\n"
-            "Do not share this code with anyone."
-        )
+        message.set_content(f"Your Titan X verification code is {otp}.\n\nThis code expires in {self.EMAIL_OTP_TTL_SECONDS // 60} minutes.\nDo not share this code with anyone.")
 
         def send() -> None:
             with smtplib.SMTP(self._settings.smtp_host, self._settings.smtp_port, timeout=15) as smtp:
@@ -170,9 +166,11 @@ class QRAuthService:
             raise ValueError("QR challenge is no longer pending")
         if not challenge.verification_phone or not hmac.compare_digest(phone, self.normalize_phone(challenge.verification_phone)):
             raise ValueError("SMS sender does not match the verified mobile number")
+        now = self._now()
         if challenge.operation == "REGISTRATION" and challenge.registration_email:
             await self._send_email_otp(challenge)
-        now = self._now()
+            # The QR token is single-use after this point; allow a separate, short email-OTP window.
+            challenge.expires_at = now + timedelta(seconds=self.EMAIL_OTP_TTL_SECONDS)
         result = await self._session.execute(
             update(AuthChallenge)
             .where(AuthChallenge.id == challenge.id, AuthChallenge.status == "PENDING", AuthChallenge.expires_at > now)
