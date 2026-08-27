@@ -1,4 +1,3 @@
-import hmac
 import json
 from urllib.parse import parse_qs
 from typing import Annotated
@@ -57,15 +56,23 @@ async def create_registration_qr(body: QRRegistrationRequest, request: Request, 
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     await _set_browser_cookie(response, request, browser_session, settings)
     audit_event_later(request, action="LOGIN_QR_CREATED", entity_type="registration_challenge", category="security", severity="info")
-    return QRRegistrationCreateResponse(challenge_id=challenge.challenge_id, qr_data_url=service._qr(raw, "REGISTRATION"), expires_at=challenge.expires_at, expires_in_seconds=service.CHALLENGE_TTL_SECONDS, sms_number=settings.qr_sms_number)
+    return QRRegistrationCreateResponse(challenge_id=challenge.challenge_id, qr_data_url=service._qr(raw, "REGISTRATION"), expires_at=challenge.expires_at, expires_in_seconds=service.CHALLENGE_TTL_SECONDS, sms_number=None)
+
+
+@router.post("/auth/qr/register/scan", response_model=dict)
+async def scan_registration_qr(body: QRChallengeRequest, request: Request, service: Annotated[QRAuthService, Depends(get_qr_auth_service)], settings: Annotated[Settings, Depends(get_settings)]) -> dict:
+    """Handle a QR scan for registration. No inbound SMS is required in the temporary flow."""
+    await _check_rate(request, settings, "register-scan", 20)
+    try:
+        challenge = await service.scan_registration_qr(body.challenge_id)
+    except ValueError as exc:
+        audit_event_later(request, action="LOGIN_QR_FAILED", entity_type="registration_challenge", category="security", severity="warning")
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    audit_event_later(request, action="LOGIN_QR_SCANNED", entity_type="registration_challenge", category="security", severity="info")
+    return {"status": challenge.status, "email_otp_required": True, "message": "QR scanned. Email verification code sent."}
 
 
 async def _read_sms_webhook(request: Request) -> tuple[str, str]:
-    """Accept the canonical JSON webhook plus common form-encoded SMS gateways.
-
-    Supported JSON keys: from_number/body and From/Body.
-    Supported form keys: from_number/body and From/Body.
-    """
     content_type = (request.headers.get("content-type") or "").lower()
     raw = await request.body()
     data: dict[str, object] = {}
@@ -79,7 +86,6 @@ async def _read_sms_webhook(request: Request) -> tuple[str, str]:
     else:
         parsed = parse_qs(raw.decode("utf-8", errors="replace"), keep_blank_values=True)
         data = {key: values[-1] for key, values in parsed.items() if values}
-
     from_number = data.get("from_number") or data.get("From") or data.get("from")
     message = data.get("body") or data.get("Body") or data.get("message")
     if not isinstance(from_number, str) or not isinstance(message, str) or not from_number.strip() or not message.strip():
@@ -140,4 +146,4 @@ async def cancel_qr(body: QRChallengeRequest, request: Request, service: Annotat
         await service.cancel(body.challenge_id, browser_session)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"message": "QR login cancelled"}
+    return {"message": "QR authentication cancelled"}
