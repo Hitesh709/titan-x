@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 
 from titan_x.api.dependencies import get_qr_auth_service
-from titan_x.api.schemas import QRChallengeRequest, QRCreateResponse, QRLoginRequest, QRRegistrationCreateResponse, QRRegistrationRequest, QRSMSWebhookRequest, QRStatusResponse, RegisterResponse
+from titan_x.api.schemas import QRChallengeRequest, QRCreateResponse, QRLoginRequest, QRRegistrationCreateResponse, QRRegistrationEmailOTPRequest, QRRegistrationRequest, QRSMSWebhookRequest, QRStatusResponse, RegisterResponse
 from titan_x.core.audit import audit_event_later
 from titan_x.core.config import Settings, get_settings
 from titan_x.infrastructure.rate_limiter import RateLimiter
@@ -73,7 +73,18 @@ async def sms_webhook(body: QRSMSWebhookRequest, request: Request, settings: Ann
         audit_event_later(request, action="LOGIN_QR_FAILED", entity_type="auth_challenge", category="security", severity="warning")
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     audit_event_later(request, action="LOGIN_QR_APPROVED", entity_type="auth_challenge", category="security", severity="info", user_id=challenge.customer_id)
-    return {"status": "approved"}
+    return {"status": "approved", "email_otp_required": bool(challenge.operation == "REGISTRATION" and challenge.registration_email)}
+
+
+@router.post("/auth/qr/register/email-otp/verify", response_model=dict)
+async def verify_registration_email_otp(body: QRRegistrationEmailOTPRequest, request: Request, service: Annotated[QRAuthService, Depends(get_qr_auth_service)], settings: Annotated[Settings, Depends(get_settings)]) -> dict:
+    await _check_rate(request, settings, "email-otp", 10)
+    try:
+        await service.verify_registration_email_otp(body.challenge_id, body.otp)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    audit_event_later(request, action="EMAIL_OTP_VERIFIED", entity_type="registration_challenge", category="security", severity="info")
+    return {"status": "verified"}
 
 
 @router.get("/auth/qr/status/{challenge_id}", response_model=QRStatusResponse)
