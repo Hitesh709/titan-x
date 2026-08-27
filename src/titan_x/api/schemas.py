@@ -27,10 +27,11 @@ class BrokerConnectionResponse(BaseModel): id: int; broker_name: str; label: str
 class UserCreateRequest(BaseModel): email: EmailStr; password: str = Field(min_length=8, max_length=128); role: str = Field(default="normal", pattern=r"^(normal|premium|analyst|admin)$"); is_active: bool = True; is_superuser: bool = False; is_verified: bool = False
 class UserUpdateRequest(BaseModel): email: EmailStr | None = None; password: str | None = Field(default=None, min_length=8, max_length=128); role: str | None = Field(default=None, pattern=r"^(normal|premium|analyst|admin)$"); is_active: bool | None = None; is_superuser: bool | None = None; is_verified: bool | None = None
 class QRCreateResponse(BaseModel): challenge_id: str; qr_data_url: str; expires_at: datetime; expires_in_seconds: int; sms_number: str | None = None
-class QRStatusResponse(BaseModel): status: Literal["PENDING", "SCANNED", "APPROVED", "DECLINED", "EXPIRED", "CANCELLED", "USED"]; access_token: str | None = None; refresh_token: str | None = None; token_type: str = "bearer"; user: RegisterResponse | None = None
+class QRStatusResponse(BaseModel): status: Literal["PENDING", "SCANNED", "APPROVED", "EMAIL_OTP_REQUIRED", "DECLINED", "EXPIRED", "CANCELLED", "USED"]; access_token: str | None = None; refresh_token: str | None = None; token_type: str = "bearer"; user: RegisterResponse | None = None
 class QRChallengeRequest(BaseModel): challenge_id: str = Field(min_length=16, max_length=128)
 class QRLoginRequest(BaseModel): identifier: str = Field(min_length=1, max_length=320)
 class QRSMSWebhookRequest(BaseModel): from_number: str = Field(min_length=7, max_length=32); body: str = Field(min_length=1, max_length=512)
 class QRRegistrationRequest(BaseModel):
     username: str = Field(min_length=3, max_length=80, pattern=r"^[A-Za-z0-9_.-]+$"); password: str = Field(min_length=8, max_length=128); confirm_password: str = Field(min_length=8, max_length=128); email: EmailStr | None = None; phone: str | None = Field(default=None, min_length=7, max_length=32)
 class QRRegistrationCreateResponse(BaseModel): challenge_id: str; qr_data_url: str; expires_at: datetime; expires_in_seconds: int; sms_number: str | None = None
+class QRRegistrationEmailOTPRequest(BaseModel): challenge_id: str = Field(min_length=16, max_length=128); otp: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
