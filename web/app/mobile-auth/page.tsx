@@ -3,12 +3,14 @@
 import { useSearchParams } from "next/navigation"
 import { Suspense } from "react"
 
+const SMS_PREFIX = "TITANX-QR:"
+
 function MobileAuthBridge() {
   const params = useSearchParams()
   const challenge = params.get("challenge") || ""
   const flow = params.get("flow") === "registration" ? "registration" : "login"
   const smsNumber = process.env.NEXT_PUBLIC_QR_SMS_NUMBER || ""
-  const smsHref = challenge && smsNumber ? `sms:${smsNumber}?body=${encodeURIComponent(`TXQR:${challenge}`)}` : ""
+  const smsHref = challenge && smsNumber ? `sms:${smsNumber}?body=${encodeURIComponent(`${SMS_PREFIX}${challenge}`)}` : ""
   const isRegistration = flow === "registration"
 
   return (
