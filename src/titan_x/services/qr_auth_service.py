@@ -23,7 +23,7 @@ from titan_x.models.user import User
 
 
 class QRAuthService:
-    CHALLENGE_TTL_SECONDS = 60
+    CHALLENGE_TTL_SECONDS = 120
     EMAIL_OTP_TTL_SECONDS = 10 * 60
     EMAIL_OTP_MAX_ATTEMPTS = 5
     EMAIL_OTP_RESEND_SECONDS = 60
@@ -79,6 +79,8 @@ class QRAuthService:
         phone_value = self.normalize_phone(phone) if phone else None
         if not email_value and not phone_value:
             raise ValueError("Email or phone is required")
+        if email_value and not phone_value:
+            raise ValueError("Mobile number is required for QR + SMS registration")
         checks = [select(User).where(User.username == username.strip())]
         if email_value:
             checks.append(select(User).where(User.email == email_value))
@@ -87,10 +89,6 @@ class QRAuthService:
         for query in checks:
             if (await self._session.execute(query)).scalar_one_or_none() is not None:
                 raise ValueError("Account information is already registered")
-        if not email_value:
-            email_value = f"{phone_value.replace('+', '')}@phone.titanx.local"
-        if email_value and not phone_value:
-            raise ValueError("Mobile number is required for QR + SMS registration")
         return await self._create_challenge(browser_session, "REGISTRATION", None, phone_value, username.strip(), email_value, phone_value, hash_password(password), ip_address, user_agent)
 
     async def _create_challenge(self, browser_session: str, operation: str, customer_id: int | None, verification_phone: str | None, registration_username: str | None, registration_email: str | None, registration_phone: str | None, registration_password_hash: str | None, ip_address: str | None, user_agent: str | None) -> tuple[AuthChallenge, str]:
@@ -169,13 +167,8 @@ class QRAuthService:
         now = self._now()
         if challenge.operation == "REGISTRATION" and challenge.registration_email:
             await self._send_email_otp(challenge)
-            # The QR token is single-use after this point; allow a separate, short email-OTP window.
             challenge.expires_at = now + timedelta(seconds=self.EMAIL_OTP_TTL_SECONDS)
-        result = await self._session.execute(
-            update(AuthChallenge)
-            .where(AuthChallenge.id == challenge.id, AuthChallenge.status == "PENDING", AuthChallenge.expires_at > now)
-            .values(status="APPROVED", customer_id=challenge.customer_id, scanned_at=now, approved_at=now)
-        )
+        result = await self._session.execute(update(AuthChallenge).where(AuthChallenge.id == challenge.id, AuthChallenge.status == "PENDING", AuthChallenge.expires_at > now).values(status="APPROVED", customer_id=challenge.customer_id, scanned_at=now, approved_at=now))
         if result.rowcount != 1:
             raise ValueError("QR challenge was already used or expired")
         await self._session.flush()
@@ -203,7 +196,6 @@ class QRAuthService:
             raise ValueError("Invalid email OTP")
         challenge.email_verified_at = now
         challenge.email_otp_hash = None
-        challenge.status = "APPROVED"
         await self._session.flush()
 
     async def decline(self, raw_challenge: str, from_number: str) -> None:
@@ -257,7 +249,7 @@ class QRAuthService:
             existing = await self._session.execute(select(User).where(User.username == challenge.registration_username))
             if existing.scalar_one_or_none() is not None:
                 raise ValueError("Username is already registered")
-            user = User(username=challenge.registration_username, email=challenge.registration_email or f"{challenge.registration_phone.replace('+', '')}@phone.titanx.local", phone=challenge.registration_phone, hashed_password=challenge.registration_password_hash or "", is_active=True, is_verified=True, role="normal")
+            user = User(username=challenge.registration_username, email=challenge.registration_email, phone=challenge.registration_phone, hashed_password=challenge.registration_password_hash or "", is_active=True, is_verified=True, role="normal")
             self._session.add(user)
             await self._session.flush()
         else:
