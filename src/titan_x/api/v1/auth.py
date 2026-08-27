@@ -1,6 +1,7 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel, EmailStr, Field
 
 from titan_x.api.dependencies import (
     get_auth_service,
@@ -31,9 +32,87 @@ from titan_x.infrastructure.brute_force_protection import BruteForceProtector
 from titan_x.infrastructure.rate_limiter import RateLimiter
 from titan_x.models.user import User
 from titan_x.services.auth_service import AuthService
+from titan_x.services.email_registration_service import EmailRegistrationService
 
 
 auth_router = APIRouter(tags=["auth"])
+
+
+class EmailRegistrationRequest(BaseModel):
+    username: str = Field(min_length=3, max_length=80, pattern=r"^[A-Za-z0-9_.-]+$")
+    email: EmailStr
+    phone: str = Field(min_length=7, max_length=32)
+    password: str = Field(min_length=8, max_length=128)
+    confirm_password: str = Field(min_length=8, max_length=128)
+
+
+class EmailRegistrationCreateResponse(BaseModel):
+    challenge_id: str
+    expires_in_seconds: int
+    message: str
+
+
+@auth_router.post("/auth/register/email-otp/create", response_model=EmailRegistrationCreateResponse)
+async def create_email_otp_registration(
+    body: EmailRegistrationRequest,
+    request: Request,
+    settings: Annotated[Settings, Depends(get_settings)],
+    rate_limiter: Annotated[RateLimiter | None, Depends(get_rate_limiter)],
+) -> EmailRegistrationCreateResponse:
+    if rate_limiter is not None and settings.rate_limit_enabled:
+        allowed, _, _ = await rate_limiter.check(
+            f"signup-email-otp:{body.email.lower()}", 5, 300
+        )
+        if not allowed:
+            raise HTTPException(status_code=429, detail="Too many signup attempts. Try again later.")
+
+    async with request.app.state.session_factory() as session:
+        service = EmailRegistrationService(session, settings)
+        try:
+            challenge_id, _ = await service.create(
+                username=body.username,
+                email=str(body.email),
+                phone=body.phone,
+                password=body.password,
+                confirm_password=body.confirm_password,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return EmailRegistrationCreateResponse(
+        challenge_id=challenge_id,
+        expires_in_seconds=EmailRegistrationService.OTP_TTL_SECONDS,
+        message="Verification OTP sent to your email address.",
+    )
+
+
+@auth_router.post("/auth/register/email-otp/verify", response_model=TokenResponse)
+async def verify_email_otp_registration(
+    body: dict,
+    request: Request,
+    settings: Annotated[Settings, Depends(get_settings)],
+    rate_limiter: Annotated[RateLimiter | None, Depends(get_rate_limiter)],
+) -> TokenResponse:
+    challenge_id = str(body.get("challenge_id", "")).strip()
+    otp = str(body.get("otp", "")).strip()
+    if len(challenge_id) < 16 or not otp.isdigit() or len(otp) != 6:
+        raise HTTPException(status_code=400, detail="Invalid verification request")
+
+    if rate_limiter is not None and settings.rate_limit_enabled:
+        allowed, _, _ = await rate_limiter.check(
+            f"signup-email-otp-verify:{challenge_id}", 10, 300
+        )
+        if not allowed:
+            raise HTTPException(status_code=429, detail="Too many OTP attempts. Try again later.")
+
+    async with request.app.state.session_factory() as session:
+        service = EmailRegistrationService(session, settings)
+        try:
+            _, access, refresh = await service.verify(challenge_id, otp)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return TokenResponse(access_token=access, refresh_token=refresh)
 
 
 @auth_router.post("/auth/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
