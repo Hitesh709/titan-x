@@ -28,6 +28,7 @@ class QRAuthService:
     EMAIL_OTP_MAX_ATTEMPTS = 5
     EMAIL_OTP_RESEND_SECONDS = 60
     SMS_PREFIX = "TITANX-QR:"
+    BROWSER_COOKIE = "titan_x_qr_browser"
 
     def __init__(self, session: AsyncSession, settings: Settings) -> None:
         self._session = session
