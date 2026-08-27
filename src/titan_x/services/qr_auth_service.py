@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import asyncio
+import base64
 import hashlib
 import hmac
 import secrets
+import smtplib
 from datetime import datetime, timedelta, timezone
+from email.message import EmailMessage
 
 import qrcode
 from qrcode.image.svg import SvgPathImage
@@ -20,6 +24,9 @@ from titan_x.models.user import User
 
 class QRAuthService:
     CHALLENGE_TTL_SECONDS = 60
+    EMAIL_OTP_TTL_SECONDS = 10 * 60
+    EMAIL_OTP_MAX_ATTEMPTS = 5
+    EMAIL_OTP_RESEND_SECONDS = 60
     BROWSER_COOKIE = "titan_x_qr_session"
     SMS_PREFIX = "TXQR:"
 
@@ -51,12 +58,9 @@ class QRAuthService:
         return secrets.token_urlsafe(32)
 
     def _qr(self, raw_challenge: str, operation: str = "LOGIN") -> str:
-        # The QR contains only a short-lived challenge reference and its flow type.
-        # It never contains passwords, OTPs, access tokens, or customer data.
         flow = "registration" if operation == "REGISTRATION" else "login"
         target = f"{self._settings.frontend_url.rstrip('/')}/mobile-auth?challenge={raw_challenge}&flow={flow}"
         svg = qrcode.make(target, image_factory=SvgPathImage).to_string(encoding="unicode")
-        import base64
         return "data:image/svg+xml;base64," + base64.b64encode(svg.encode()).decode("ascii")
 
     async def create_login_challenge(self, identifier: str, browser_session: str, ip_address: str | None, user_agent: str | None) -> tuple[AuthChallenge, str]:
@@ -85,6 +89,8 @@ class QRAuthService:
                 raise ValueError("Account information is already registered")
         if not email_value:
             email_value = f"{phone_value.replace('+', '')}@phone.titanx.local"
+        if email_value and not phone_value:
+            raise ValueError("Mobile number is required for QR + SMS registration")
         return await self._create_challenge(browser_session, "REGISTRATION", None, phone_value, username.strip(), email_value, phone_value, hash_password(password), ip_address, user_agent)
 
     async def _create_challenge(self, browser_session: str, operation: str, customer_id: int | None, verification_phone: str | None, registration_username: str | None, registration_email: str | None, registration_phone: str | None, registration_password_hash: str | None, ip_address: str | None, user_agent: str | None) -> tuple[AuthChallenge, str]:
@@ -110,7 +116,6 @@ class QRAuthService:
         return challenge, raw
 
     async def create_challenge(self, *args, **kwargs):
-        # Backward-compatible alias retained so callers do not create a second QR implementation.
         return await self.create_login_challenge(*args, **kwargs)
 
     async def _get_by_raw(self, raw: str) -> AuthChallenge:
@@ -120,11 +125,43 @@ class QRAuthService:
         challenge = result.scalar_one_or_none()
         if challenge is None:
             raise ValueError("Invalid QR challenge")
-        if challenge.expires_at <= self._now() and challenge.status in {"PENDING", "SCANNED"}:
+        if challenge.expires_at <= self._now() and challenge.status in {"PENDING", "SCANNED", "APPROVED", "EMAIL_OTP_REQUIRED"}:
             challenge.status = "EXPIRED"
             await self._session.flush()
             raise ValueError("QR challenge expired")
         return challenge
+
+    async def _send_email_otp(self, challenge: AuthChallenge) -> None:
+        if not challenge.registration_email:
+            return
+        if not self._settings.smtp_host or not self._settings.smtp_user or not self._settings.smtp_password:
+            raise ValueError("Email OTP is not configured. Please configure SMTP settings.")
+        now = self._now()
+        if challenge.email_otp_sent_at and (now - challenge.email_otp_sent_at).total_seconds() < self.EMAIL_OTP_RESEND_SECONDS:
+            return
+        otp = f"{secrets.randbelow(1_000_000):06d}"
+        message = EmailMessage()
+        message["Subject"] = "Titan X email verification code"
+        message["From"] = f"{self._settings.smtp_from_name} <{self._settings.smtp_from_email}>"
+        message["To"] = challenge.registration_email
+        message.set_content(
+            f"Your Titan X verification code is {otp}.\n\n"
+            f"This code expires in {self.EMAIL_OTP_TTL_SECONDS // 60} minutes.\n"
+            "Do not share this code with anyone."
+        )
+
+        def send() -> None:
+            with smtplib.SMTP(self._settings.smtp_host, self._settings.smtp_port, timeout=15) as smtp:
+                smtp.starttls()
+                smtp.login(self._settings.smtp_user, self._settings.smtp_password)
+                smtp.send_message(message)
+
+        await asyncio.to_thread(send)
+        challenge.email_otp_hash = self._hash(otp)
+        challenge.email_otp_expires_at = now + timedelta(seconds=self.EMAIL_OTP_TTL_SECONDS)
+        challenge.email_otp_attempts = 0
+        challenge.email_otp_sent_at = now
+        await self._session.flush()
 
     async def sms_approve(self, raw_challenge: str, from_number: str) -> AuthChallenge:
         challenge = await self._get_by_raw(raw_challenge)
@@ -133,6 +170,8 @@ class QRAuthService:
             raise ValueError("QR challenge is no longer pending")
         if not challenge.verification_phone or not hmac.compare_digest(phone, self.normalize_phone(challenge.verification_phone)):
             raise ValueError("SMS sender does not match the verified mobile number")
+        if challenge.operation == "REGISTRATION" and challenge.registration_email:
+            await self._send_email_otp(challenge)
         now = self._now()
         result = await self._session.execute(
             update(AuthChallenge)
@@ -143,6 +182,31 @@ class QRAuthService:
             raise ValueError("QR challenge was already used or expired")
         await self._session.flush()
         return challenge
+
+    async def verify_registration_email_otp(self, challenge_id: str, otp: str) -> None:
+        result = await self._session.execute(select(AuthChallenge).where(AuthChallenge.challenge_id == challenge_id))
+        challenge = result.scalar_one_or_none()
+        if challenge is None or challenge.operation != "REGISTRATION":
+            raise ValueError("Invalid registration challenge")
+        now = self._now()
+        if challenge.expires_at <= now or challenge.status in {"EXPIRED", "CANCELLED", "DECLINED", "USED"}:
+            raise ValueError("QR registration challenge expired or is no longer usable")
+        if not challenge.registration_email:
+            raise ValueError("Email verification is not required")
+        if challenge.email_verified_at is not None:
+            return
+        if challenge.email_otp_expires_at is None or challenge.email_otp_expires_at <= now:
+            raise ValueError("Email OTP expired")
+        if challenge.email_otp_attempts >= self.EMAIL_OTP_MAX_ATTEMPTS:
+            raise ValueError("Too many email OTP attempts")
+        challenge.email_otp_attempts += 1
+        if not hmac.compare_digest(challenge.email_otp_hash or "", self._hash(otp.strip())):
+            await self._session.flush()
+            raise ValueError("Invalid email OTP")
+        challenge.email_verified_at = now
+        challenge.email_otp_hash = None
+        challenge.status = "APPROVED"
+        await self._session.flush()
 
     async def decline(self, raw_challenge: str, from_number: str) -> None:
         challenge = await self._get_by_raw(raw_challenge)
@@ -158,7 +222,7 @@ class QRAuthService:
         challenge = result.scalar_one_or_none()
         if challenge is None or not hmac.compare_digest(challenge.browser_session_id, self._hash(browser_session)):
             raise ValueError("Invalid browser challenge session")
-        if challenge.status in {"PENDING", "SCANNED"}:
+        if challenge.status in {"PENDING", "SCANNED", "APPROVED", "EMAIL_OTP_REQUIRED"}:
             challenge.status = "CANCELLED"
             challenge.cancelled_at = self._now()
             await self._session.flush()
@@ -177,12 +241,18 @@ class QRAuthService:
         challenge = result.scalar_one_or_none()
         if challenge is None or not hmac.compare_digest(challenge.browser_session_id, self._hash(browser_session)):
             raise ValueError("Invalid browser challenge session")
-        if challenge.status in {"PENDING", "SCANNED"} and challenge.expires_at <= self._now():
+        if challenge.status in {"PENDING", "SCANNED", "APPROVED", "EMAIL_OTP_REQUIRED"} and challenge.expires_at <= self._now():
             challenge.status = "EXPIRED"
             await self._session.flush()
             return "EXPIRED", None, None
         if challenge.status == "DECLINED":
             return "DECLINED", None, None
+        if challenge.status == "CANCELLED":
+            return "CANCELLED", None, None
+        if challenge.status == "PENDING":
+            return "PENDING", None, None
+        if challenge.operation == "REGISTRATION" and challenge.registration_email and challenge.email_verified_at is None:
+            return "EMAIL_OTP_REQUIRED", None, None
         if challenge.status != "APPROVED":
             return challenge.status, None, None
         if challenge.operation == "REGISTRATION":
