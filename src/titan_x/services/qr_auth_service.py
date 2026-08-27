@@ -69,20 +69,20 @@ class QRAuthService:
             raise ValueError("QR login is not available for this account")
         return await self._create_challenge(browser_session, "LOGIN", user.id, self.normalize_phone(user.phone), None, None, None, None, ip_address, user_agent)
 
-    async def create_registration_challenge(self, username: str, password: str, confirm_password: str, email: str | None, phone: str | None, browser_session: str, ip_address: str | None, user_agent: str | None) -> tuple[AuthChallenge, str]:
+    async def create_registration_challenge(self, username: str, password: str, confirm_password: str, email: str, phone: str, browser_session: str, ip_address: str | None, user_agent: str | None) -> tuple[AuthChallenge, str]:
         if password != confirm_password:
             raise ValueError("Passwords do not match")
         username_value = username.strip()
-        email_value = email.lower().strip() if email else None
-        phone_value = self.normalize_phone(phone) if phone else None
+        email_value = email.lower().strip()
+        phone_value = self.normalize_phone(phone)
         if not username_value or len(password) < 8:
             raise ValueError("Username and an 8+ character password are required")
-        if not email_value and not phone_value:
-            raise ValueError("Email or phone is required")
-        if email_value and not phone_value:
-            raise ValueError("Mobile number is required for QR + SMS registration")
-        for query in (select(User).where(User.username == username_value), select(User).where(User.email == email_value) if email_value else None, select(User).where(User.phone == phone_value) if phone_value else None):
-            if query is not None and (await self._session.execute(query)).scalar_one_or_none() is not None:
+        if not email_value:
+            raise ValueError("Email is required for email OTP verification")
+        if not phone_value:
+            raise ValueError("Mobile number is required")
+        for query in (select(User).where(User.username == username_value), select(User).where(User.email == email_value), select(User).where(User.phone == phone_value)):
+            if (await self._session.execute(query)).scalar_one_or_none() is not None:
                 raise ValueError("Account information is already registered")
         return await self._create_challenge(browser_session, "REGISTRATION", None, phone_value, username_value, email_value, phone_value, hash_password(password), ip_address, user_agent)
 
@@ -111,7 +111,7 @@ class QRAuthService:
 
     async def _send_email_otp(self, challenge: AuthChallenge) -> None:
         if not challenge.registration_email:
-            return
+            raise ValueError("Email is required for verification")
         if not self._settings.smtp_host or not self._settings.smtp_user or not self._settings.smtp_password:
             raise ValueError("Email OTP is not configured. Please configure SMTP settings.")
         now = self._now()
@@ -141,6 +141,25 @@ class QRAuthService:
         challenge.email_otp_sent_at = now
         await self._session.flush()
 
+    async def scan_registration_qr(self, raw_challenge: str) -> AuthChallenge:
+        """Consume a registration QR scan and start the email OTP verification step."""
+        challenge = await self._get_by_raw(raw_challenge)
+        if challenge.operation != "REGISTRATION":
+            raise ValueError("This QR code is not a registration request")
+        now = self._now()
+        if challenge.status != "PENDING":
+            raise ValueError("QR challenge is no longer pending")
+        if challenge.expires_at <= now:
+            challenge.status = "EXPIRED"
+            await self._session.flush()
+            raise ValueError("QR challenge expired")
+        await self._send_email_otp(challenge)
+        result = await self._session.execute(update(AuthChallenge).where(AuthChallenge.id == challenge.id, AuthChallenge.status == "PENDING", AuthChallenge.expires_at > now).values(status="EMAIL_OTP_REQUIRED", scanned_at=now))
+        if result.rowcount != 1:
+            raise ValueError("QR challenge was already used or expired")
+        await self._session.flush()
+        return challenge
+
     async def sms_approve(self, raw_challenge: str, from_number: str) -> AuthChallenge:
         challenge = await self._get_by_raw(raw_challenge)
         phone = self.normalize_phone(from_number)
@@ -154,12 +173,11 @@ class QRAuthService:
             result = await self._session.execute(update(AuthChallenge).where(AuthChallenge.id == challenge.id, AuthChallenge.status == "PENDING", AuthChallenge.expires_at > now).values(status="EMAIL_OTP_REQUIRED", scanned_at=now))
             if result.rowcount != 1:
                 raise ValueError("QR challenge was already used or expired")
-            await self._session.flush()
         else:
             result = await self._session.execute(update(AuthChallenge).where(AuthChallenge.id == challenge.id, AuthChallenge.status == "PENDING", AuthChallenge.expires_at > now).values(status="APPROVED", scanned_at=now, approved_at=now))
             if result.rowcount != 1:
                 raise ValueError("QR challenge was already used or expired")
-            await self._session.flush()
+        await self._session.flush()
         return challenge
 
     async def verify_registration_email_otp(self, challenge_id: str, otp: str) -> None:
@@ -234,7 +252,7 @@ class QRAuthService:
             duplicate = await self._session.execute(select(User).where((User.username == challenge.registration_username) | (User.email == challenge.registration_email) | (User.phone == challenge.registration_phone)).with_for_update())
             if duplicate.scalar_one_or_none() is not None:
                 raise ValueError("Account information is already registered")
-            user = User(username=challenge.registration_username, email=challenge.registration_email or f"{challenge.registration_phone.replace('+', '')}@phone.titanx.local", phone=challenge.registration_phone, hashed_password=challenge.registration_password_hash or "", is_active=True, is_verified=True, role="normal")
+            user = User(username=challenge.registration_username, email=challenge.registration_email, phone=challenge.registration_phone, hashed_password=challenge.registration_password_hash or "", is_active=True, is_verified=True, role="normal")
             self._session.add(user)
             await self._session.flush()
         else:
