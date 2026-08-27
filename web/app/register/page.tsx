@@ -36,7 +36,7 @@ export default function RegisterPage() {
       try {
         const data = await api.get<QRStatus>(`/auth/qr/status/${encodeURIComponent(qr.challenge_id)}`)
         setStatus(data.status)
-        if (data.status === "EMAIL_OTP_REQUIRED") setNotice("Phone verified. We sent a 6-digit OTP to your email address.")
+        if (data.status === "EMAIL_OTP_REQUIRED") setNotice("Mobile verified. A 6-digit OTP has been sent to your email address.")
         if (data.status === "USED" && data.access_token && data.refresh_token) {
           api.setToken(data.access_token)
           api.setRefreshToken(data.refresh_token)
@@ -50,7 +50,7 @@ export default function RegisterPage() {
   }, [qr, seconds, status])
 
   useEffect(() => {
-    if (qr && seconds === 0 && ["PENDING", "APPROVED", "EMAIL_OTP_REQUIRED"].includes(status || "")) setStatus("EXPIRED")
+    if (qr && seconds === 0 && ["PENDING"].includes(status || "")) setStatus("EXPIRED")
   }, [qr, seconds, status])
 
   const createQr = async () => {
@@ -88,8 +88,16 @@ export default function RegisterPage() {
     setVerifyingEmail(true)
     try {
       await api.post("/auth/qr/register/email-otp/verify", { challenge_id: qr.challenge_id, otp: emailOtp })
+      const data = await api.get<QRStatus>(`/auth/qr/status/${encodeURIComponent(qr.challenge_id)}`)
+      if (data.status === "USED" && data.access_token && data.refresh_token) {
+        api.setToken(data.access_token)
+        api.setRefreshToken(data.refresh_token)
+        setNotice("Email verified. Registration complete. Signing you in...")
+        window.location.href = "/dashboard"
+        return
+      }
+      setStatus(data.status)
       setNotice("Email verified. Completing registration...")
-      setStatus("APPROVED")
     } catch (err) {
       setError(err instanceof Error ? err.message : "Email OTP verification failed")
     } finally {
