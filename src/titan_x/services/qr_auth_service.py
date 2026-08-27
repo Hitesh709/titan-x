@@ -46,8 +46,6 @@ class QRAuthService:
     def normalize_phone(value: str) -> str:
         raw = value.strip()
         digits = "".join(ch for ch in raw if ch.isdigit())
-        if raw.startswith("+") and 7 <= len(digits) <= 15:
-            return "+" + digits
         if 7 <= len(digits) <= 15:
             return "+" + digits
         raise ValueError("Invalid phone number")
@@ -81,11 +79,7 @@ class QRAuthService:
             raise ValueError("Email or phone is required")
         if email_value and not phone_value:
             raise ValueError("Mobile number is required for QR + SMS registration")
-        for query in (
-            select(User).where(User.username == username_value),
-            select(User).where(User.email == email_value) if email_value else None,
-            select(User).where(User.phone == phone_value) if phone_value else None,
-        ):
+        for query in (select(User).where(User.username == username_value), select(User).where(User.email == email_value) if email_value else None, select(User).where(User.phone == phone_value) if phone_value else None):
             if query is not None and (await self._session.execute(query)).scalar_one_or_none() is not None:
                 raise ValueError("Account information is already registered")
         return await self._create_challenge(browser_session, "REGISTRATION", None, phone_value, username_value, email_value, phone_value, hash_password(password), ip_address, user_agent)
@@ -94,22 +88,7 @@ class QRAuthService:
         raw = secrets.token_urlsafe(32)
         public_id = secrets.token_urlsafe(18)
         now = self._now()
-        challenge = await self._challenge_repo.create(
-            challenge_id=public_id,
-            challenge_hash=self._hash(raw),
-            customer_id=customer_id,
-            browser_session_id=self._hash(browser_session),
-            status="PENDING",
-            operation=operation,
-            expires_at=now + timedelta(seconds=self.CHALLENGE_TTL_SECONDS),
-            verification_phone=verification_phone,
-            registration_username=registration_username,
-            registration_email=registration_email,
-            registration_phone=registration_phone,
-            registration_password_hash=registration_password_hash,
-            ip_address=ip_address,
-            user_agent=user_agent,
-        )
+        challenge = await self._challenge_repo.create(challenge_id=public_id, challenge_hash=self._hash(raw), customer_id=customer_id, browser_session_id=self._hash(browser_session), status="PENDING", operation=operation, expires_at=now + timedelta(seconds=self.CHALLENGE_TTL_SECONDS), verification_phone=verification_phone, registration_username=registration_username, registration_email=registration_email, registration_phone=registration_phone, registration_password_hash=registration_password_hash, ip_address=ip_address, user_agent=user_agent)
         return challenge, raw
 
     async def create_challenge(self, *args, **kwargs):
@@ -165,17 +144,20 @@ class QRAuthService:
             raise ValueError("SMS sender does not match the verified mobile number")
         now = self._now()
         if challenge.operation == "REGISTRATION" and challenge.registration_email:
+            result = await self._session.execute(update(AuthChallenge).where(AuthChallenge.id == challenge.id, AuthChallenge.status == "PENDING", AuthChallenge.expires_at > now).values(status="EMAIL_OTP_REQUIRED", scanned_at=now))
+            if result.rowcount != 1:
+                raise ValueError("QR challenge was already used or expired")
+            await self._session.flush()
             await self._send_email_otp(challenge)
-            result = await self._session.execute(update(AuthChallenge).where(AuthChallenge.id == challenge.id, AuthChallenge.status == "PENDING", AuthChallenge.expires_at > now).values(status="EMAIL_OTP_REQUIRED", scanned_at=now, expires_at=now + timedelta(seconds=self.EMAIL_OTP_TTL_SECONDS)))
         else:
             result = await self._session.execute(update(AuthChallenge).where(AuthChallenge.id == challenge.id, AuthChallenge.status == "PENDING", AuthChallenge.expires_at > now).values(status="APPROVED", scanned_at=now, approved_at=now))
-        if result.rowcount != 1:
-            raise ValueError("QR challenge was already used or expired")
-        await self._session.flush()
+            if result.rowcount != 1:
+                raise ValueError("QR challenge was already used or expired")
+            await self._session.flush()
         return challenge
 
     async def verify_registration_email_otp(self, challenge_id: str, otp: str) -> None:
-        result = await self._session.execute(select(AuthChallenge).where(AuthChallenge.challenge_id == challenge_id))
+        result = await self._session.execute(select(AuthChallenge).where(AuthChallenge.challenge_id == challenge_id).with_for_update())
         challenge = result.scalar_one_or_none()
         if challenge is None or challenge.operation != "REGISTRATION" or challenge.status != "EMAIL_OTP_REQUIRED":
             raise ValueError("Invalid registration email verification request")
@@ -192,6 +174,7 @@ class QRAuthService:
             raise ValueError("Invalid email OTP")
         challenge.email_verified_at = now
         challenge.email_otp_hash = None
+        challenge.email_otp_expires_at = None
         challenge.status = "APPROVED"
         challenge.approved_at = now
         await self._session.flush()
@@ -225,7 +208,7 @@ class QRAuthService:
         return hmac.compare_digest(expected, signature)
 
     async def status_and_consume(self, challenge_id: str, browser_session: str) -> tuple[str, User | None, tuple[str, str] | None]:
-        result = await self._session.execute(select(AuthChallenge).where(AuthChallenge.challenge_id == challenge_id))
+        result = await self._session.execute(select(AuthChallenge).where(AuthChallenge.challenge_id == challenge_id).with_for_update())
         challenge = result.scalar_one_or_none()
         if challenge is None or not hmac.compare_digest(challenge.browser_session_id, self._hash(browser_session)):
             raise ValueError("Invalid browser challenge session")
@@ -233,25 +216,23 @@ class QRAuthService:
             challenge.status = "EXPIRED"
             await self._session.flush()
             return "EXPIRED", None, None
-        if challenge.status in {"DECLINED", "CANCELLED", "EMAIL_OTP_REQUIRED"}:
+        if challenge.status == "EMAIL_OTP_REQUIRED":
+            return "EMAIL_OTP_REQUIRED", None, None
+        if challenge.status in {"DECLINED", "CANCELLED", "USED"}:
             return challenge.status, None, None
         if challenge.status != "APPROVED":
             return challenge.status, None, None
         if challenge.operation == "REGISTRATION":
             if challenge.registration_email and challenge.email_verified_at is None:
                 return "EMAIL_OTP_REQUIRED", None, None
-            existing = await self._session.execute(select(User).where(User.username == challenge.registration_username))
-            if existing.scalar_one_or_none() is not None:
-                raise ValueError("Username is already registered")
-            if challenge.registration_email:
-                existing_email = await self._session.execute(select(User).where(User.email == challenge.registration_email))
-                if existing_email.scalar_one_or_none() is not None:
-                    raise ValueError("Email is already registered")
-            user = User(username=challenge.registration_username, email=challenge.registration_email, phone=challenge.registration_phone, hashed_password=challenge.registration_password_hash or "", is_active=True, is_verified=True, role="normal")
+            duplicate = await self._session.execute(select(User).where((User.username == challenge.registration_username) | (User.email == challenge.registration_email) | (User.phone == challenge.registration_phone)).with_for_update())
+            if duplicate.scalar_one_or_none() is not None:
+                raise ValueError("Account information is already registered")
+            user = User(username=challenge.registration_username, email=challenge.registration_email or f"{challenge.registration_phone.replace('+', '')}@phone.titanx.local", phone=challenge.registration_phone, hashed_password=challenge.registration_password_hash or "", is_active=True, is_verified=True, role="normal")
             self._session.add(user)
             await self._session.flush()
         else:
-            user = await self._session.get(User, challenge.customer_id) if challenge.customer_id else None
+            user = await self._session.get(User, challenge.customer_id)
             if user is None or not user.is_active:
                 raise ValueError("Account is inactive")
         consumed = await self._session.execute(update(AuthChallenge).where(AuthChallenge.id == challenge.id, AuthChallenge.status == "APPROVED").values(status="USED", used_at=self._now()).returning(AuthChallenge.id))
