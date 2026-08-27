@@ -130,7 +130,11 @@ class QRAuthService:
                 smtp.login(self._settings.smtp_user, self._settings.smtp_password)
                 smtp.send_message(message)
 
-        await asyncio.to_thread(send)
+        try:
+            await asyncio.to_thread(send)
+        except (OSError, smtplib.SMTPException) as exc:
+            raise ValueError("Unable to send email verification code. Please try again.") from exc
+
         challenge.email_otp_hash = self._hash(otp)
         challenge.email_otp_expires_at = now + timedelta(seconds=self.EMAIL_OTP_TTL_SECONDS)
         challenge.email_otp_attempts = 0
@@ -146,11 +150,11 @@ class QRAuthService:
             raise ValueError("SMS sender does not match the verified mobile number")
         now = self._now()
         if challenge.operation == "REGISTRATION" and challenge.registration_email:
+            await self._send_email_otp(challenge)
             result = await self._session.execute(update(AuthChallenge).where(AuthChallenge.id == challenge.id, AuthChallenge.status == "PENDING", AuthChallenge.expires_at > now).values(status="EMAIL_OTP_REQUIRED", scanned_at=now))
             if result.rowcount != 1:
                 raise ValueError("QR challenge was already used or expired")
             await self._session.flush()
-            await self._send_email_otp(challenge)
         else:
             result = await self._session.execute(update(AuthChallenge).where(AuthChallenge.id == challenge.id, AuthChallenge.status == "PENDING", AuthChallenge.expires_at > now).values(status="APPROVED", scanned_at=now, approved_at=now))
             if result.rowcount != 1:
