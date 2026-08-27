@@ -23,7 +23,6 @@ from titan_x.models.user import User
 
 
 class QRAuthService:
-    # Demo QR lifetime: 2 minutes. Email OTP has its own longer verification window.
     CHALLENGE_TTL_SECONDS = 120
     EMAIL_OTP_TTL_SECONDS = 10 * 60
     EMAIL_OTP_MAX_ATTEMPTS = 5
@@ -123,7 +122,7 @@ class QRAuthService:
         challenge = result.scalar_one_or_none()
         if challenge is None:
             raise ValueError("Invalid QR challenge")
-        if challenge.expires_at <= self._now() and challenge.status in {"PENDING", "SCANNED", "APPROVED", "EMAIL_OTP_REQUIRED"}:
+        if challenge.expires_at <= self._now() and challenge.status in {"PENDING", "SCANNED"}:
             challenge.status = "EXPIRED"
             await self._session.flush()
             raise ValueError("QR challenge expired")
@@ -164,23 +163,12 @@ class QRAuthService:
             raise ValueError("QR challenge is no longer pending")
         if not challenge.verification_phone or not hmac.compare_digest(phone, self.normalize_phone(challenge.verification_phone)):
             raise ValueError("SMS sender does not match the verified mobile number")
-
         now = self._now()
-        # For registration with email, SMS verifies the phone only. The browser must then
-        # verify the email OTP before the account can be created.
         if challenge.operation == "REGISTRATION" and challenge.registration_email:
             await self._send_email_otp(challenge)
-            result = await self._session.execute(
-                update(AuthChallenge)
-                .where(AuthChallenge.id == challenge.id, AuthChallenge.status == "PENDING", AuthChallenge.expires_at > now)
-                .values(status="EMAIL_OTP_REQUIRED", scanned_at=now)
-            )
+            result = await self._session.execute(update(AuthChallenge).where(AuthChallenge.id == challenge.id, AuthChallenge.status == "PENDING", AuthChallenge.expires_at > now).values(status="EMAIL_OTP_REQUIRED", scanned_at=now, expires_at=now + timedelta(seconds=self.EMAIL_OTP_TTL_SECONDS)))
         else:
-            result = await self._session.execute(
-                update(AuthChallenge)
-                .where(AuthChallenge.id == challenge.id, AuthChallenge.status == "PENDING", AuthChallenge.expires_at > now)
-                .values(status="APPROVED", scanned_at=now, approved_at=now)
-            )
+            result = await self._session.execute(update(AuthChallenge).where(AuthChallenge.id == challenge.id, AuthChallenge.status == "PENDING", AuthChallenge.expires_at > now).values(status="APPROVED", scanned_at=now, approved_at=now))
         if result.rowcount != 1:
             raise ValueError("QR challenge was already used or expired")
         await self._session.flush()
@@ -249,38 +237,24 @@ class QRAuthService:
             return challenge.status, None, None
         if challenge.status != "APPROVED":
             return challenge.status, None, None
-
         if challenge.operation == "REGISTRATION":
             if challenge.registration_email and challenge.email_verified_at is None:
                 return "EMAIL_OTP_REQUIRED", None, None
             existing = await self._session.execute(select(User).where(User.username == challenge.registration_username))
             if existing.scalar_one_or_none() is not None:
                 raise ValueError("Username is already registered")
-            existing_email = await self._session.execute(select(User).where(User.email == challenge.registration_email)) if challenge.registration_email else None
-            if existing_email is not None and existing_email.scalar_one_or_none() is not None:
-                raise ValueError("Email is already registered")
-            user = User(
-                username=challenge.registration_username,
-                email=challenge.registration_email,
-                phone=challenge.registration_phone,
-                hashed_password=challenge.registration_password_hash or "",
-                is_active=True,
-                is_verified=True,
-                role="normal",
-            )
+            if challenge.registration_email:
+                existing_email = await self._session.execute(select(User).where(User.email == challenge.registration_email))
+                if existing_email.scalar_one_or_none() is not None:
+                    raise ValueError("Email is already registered")
+            user = User(username=challenge.registration_username, email=challenge.registration_email, phone=challenge.registration_phone, hashed_password=challenge.registration_password_hash or "", is_active=True, is_verified=True, role="normal")
             self._session.add(user)
             await self._session.flush()
         else:
             user = await self._session.get(User, challenge.customer_id) if challenge.customer_id else None
             if user is None or not user.is_active:
                 raise ValueError("Account is inactive")
-
-        consumed = await self._session.execute(
-            update(AuthChallenge)
-            .where(AuthChallenge.id == challenge.id, AuthChallenge.status == "APPROVED")
-            .values(status="USED", used_at=self._now())
-            .returning(AuthChallenge.id)
-        )
+        consumed = await self._session.execute(update(AuthChallenge).where(AuthChallenge.id == challenge.id, AuthChallenge.status == "APPROVED").values(status="USED", used_at=self._now()).returning(AuthChallenge.id))
         if consumed.first() is None:
             return "USED", None, None
         access = create_access_token(user.id, self._settings)
