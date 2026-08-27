@@ -1,10 +1,12 @@
 import hmac
+import json
+from urllib.parse import parse_qs
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 
 from titan_x.api.dependencies import get_qr_auth_service
-from titan_x.api.schemas import QRChallengeRequest, QRCreateResponse, QRLoginRequest, QRRegistrationCreateResponse, QRRegistrationEmailOTPRequest, QRRegistrationRequest, QRSMSWebhookRequest, QRStatusResponse, RegisterResponse
+from titan_x.api.schemas import QRChallengeRequest, QRCreateResponse, QRLoginRequest, QRRegistrationCreateResponse, QRRegistrationEmailOTPRequest, QRRegistrationRequest, QRStatusResponse, RegisterResponse
 from titan_x.core.audit import audit_event_later
 from titan_x.core.config import Settings, get_settings
 from titan_x.infrastructure.rate_limiter import RateLimiter
@@ -58,17 +60,44 @@ async def create_registration_qr(body: QRRegistrationRequest, request: Request, 
     return QRRegistrationCreateResponse(challenge_id=challenge.challenge_id, qr_data_url=service._qr(raw, "REGISTRATION"), expires_at=challenge.expires_at, expires_in_seconds=service.CHALLENGE_TTL_SECONDS, sms_number=settings.qr_sms_number)
 
 
+async def _read_sms_webhook(request: Request) -> tuple[str, str]:
+    """Accept the canonical JSON webhook plus common form-encoded SMS gateways.
+
+    Supported JSON keys: from_number/body and From/Body.
+    Supported form keys: from_number/body and From/Body.
+    """
+    content_type = (request.headers.get("content-type") or "").lower()
+    raw = await request.body()
+    data: dict[str, object] = {}
+    if "application/json" in content_type:
+        try:
+            parsed = json.loads(raw.decode("utf-8"))
+            if isinstance(parsed, dict):
+                data = parsed
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            raise HTTPException(status_code=400, detail="Invalid SMS webhook JSON")
+    else:
+        parsed = parse_qs(raw.decode("utf-8", errors="replace"), keep_blank_values=True)
+        data = {key: values[-1] for key, values in parsed.items() if values}
+
+    from_number = data.get("from_number") or data.get("From") or data.get("from")
+    message = data.get("body") or data.get("Body") or data.get("message")
+    if not isinstance(from_number, str) or not isinstance(message, str) or not from_number.strip() or not message.strip():
+        raise HTTPException(status_code=400, detail="SMS webhook must include sender and message body")
+    return from_number.strip(), message.strip()
+
+
 @router.post("/auth/qr/sms/webhook", response_model=dict)
-async def sms_webhook(body: QRSMSWebhookRequest, request: Request, settings: Annotated[Settings, Depends(get_settings)], service: Annotated[QRAuthService, Depends(get_qr_auth_service)], x_qr_sms_signature: str | None = Header(default=None)) -> dict:
+async def sms_webhook(request: Request, settings: Annotated[Settings, Depends(get_settings)], service: Annotated[QRAuthService, Depends(get_qr_auth_service)], x_qr_sms_signature: str | None = Header(default=None)) -> dict:
     await _check_rate(request, settings, "sms-webhook", 60)
-    if not service.verify_webhook(body.from_number, body.body, x_qr_sms_signature):
+    from_number, message = await _read_sms_webhook(request)
+    if not service.verify_webhook(from_number, message, x_qr_sms_signature):
         raise HTTPException(status_code=401, detail="Invalid SMS webhook signature")
-    message = body.body.strip()
     if not message.startswith(QRAuthService.SMS_PREFIX):
         raise HTTPException(status_code=400, detail="Unsupported SMS verification message")
     raw = message[len(QRAuthService.SMS_PREFIX):].strip()
     try:
-        challenge = await service.sms_approve(raw, body.from_number)
+        challenge = await service.sms_approve(raw, from_number)
     except ValueError as exc:
         audit_event_later(request, action="LOGIN_QR_FAILED", entity_type="auth_challenge", category="security", severity="warning")
         raise HTTPException(status_code=400, detail=str(exc)) from exc
