@@ -1,148 +1,126 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { Bot, Pause, Play, ShieldCheck, Activity, Zap, Clock3 } from "lucide-react"
+import { Bot, Pause, Play, ShieldCheck, Activity, Clock3, TrendingUp } from "lucide-react"
 import api from "@/lib/api"
 import { SymbolAutocomplete } from "@/components/dashboard/SymbolAutocomplete"
 
 const MAX_RUNTIME_SECONDS = 15 * 60
-interface TechnicalResponse { intraday?: { score?: number; direction?: string; label?: string }; delivery?: { score?: number; direction?: string; label?: string } }
-interface PaperPosition { symbol: string; quantity: number; average_price?: number; market_value?: number; unrealized_pnl?: number }
-interface QuoteResponse { price?: number; last?: number; ltp?: number; close?: number; previous_close?: number }
-interface AutoBotPanelProps { initialSymbol?: string; onSymbolChange?: (symbol: string) => void }
+const CYCLE_SECONDS = 60
 
-function normalizeSignal(value: unknown): "BUY" | "SELL" | "WAIT" {
-  const text = String(value ?? "").toUpperCase()
-  if (text.includes("SELL") || text.includes("BEAR")) return "SELL"
-  if (text.includes("BUY") || text.includes("BULL")) return "BUY"
-  return "WAIT"
-}
+interface AutoBotPanelProps { initialSymbol?: string; onSymbolChange?: (symbol: string) => void }
+interface CycleResult { cycle: number; action: "BUY" | "SELL" | "HOLD"; price?: number; price_source?: string; quantity?: number; reason?: string; strategy?: { confidence?: number; action?: string; metadata?: Record<string, unknown> }; order?: { status?: string; price?: number; rejection_reason?: string } }
 
 export default function AutoBotPanel({ initialSymbol = "RELIANCE", onSymbolChange }: AutoBotPanelProps) {
   const [symbol, setSymbol] = useState(initialSymbol || "RELIANCE")
-  const [threshold, setThreshold] = useState(85)
-  const [amount, setAmount] = useState(50000)
+  const [amount, setAmount] = useState(10000)
   const [running, setRunning] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [lastScore, setLastScore] = useState<number | null>(null)
-  const [lastDirection, setLastDirection] = useState<"BUY" | "SELL" | "WAIT">("WAIT")
+  const [cycle, setCycle] = useState(0)
   const [executed, setExecuted] = useState(0)
+  const [last, setLast] = useState<CycleResult | null>(null)
   const [message, setMessage] = useState("Bot stopped")
   const [remainingSeconds, setRemainingSeconds] = useState(0)
-  const stopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const deadlineRef = useRef(0)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const cycleRef = useRef(0)
   const runningRef = useRef(false)
 
   useEffect(() => setSymbol(initialSymbol || "RELIANCE"), [initialSymbol])
-  const stopTimers = useCallback(() => { if (stopTimerRef.current) clearTimeout(stopTimerRef.current); stopTimerRef.current = null }, [])
-  useEffect(() => () => stopTimers(), [stopTimers])
+  useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current) }, [])
 
-  const ensureAccount = useCallback(async () => { try { await api.get("/paper-trading/account") } catch { await api.post("/paper-trading/account?initial_capital=100000", {}) } }, [])
-
-  const getSellableQuantity = useCallback(async (sym: string) => {
-    const positions = await api.get<PaperPosition[]>("/paper-trading/portfolio")
-    const position = (positions ?? []).find((p) => String(p.symbol).toUpperCase() === sym)
-    return Math.max(0, Math.floor(Number(position?.quantity ?? 0)))
-  }, [])
-
-  const getTradePrice = useCallback(async (sym: string) => {
-    const candidates = [
-      `/stocks/${encodeURIComponent(sym)}/quote`,
-      `/market/quote/${encodeURIComponent(sym)}`,
-      `/quotes/${encodeURIComponent(sym)}`,
-      `/stocks/${encodeURIComponent(sym)}`,
-      `/public-market/quote/${encodeURIComponent(sym)}`,
-    ]
-    for (const path of candidates) {
-      try {
-        const q = await api.get<QuoteResponse>(path)
-        const p = Number(q?.price ?? q?.last ?? q?.ltp ?? q?.close)
-        if (Number.isFinite(p) && p > 0) return p
-      } catch {}
-    }
-    throw new Error("Live price unavailable for this symbol")
-  }, [])
-
-  const getSignal = useCallback(async (sym: string) => {
-    try {
-      const technical = await api.get<TechnicalResponse>(`/technical-strength/${encodeURIComponent(sym)}?resolution=5min`)
-      const intradayScore = Number(technical?.intraday?.score ?? 0)
-      const deliveryScore = Number(technical?.delivery?.score ?? 0)
-      const score = Math.max(intradayScore, deliveryScore)
-      const direction = normalizeSignal(technical?.intraday?.direction || technical?.intraday?.label || technical?.delivery?.direction || technical?.delivery?.label)
-      if (Number.isFinite(score) && score > 0) return { score, direction }
-    } catch {}
-
-    // Fallback to the recommendation endpoint so the bot can still use Titan-X's
-    // existing BUY/SELL recommendation when the technical-strength route is unavailable.
-    const paths = [
-      `/recommendations?symbol=${encodeURIComponent(sym)}`,
-      `/recommendations/${encodeURIComponent(sym)}`,
-      `/recommendation/${encodeURIComponent(sym)}`,
-    ]
-    for (const path of paths) {
-      try {
-        const r = await api.get<any>(path)
-        const item = Array.isArray(r) ? r.find((x) => String(x?.symbol ?? x?.ticker ?? "").toUpperCase() === sym) : (r?.recommendation ?? r?.data ?? r)
-        const direction = normalizeSignal(item?.direction ?? item?.signal ?? item?.action ?? item?.recommendation)
-        const score = Number(item?.technical_score ?? item?.score ?? item?.confidence ?? 0)
-        if (direction !== "WAIT") return { score: Number.isFinite(score) && score > 0 ? score : threshold, direction }
-      } catch {}
-    }
-    return { score: 0, direction: "WAIT" as const }
-  }, [threshold])
-
-  const executeOnce = useCallback(async () => {
-    const sym = symbol.trim().toUpperCase()
-    if (!sym || busy) return
+  const runCycle = useCallback(async (nextCycle: number) => {
+    if (busy || !runningRef.current) return
     setBusy(true)
     try {
-      const { score, direction: signal } = await getSignal(sym)
-      setLastScore(Number.isFinite(score) ? score : 0)
-      setLastDirection(signal)
-      if (!Number.isFinite(score) || score < threshold || signal === "WAIT") { setMessage(`No trade · ${signal} · ${Number.isFinite(score) ? score.toFixed(0) : "—"}/100`); return }
-      await ensureAccount()
-      const livePrice = await getTradePrice(sym)
-      const requestedAmount = Math.max(1, Number(amount) || 1)
-      let tradeQuantity = Math.max(1, Math.floor(requestedAmount / livePrice))
-      if (signal === "SELL") {
-        const sellable = await getSellableQuantity(sym)
-        if (sellable <= 0) { setMessage(`SELL signal · no ${sym} holding to exit`); return }
-        tradeQuantity = Math.min(tradeQuantity, sellable)
-      }
-      if (tradeQuantity < 1) { setMessage(`Amount ₹${requestedAmount.toLocaleString("en-IN")} is below one share of ${sym}`); return }
-      const actualAmount = tradeQuantity * livePrice
-      const params = new URLSearchParams({ symbol: sym, side: signal === "BUY" ? "buy" : "sell", order_type: "market", quantity: String(tradeQuantity), time_in_force: "day" })
-      const order = await api.post<{ status?: string; rejection_reason?: string; message?: string }>(`/paper-trading/orders?${params.toString()}`, {})
-      if (order?.status === "rejected") { setMessage(order.rejection_reason || order.message || "Order rejected"); return }
-      setExecuted(1)
-      setMessage(`${signal} · ₹${actualAmount.toLocaleString("en-IN")} paper trade placed · ${tradeQuantity} shares`)
-    } catch (error) { setMessage(error instanceof Error ? error.message : "Auto trade failed") } finally { setBusy(false) }
-  }, [amount, busy, ensureAccount, getSellableQuantity, getSignal, getTradePrice, symbol, threshold])
+      const params = new URLSearchParams({ symbol: symbol.trim().toUpperCase(), cycle: String(nextCycle), trade_amount: String(amount) })
+      const result = await api.post<CycleResult>(`/auto-demo-bot/cycle?${params.toString()}`, {})
+      setLast(result)
+      setCycle(nextCycle)
+      if (result.action === "BUY" || result.action === "SELL") setExecuted((v) => v + 1)
+      const source = result.price_source === "LIVE_REFERENCE" ? "LIVE LTP" : result.price_source === "DEMO_MARKET" ? "DEMO PRICE" : "REFERENCE"
+      const p = result.price ? `₹${result.price.toLocaleString("en-IN", { maximumFractionDigits: 2 })}` : "—"
+      setMessage(`${result.action} · ${p} · ${source}${result.quantity ? ` · ${result.quantity} qty` : ""}`)
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Auto demo cycle failed")
+    } finally { setBusy(false) }
+  }, [amount, busy, symbol])
 
-  const stop = useCallback((reason = "Bot stopped") => { stopTimers(); deadlineRef.current = 0; runningRef.current = false; setRemainingSeconds(0); setRunning(false); setMessage(reason) }, [stopTimers])
+  const stop = useCallback((reason = "Bot stopped") => {
+    if (timerRef.current) clearInterval(timerRef.current)
+    timerRef.current = null
+    runningRef.current = false
+    setRunning(false)
+    setRemainingSeconds(0)
+    setMessage(reason)
+  }, [])
+
   const start = () => {
-    if (runningRef.current) return
     const sym = symbol.trim().toUpperCase()
     if (!sym) { setMessage("Select a stock symbol first"); return }
-    if (!Number.isFinite(amount) || amount <= 0) { setMessage("Enter a valid trade amount"); return }
-    stopTimers(); const deadline = Date.now() + MAX_RUNTIME_SECONDS * 1000; deadlineRef.current = deadline; runningRef.current = true; setRemainingSeconds(MAX_RUNTIME_SECONDS); setExecuted(0); setRunning(true); setMessage("Auto trade command accepted · evaluating live signal")
-    void executeOnce().finally(() => { if (runningRef.current) stop("Auto trade completed") })
-    stopTimerRef.current = setTimeout(() => stop("15-minute maximum reached · bot stopped"), MAX_RUNTIME_SECONDS * 1000)
+    if (!Number.isFinite(amount) || amount <= 0) { setMessage("Enter a valid demo trade amount"); return }
+    if (runningRef.current) return
+    cycleRef.current = 1
+    runningRef.current = true
+    setCycle(0)
+    setExecuted(0)
+    setLast(null)
+    setRunning(true)
+    setRemainingSeconds(MAX_RUNTIME_SECONDS)
+    setMessage("Demo bot started · fetching market price and strategy")
+    void runCycle(1)
+    timerRef.current = setInterval(() => {
+      if (!runningRef.current) return
+      cycleRef.current += 1
+      if (cycleRef.current > 15) { stop("15-minute demo completed"); return }
+      void runCycle(cycleRef.current)
+    }, CYCLE_SECONDS * 1000)
   }
-  useEffect(() => { if (!running) return; const countdown = window.setInterval(() => { const left = Math.max(0, Math.ceil((deadlineRef.current - Date.now()) / 1000)); setRemainingSeconds(left); if (left <= 0) stop("15-minute maximum reached · bot stopped") }, 1000); return () => clearInterval(countdown) }, [running, stop])
+
+  useEffect(() => {
+    if (!running) return
+    const countdown = window.setInterval(() => {
+      setRemainingSeconds((current) => {
+        const next = Math.max(0, current - 1)
+        if (next === 0) stop("15-minute demo completed")
+        return next
+      })
+    }, 1000)
+    return () => clearInterval(countdown)
+  }, [running, stop])
 
   const updateSymbol = (value: string) => { const next = value.toUpperCase(); setSymbol(next); onSymbolChange?.(next) }
   const mins = Math.floor(remainingSeconds / 60), secs = remainingSeconds % 60
+  const confidence = Number(last?.strategy?.confidence ?? 0)
 
   return (
     <section className="glass-card p-5 border border-titan-500/20 relative overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-br from-titan-500/5 via-transparent to-fuchsia-500/5 pointer-events-none" />
       <div className="relative">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-5"><div><h3 className="text-sm font-semibold text-white flex items-center gap-2"><Bot size={17} className="text-titan-400" /> Auto Bot Trading <span className="text-[9px] uppercase tracking-wider px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">Paper</span></h3><p className="text-xs text-gray-500 mt-1">One automatic BUY/SELL decision per user command using the current Titan-X signal.</p></div><div className="flex items-center gap-2 text-[10px] text-gray-500"><ShieldCheck size={14} className="text-emerald-400" /> 15-minute safety window</div></div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-end"><div className="col-span-2 md:col-span-1"><label className="block text-[10px] text-gray-500 mb-1">Search stock</label><SymbolAutocomplete value={symbol} onChange={updateSymbol} placeholder="Search symbol" className="w-full" /></div><div><label className="block text-[10px] text-gray-500 mb-1">Min technical</label><input type="number" min={70} max={100} value={threshold} onChange={(e) => setThreshold(Math.min(100, Math.max(70, Number(e.target.value) || 85)))} className="input-field w-full text-sm" disabled={running} /></div><div><label className="block text-[10px] text-gray-500 mb-1">Trade Amount (₹)</label><input type="number" min={1} step={1000} value={amount} onChange={(e) => setAmount(Math.max(1, Number(e.target.value) || 1))} className="input-field w-full text-sm" disabled={running} /></div><div>{running ? <button onClick={() => stop()} className="w-full px-4 py-2 rounded-lg text-sm font-semibold border border-red-500/30 bg-red-500/10 text-red-400 inline-flex items-center justify-center gap-2"><Pause size={14} /> Stop</button> : <button onClick={start} disabled={busy} className="w-full px-4 py-2 rounded-lg text-sm font-semibold bg-titan-500 text-white inline-flex items-center justify-center gap-2 disabled:opacity-50"><Play size={14} /> Auto Trade Now</button>}</div></div>
-        <div className="mt-4 grid grid-cols-2 md:grid-cols-5 gap-3"><div className="rounded-lg bg-white/[0.03] border border-white/5 p-3"><div className="text-[10px] text-gray-500">Technical</div><div className="text-lg font-bold text-white">{lastScore == null ? "—" : `${lastScore.toFixed(0)}/100`}</div></div><div className="rounded-lg bg-white/[0.03] border border-white/5 p-3"><div className="text-[10px] text-gray-500">Signal</div><div className="text-lg font-bold text-titan-300">{lastDirection}</div></div><div className="rounded-lg bg-white/[0.03] border border-white/5 p-3"><div className="text-[10px] text-gray-500">Executed</div><div className="text-lg font-bold text-white">{executed ? "1" : "0"}</div></div><div className="rounded-lg bg-white/[0.03] border border-white/5 p-3"><div className="text-[10px] text-gray-500">Window</div><div className="text-lg font-bold text-white flex items-center gap-1"><Clock3 size={14} />{running ? `${mins}:${String(secs).padStart(2, "0")}` : "15:00 max"}</div></div><div className="rounded-lg bg-white/[0.03] border border-white/5 p-3"><div className="text-[10px] text-gray-500">Status</div><div className="text-xs font-medium text-gray-300 flex items-center gap-1.5 mt-1"><Activity size={12} className={running ? "text-emerald-400" : "text-gray-500"} />{message}</div></div></div>
-        <div className="mt-4 flex items-start gap-2 text-[10px] leading-4 text-gray-500"><Zap size={12} className="mt-0.5 shrink-0 text-titan-400" /><span>Paper trading only. The command evaluates the current technical/recommendation signal and sizes the paper order to approximately the requested rupee amount. It does not promise a return.</span></div>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+          <div>
+            <h3 className="text-sm font-semibold text-white flex items-center gap-2"><Bot size={17} className="text-titan-400" /> Auto Bot Trading <span className="text-[9px] uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Demo Money</span></h3>
+            <p className="text-xs text-gray-500 mt-1">15-minute automatic BUY → SELL → BUY → SELL paper execution.</p>
+          </div>
+          <div className="flex items-center gap-2 text-[10px] text-gray-500"><ShieldCheck size={14} className="text-emerald-400" /> No real broker orders</div>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-end">
+          <div className="col-span-2 md:col-span-1"><label className="block text-[10px] text-gray-500 mb-1">Stock</label><SymbolAutocomplete value={symbol} onChange={updateSymbol} placeholder="Search symbol" className="w-full" /></div>
+          <div><label className="block text-[10px] text-gray-500 mb-1">Demo trade amount (₹)</label><input type="number" min={1} step={1000} value={amount} onChange={(e) => setAmount(Math.max(1, Number(e.target.value) || 1))} className="input-field w-full text-sm" disabled={running} /></div>
+          <div><label className="block text-[10px] text-gray-500 mb-1">Cycle</label><div className="input-field w-full text-sm text-white">{cycle || 0}/15</div></div>
+          <div>{running ? <button onClick={() => stop()} className="w-full px-4 py-2 rounded-lg text-sm font-semibold border border-red-500/30 bg-red-500/10 text-red-400 inline-flex items-center justify-center gap-2"><Pause size={14} /> Stop</button> : <button onClick={start} disabled={busy} className="w-full px-4 py-2 rounded-lg text-sm font-semibold bg-titan-500 text-white inline-flex items-center justify-center gap-2 disabled:opacity-50"><Play size={14} /> Start 15-Min Bot</button>}</div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 md:grid-cols-6 gap-3">
+          <div className="rounded-lg bg-white/[0.03] border border-white/5 p-3"><div className="text-[10px] text-gray-500">Last price</div><div className="text-lg font-bold text-white">{last?.price ? `₹${last.price.toLocaleString("en-IN", { maximumFractionDigits: 2 })}` : "—"}</div></div>
+          <div className="rounded-lg bg-white/[0.03] border border-white/5 p-3"><div className="text-[10px] text-gray-500">Action</div><div className="text-lg font-bold text-titan-300">{last?.action ?? "WAIT"}</div></div>
+          <div className="rounded-lg bg-white/[0.03] border border-white/5 p-3"><div className="text-[10px] text-gray-500">Trades</div><div className="text-lg font-bold text-white">{executed}</div></div>
+          <div className="rounded-lg bg-white/[0.03] border border-white/5 p-3"><div className="text-[10px] text-gray-500">Strategy</div><div className="text-lg font-bold text-white flex items-center gap-1"><TrendingUp size={14} />{confidence ? `${Math.round(confidence * 100)}%` : "—"}</div></div>
+          <div className="rounded-lg bg-white/[0.03] border border-white/5 p-3"><div className="text-[10px] text-gray-500">Window</div><div className="text-lg font-bold text-white flex items-center gap-1"><Clock3 size={14} />{running ? `${mins}:${String(secs).padStart(2, "0")}` : "15:00"}</div></div>
+          <div className="rounded-lg bg-white/[0.03] border border-white/5 p-3"><div className="text-[10px] text-gray-500">Status</div><div className="text-xs font-medium text-gray-300 flex items-center gap-1.5 mt-1"><Activity size={12} className={running ? "text-emerald-400" : "text-gray-500"} />{message}</div></div>
+        </div>
+
+        <div className="mt-4 text-[10px] leading-4 text-gray-500">Reference price is the configured market-data LTP when available. If demo/mock data is configured or no live quote is available, the engine uses a clearly labelled synthetic demo price. The existing advanced SMA + RSI + ATR strategy supplies confidence and risk metadata; execution remains paper-only.</div>
       </div>
     </section>
   )
