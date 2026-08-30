@@ -21,6 +21,10 @@ See **[DEPLOY.md](DEPLOY.md)** for full production deployment instructions, incl
 - Backup & recovery procedures
 - Scaling guidance
 
+### Render deployment sync
+
+The `main` branch is the source of truth for the Render frontend (`titan-x`) and FastAPI backend (`titan-x-api`). After code fixes are committed, deploy the latest `main` commit rather than retrying an older failed build.
+
 ## Release notes
 
 See **[RELEASE_NOTES.md](RELEASE_NOTES.md)** for the v0.1.0 release.
