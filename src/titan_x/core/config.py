@@ -37,7 +37,9 @@ class Settings(BaseSettings):
     trusted_hosts: str = ""
     enable_https_redirect: bool = False
     seed_demo_on_startup: bool = False
-    paper_demo_prices: bool = True
+    # Demo accounts use virtual money, but prices must always come from the
+    # configured live market-data provider. Synthetic prices are disabled.
+    paper_demo_prices: bool = False
     frontend_url: str = "http://localhost:3000"
     market_data_provider: str = "jugaad"
     market_data_ingest_on_startup: bool = True
