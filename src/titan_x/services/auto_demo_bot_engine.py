@@ -16,11 +16,10 @@ from titan_x.services.paper_trading_service import PaperTradingService
 
 
 class AutoDemoBotEngine:
-    """15-cycle paper-only execution using validated current market data.
+    """15-cycle paper-only execution using validated current NSE market data.
 
-    Phase 2 adds an explicit risk gate: protective exits are evaluated before
-    strategy entries, and a new position is capped by portfolio exposure.
-    No method in this engine invents a market price.
+    Prices are always read from the configured provider and passed through the
+    freshness gate. Synthetic/demo prices are never used for execution.
     """
 
     MAX_CYCLES = 15
@@ -31,25 +30,15 @@ class AutoDemoBotEngine:
         self.session = session
         self.paper = PaperTradingService(session)
         self.strategy = AdvancedStrategyEngine()
-        self.risk = DemoRiskEngine(
-            stop_loss_pct=1.0,
-            take_profit_pct=1.5,
-            max_position_pct=self.MAX_POSITION_PCT,
-        )
+        self.risk = DemoRiskEngine(stop_loss_pct=1.0, take_profit_pct=1.5, max_position_pct=self.MAX_POSITION_PCT)
 
     async def _market_snapshot(self, symbol: str, cycle: int) -> tuple[float | None, list[dict[str, Any]], str]:
         settings = get_settings()
         provider_name = str(getattr(settings, "market_data_provider", "jugaad") or "jugaad").lower()
-        if provider_name in {"jugaad", "jugaad_nse", "nse_public"}:
-            provider = JugaadNSEProvider()
-        else:
-            provider = get_market_data_provider(provider_name, getattr(settings, "market_data_api_key", None))
+        provider = JugaadNSEProvider() if provider_name in {"jugaad", "jugaad_nse", "nse_public"} else get_market_data_provider(provider_name, getattr(settings, "market_data_api_key", None))
 
         async def fetch_quote(name: str) -> dict[str, Any]:
-            try:
-                return await provider.get_quote(name, synthetic_ok=False)
-            except TypeError:
-                return await provider.get_quote(name)
+            return await provider.get_quote(name)
 
         gateway = MarketDataGateway(fetch_quote, provider_name=provider_name, stale_after_seconds=15.0)
         try:
@@ -61,20 +50,20 @@ class AutoDemoBotEngine:
             if base <= 0 or gateway.is_stale(quote):
                 return None, [], "UNAVAILABLE"
 
-            points: list[Any] = []
+            candles: list[dict[str, Any]] = []
             try:
-                end = date.today()
-                start = end - timedelta(days=10)
-                points = await provider.get_historical_prices(symbol, interval="5m", start=start, end=end)
+                if isinstance(provider, JugaadNSEProvider):
+                    candles = await provider.get_candles(symbol, interval="5m", period="1d")
+                else:
+                    end = date.today()
+                    start = end - timedelta(days=10)
+                    points = await provider.get_historical_prices(symbol, interval="5m", start=start, end=end, synthetic_ok=False)
+                    candles = [{"close": float(p.close), "high": float(p.high), "low": float(p.low), "date": str(p.trade_date)} for p in points[-120:]]
             except Exception:
-                points = []
-            if len(points) < 35:
+                candles = []
+            if len(candles) < 35:
                 return base, [], "LIVE_MARKET_REFERENCE"
-            candles = [
-                {"close": float(p.close), "high": float(p.high), "low": float(p.low), "date": str(p.trade_date)}
-                for p in points[-120:]
-            ]
-            return base, candles, "LIVE_MARKET_REFERENCE"
+            return base, candles[-120:], "LIVE_MARKET_REFERENCE"
         finally:
             close = getattr(provider, "close", None)
             if close:
@@ -88,18 +77,10 @@ class AutoDemoBotEngine:
         account = await self.paper.get_account(user_id)
         if account is None or not account.is_active:
             raise ValueError("Paper account is not active")
-        order = await self.paper._order_repo.create(
-            account_id=account.id, user_id=user_id, symbol=symbol.upper(), side=side,
-            order_type="market", quantity=quantity, price=None, stop_price=None,
-            time_in_force="day", status="pending",
-        )
+        order = await self.paper._order_repo.create(account_id=account.id, user_id=user_id, symbol=symbol.upper(), side=side, order_type="market", quantity=quantity, price=None, stop_price=None, time_in_force="day", status="pending")
         await self.paper._fill_order(order, account, Decimal(str(price)))
         await self.session.refresh(order)
-        return {
-            "id": order.id, "status": order.status,
-            "filled_quantity": order.filled_quantity, "price": float(price),
-            "rejection_reason": order.rejection_reason,
-        }
+        return {"id": order.id, "status": order.status, "filled_quantity": order.filled_quantity, "price": float(price), "rejection_reason": order.rejection_reason}
 
     async def run_cycle(self, user_id: int, symbol: str, cycle: int, trade_amount: float = 10000.0) -> dict[str, Any]:
         if not 1 <= cycle <= self.MAX_CYCLES:
@@ -129,18 +110,9 @@ class AutoDemoBotEngine:
                 risk_decision = self.risk.exit_decision(average_price, price)
                 if risk_decision.action == "sell":
                     order = await self._execute_at_price(user_id, symbol, "sell", held_qty, price)
-                    return {
-                        "cycle": cycle, "action": "SELL", "reason": risk_decision.reason,
-                        "price": price, "price_source": price_source, "quantity": held_qty,
-                        "order": order, "strategy": {"action": "risk_exit", "confidence": 1.0, "metadata": {}},
-                        "risk": {**self.risk.metadata(), "stop_loss": risk_decision.stop_loss, "take_profit": risk_decision.take_profit},
-                    }
+                    return {"cycle": cycle, "action": "SELL", "reason": risk_decision.reason, "price": price, "price_source": price_source, "quantity": held_qty, "order": order, "strategy": {"action": "risk_exit", "confidence": 1.0, "metadata": {}}, "risk": {**self.risk.metadata(), "stop_loss": risk_decision.stop_loss, "take_profit": risk_decision.take_profit}}
 
-        signals = self.strategy.generate_signals(
-            candles,
-            {"fast_period": 10, "slow_period": 30, "rsi_period": 14, "atr_period": 14,
-             "min_confirmations": 2, "stop_loss_pct": 1.0, "take_profit_pct": 1.5, "trailing_stop_pct": 0.8},
-        )
+        signals = self.strategy.generate_signals(candles, {"fast_period": 10, "slow_period": 30, "rsi_period": 14, "atr_period": 14, "min_confirmations": 2, "stop_loss_pct": 1.0, "take_profit_pct": 1.5, "trailing_stop_pct": 0.8})
         latest_signal = signals[-1] if signals else {"action": "hold", "confidence": 0.0, "metadata": {}}
         strategy_action = str(latest_signal.get("action", "hold")).lower()
 
