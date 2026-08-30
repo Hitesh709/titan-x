@@ -8,6 +8,7 @@ from typing import Annotated
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
 from titan_x.core.config import get_settings
+from titan_x.infrastructure.jugaad_nse_provider import JugaadNSEProvider
 from titan_x.infrastructure.market_data_providers import get_market_data_provider
 from titan_x.services.live_market_data_engine import LiveMarketDataEngine
 from titan_x.services.live_market_websocket_service import LiveMarketWebSocketService
@@ -17,13 +18,14 @@ router = APIRouter(prefix="/live-market", tags=["live-market"])
 
 def _service() -> LiveMarketWebSocketService:
     settings = get_settings()
-    provider_name = settings.market_data_provider
-    provider = get_market_data_provider(provider_name)
+    provider_name = str(settings.market_data_provider or "jugaad").lower()
+    if provider_name in {"jugaad", "jugaad_nse", "nse_public"}:
+        provider = JugaadNSEProvider()
+    else:
+        provider = get_market_data_provider(provider_name)
 
     async def poll(symbols: list[str]) -> dict:
-        engine = LiveMarketDataEngine(
-            lambda symbol: provider.get_quote(symbol, synthetic_ok=provider_name.lower() == "mock")
-        )
+        engine = LiveMarketDataEngine(lambda symbol: provider.get_quote(symbol))
         return await engine.poll_once(symbols)
 
     return LiveMarketWebSocketService(poll, interval=1.0)
