@@ -37,7 +37,7 @@ class MarketDataService:
         provider_name = self._resolve_provider(provider_name)
         provider = self._provider(provider_name, api_key)
         try:
-            points = await provider.get_historical_prices(symbol, start=start, end=end, synthetic_ok=self._is_mock(provider_name))
+            points = await provider.get_historical_prices(symbol, interval="1d", start=start, end=end, synthetic_ok=self._is_mock(provider_name))
         finally:
             if hasattr(provider, "close"):
                 await provider.close()
