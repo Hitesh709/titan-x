@@ -73,7 +73,13 @@ class PriceService:
         volume: int,
     ) -> DailyPrice:
         errors = validate_ohlcv(
-            {"open": open, "high": high, "low": low, "close": close, "volume": volume}
+            {
+                "open": open,
+                "high": high,
+                "low": low,
+                "close": close,
+                "volume": volume,
+            }
         )
         if errors:
             raise PriceValidationError("; ".join(errors))
@@ -142,7 +148,11 @@ class PriceService:
                 )
             except (ValueError, KeyError) as exc:
                 result.errors.append(
-                    {"row": i, "errors": [f"invalid trade_date: {exc}"], "data": row}
+                    {
+                        "row": i,
+                        "errors": [f"invalid trade_date: {exc}"],
+                        "data": row,
+                    }
                 )
                 continue
             existing = await self._session.execute(
