@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from datetime import date, datetime, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -8,19 +9,35 @@ from zoneinfo import ZoneInfo
 from titan_x.infrastructure.market_data_providers import MarketDataPoint, MarketDataProvider
 
 IST = ZoneInfo("Asia/Kolkata")
+MIN_REQUEST_INTERVAL_SECONDS = 0.35
 
 
 class JugaadNSEProvider(MarketDataProvider):
-    """Read-only NSE market-data adapter backed by jugaad-data."""
+    """Read-only NSE market-data adapter backed by jugaad-data.
+
+    Requests are serialized and throttled so a dashboard/stream subscription
+    cannot accidentally fan out dozens of simultaneous NSE requests.
+    """
 
     def __init__(self, api_key: str | None = None) -> None:
         self._live: Any | None = None
+        self._request_lock = asyncio.Lock()
+        self._last_request_at = 0.0
 
     def _client(self) -> Any:
         if self._live is None:
             from jugaad_data.nse import NSELive
             self._live = NSELive()
         return self._live
+
+    async def _nse_call(self, fn, *args):
+        async with self._request_lock:
+            elapsed = time.monotonic() - self._last_request_at
+            if elapsed < MIN_REQUEST_INTERVAL_SECONDS:
+                await asyncio.sleep(MIN_REQUEST_INTERVAL_SECONDS - elapsed)
+            result = await asyncio.to_thread(fn, *args)
+            self._last_request_at = time.monotonic()
+            return result
 
     @staticmethod
     def _number(value: Any) -> float | None:
@@ -60,7 +77,7 @@ class JugaadNSEProvider(MarketDataProvider):
 
     async def get_quote(self, symbol: str) -> dict:
         symbol = symbol.strip().upper()
-        raw = await asyncio.to_thread(self._client().stock_quote, symbol)
+        raw = await self._nse_call(self._client().stock_quote, symbol)
         price_info = raw.get("priceInfo") or {}
         trade_info = raw.get("tradeInfo") or {}
         last_price = self._number(price_info.get("lastPrice"))
@@ -131,7 +148,10 @@ class JugaadNSEProvider(MarketDataProvider):
             if current is None:
                 buckets[key] = {"time": key, "open": row["open"], "high": row["high"], "low": row["low"], "close": row["close"], "volume": row["volume"]}
             else:
-                current["high"] = max(current["high"], row["high"]); current["low"] = min(current["low"], row["low"]); current["close"] = row["close"]; current["volume"] += row["volume"]
+                current["high"] = max(current["high"], row["high"])
+                current["low"] = min(current["low"], row["low"])
+                current["close"] = row["close"]
+                current["volume"] += row["volume"]
         return list(sorted(buckets.values(), key=lambda x: x["time"]))
 
     async def get_candles(self, symbol: str, interval: str = "5m", period: str = "5d") -> list[dict[str, Any]]:
@@ -140,17 +160,23 @@ class JugaadNSEProvider(MarketDataProvider):
         if interval not in {"5m", "15m", "30m", "60m", "1d", "1wk", "1mo"}:
             raise ValueError(f"Unsupported candle interval: {interval}")
         if interval in {"5m", "15m", "30m", "60m"}:
-            raw = await asyncio.to_thread(self._client().symbol_chart_data, symbol, "EQ", "1D")
+            raw = await self._nse_call(self._client().symbol_chart_data, symbol, "EQ", "1D")
             return self._aggregate_candles(self._parse_chart_rows(raw or {}, symbol), int(interval[:-1]))
         from datetime import timedelta
         from jugaad_data.nse import stock_raw
-        if period == "1mo": from_date = date.today().replace(day=1)
-        elif period in {"1y", "max"}: from_date = date.today() - timedelta(days=365)
-        elif period == "6mo": from_date = date.today() - timedelta(days=183)
-        elif period == "3mo": from_date = date.today() - timedelta(days=92)
-        elif period == "5d": from_date = date.today() - timedelta(days=5)
-        else: from_date = date.today()
-        raw_rows = await asyncio.to_thread(stock_raw, symbol, from_date, date.today(), "EQ")
+        if period == "1mo":
+            from_date = date.today().replace(day=1)
+        elif period in {"1y", "max"}:
+            from_date = date.today() - timedelta(days=365)
+        elif period == "6mo":
+            from_date = date.today() - timedelta(days=183)
+        elif period == "3mo":
+            from_date = date.today() - timedelta(days=92)
+        elif period == "5d":
+            from_date = date.today() - timedelta(days=5)
+        else:
+            from_date = date.today()
+        raw_rows = await self._nse_call(stock_raw, symbol, from_date, date.today(), "EQ")
         candles: list[dict[str, Any]] = []
         for row in raw_rows or []:
             try:
@@ -162,12 +188,12 @@ class JugaadNSEProvider(MarketDataProvider):
     async def get_historical_prices(self, symbol: str, interval: str = "5m", start: date | None = None, end: date | None = None, synthetic_ok: bool = False) -> list[MarketDataPoint]:
         symbol = symbol.strip().upper()
         if interval in {"1m", "5m", "15m", "30m", "1h", "60m"}:
-            raw = await asyncio.to_thread(self._client().symbol_chart_data, symbol, "EQ", "1D")
+            raw = await self._nse_call(self._client().symbol_chart_data, symbol, "EQ", "1D")
             rows = self._parse_chart_rows(raw or {}, symbol)
             result = [MarketDataPoint(symbol=symbol, trade_date=self._timestamp_date(p["time"]), open=p["open"], high=p["high"], low=p["low"], close=p["close"], volume=p["volume"]) for p in rows]
         else:
             from jugaad_data.nse import stock_raw
-            raw_rows = await asyncio.to_thread(stock_raw, symbol, start or date.today(), end or date.today(), "EQ")
+            raw_rows = await self._nse_call(stock_raw, symbol, start or date.today(), end or date.today(), "EQ")
             result = []
             for row in raw_rows or []:
                 try:
@@ -179,7 +205,7 @@ class JugaadNSEProvider(MarketDataProvider):
 
     async def get_company_profile(self, symbol: str) -> dict:
         try:
-            raw = await asyncio.to_thread(self._client().symbol_meta, symbol.strip().upper())
+            raw = await self._nse_call(self._client().symbol_meta, symbol.strip().upper())
         except Exception:
             raw = {}
         return {"symbol": symbol.strip().upper(), "name": raw.get("companyName") if isinstance(raw, dict) else None, "sector": None, "industry": raw.get("industry") if isinstance(raw, dict) else None, "market_cap": None, "exchange": "NSE", "currency": "INR"}
