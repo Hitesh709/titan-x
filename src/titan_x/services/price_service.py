@@ -90,7 +90,9 @@ class PriceService:
             )
         )
         if existing.scalar_one_or_none() is not None:
-            raise ValueError(f"Price already exists for {symbol.upper()} on {trade_date}")
+            raise ValueError(
+                f"Price already exists for {symbol.upper()} on {trade_date}"
+            )
         return await self._price_repo.create(
             symbol=symbol.upper(),
             trade_date=trade_date,
@@ -138,7 +140,9 @@ class PriceService:
         for i, row in enumerate(records):
             row_errors = validate_ohlcv(row)
             if row_errors:
-                result.errors.append({"row": i, "errors": row_errors, "data": row})
+                result.errors.append(
+                    {"row": i, "errors": row_errors, "data": row}
+                )
                 continue
             try:
                 trade_date = (
