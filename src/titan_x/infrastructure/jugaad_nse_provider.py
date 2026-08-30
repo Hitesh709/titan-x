@@ -197,7 +197,7 @@ class JugaadNSEProvider(MarketDataProvider):
             result = []
             for row in raw_rows or []:
                 try:
-                    result.append(MarketDataPoint(symbol=symbol, trade_date=self._timestamp_date(row.get("CH_TIMESTAMP") or row.get("DATE")), open=float(row.get("CH_OPENING_PRICE") or 0), high=float(row.get("CH_TRADE_HIGH_PRICE") or 0), low=float(row.get("CH_TRADE_LOW_PRICE") or 0), close=float(row.get("CH_CLOSING_PRICE") or 0), volume=int(float(row.get("CH_TOT_TRADED_QTY") or 0)))
+                    result.append(MarketDataPoint(symbol=symbol, trade_date=self._timestamp_date(row.get("CH_TIMESTAMP") or row.get("DATE")), open=float(row.get("CH_OPENING_PRICE") or 0), high=float(row.get("CH_TRADE_HIGH_PRICE") or 0), low=float(row.get("CH_TRADE_LOW_PRICE") or 0), close=float(row.get("CH_CLOSING_PRICE") or 0), volume=int(float(row.get("CH_TOT_TRADED_QTY") or 0))))
                 except (TypeError, ValueError):
                     continue
         lower, upper = start or date.min, end or date.max
