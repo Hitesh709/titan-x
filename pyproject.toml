@@ -24,7 +24,6 @@ dependencies = [
   "redis==6.4.0",
   "structlog==25.4.0",
   "uvicorn[standard]==0.35.0",
-  "upstox-python-sdk==2.28.0",
 ]
 
 [project.scripts]
