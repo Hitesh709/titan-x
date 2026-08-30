@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any
 
 from titan_x.infrastructure.market_data_providers import MarketDataPoint, MarketDataProvider
@@ -41,7 +41,8 @@ class JugaadNSEProvider(MarketDataProvider):
         if isinstance(value, date):
             return value
         if isinstance(value, (int, float)):
-            return datetime.fromtimestamp(value).date()
+            seconds = value / 1000 if value > 100_000_000_000 else value
+            return datetime.fromtimestamp(seconds).date()
         text = str(value or "")
         for fmt in ("%d-%b-%Y %H:%M:%S", "%d-%b-%Y %H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
             try:
@@ -49,6 +50,28 @@ class JugaadNSEProvider(MarketDataProvider):
             except ValueError:
                 continue
         return date.today()
+
+    @staticmethod
+    def _iso_timestamp(value: Any) -> str:
+        if isinstance(value, datetime):
+            dt = value
+        elif isinstance(value, (int, float)):
+            seconds = value / 1000 if value > 100_000_000_000 else value
+            dt = datetime.fromtimestamp(seconds, tz=timezone.utc)
+        else:
+            text = str(value or "").strip()
+            dt = None
+            for fmt in ("%d-%b-%Y %H:%M:%S", "%d-%b-%Y %H:%M", "%Y-%m-%d %H:%M:%S"):
+                try:
+                    dt = datetime.strptime(text, fmt).replace(tzinfo=timezone.utc)
+                    break
+                except ValueError:
+                    continue
+            if dt is None:
+                return datetime.now(timezone.utc).isoformat()
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.isoformat()
 
     async def get_quote(self, symbol: str) -> dict:
         raw = await asyncio.to_thread(self._client().stock_quote, symbol.strip().upper())
@@ -67,7 +90,7 @@ class JugaadNSEProvider(MarketDataProvider):
             "day_low": self._number((price_info.get("intraDayHighLow") or {}).get("min")),
             "volume": self._number(trade_info.get("totalTradedVolume")),
             "vwap": self._number(price_info.get("vwap")),
-            "timestamp": raw.get("lastUpdateTime") or datetime.now().isoformat(),
+            "timestamp": self._iso_timestamp(raw.get("lastUpdateTime")),
             "exchange": "NSE",
             "source": "jugaad-data/NSE",
         }
@@ -91,8 +114,6 @@ class JugaadNSEProvider(MarketDataProvider):
                 volume = JugaadNSEProvider._number(row.get("volume")) or 0
             elif isinstance(row, (list, tuple)) and len(row) >= 2:
                 ts = row[0]
-                # NSE chart arrays are commonly timestamp/value pairs; when
-                # OHLCV columns are present, use them without assuming them.
                 close = JugaadNSEProvider._number(row[4] if len(row) >= 5 else row[1])
                 open_ = JugaadNSEProvider._number(row[1]) or close
                 high = JugaadNSEProvider._number(row[2]) or close
@@ -123,10 +144,6 @@ class JugaadNSEProvider(MarketDataProvider):
         end: date | None = None,
         synthetic_ok: bool = False,
     ) -> list[MarketDataPoint]:
-        # NSELive exposes intraday symbol chart data through NextApi. The
-        # library currently accepts 1D/1W/etc. windows rather than a Yahoo-
-        # style interval parameter, so we request the largest useful window
-        # and let Titan-X's strategy/candle layer consume the returned points.
         days = "1D" if interval in {"1m", "5m", "15m", "30m", "1h"} else "1M"
         raw = await asyncio.to_thread(self._client().symbol_chart_data, symbol.strip().upper(), "EQ", days)
         points = self._parse_chart(raw or {}, symbol)
@@ -151,6 +168,4 @@ class JugaadNSEProvider(MarketDataProvider):
         }
 
     async def close(self) -> None:
-        # jugaad-data owns a synchronous requests.Session; there is no async
-        # close operation required by the adapter contract.
         self._live = None
