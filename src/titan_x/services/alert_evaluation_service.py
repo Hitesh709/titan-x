@@ -1,10 +1,9 @@
 import math
-from collections.abc import Sequence
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Any
 
 import structlog
-from sqlalchemy import and_, desc, func, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -25,14 +24,8 @@ class AlertEvaluationService:
         self._market_data = MarketDataService(session)
 
     async def evaluate_all_active_alerts(self) -> int:
-        result = await self._session.execute(
-            select(WatchlistAlert)
-            .options(selectinload(WatchlistAlert.item).selectinload(WatchlistItem.watchlist))
-            .where(WatchlistAlert.is_active == True)
-        )
+        result = await self._session.execute(select(WatchlistAlert).options(selectinload(WatchlistAlert.item).selectinload(WatchlistItem.watchlist)).where(WatchlistAlert.is_active == True))
         alerts = result.unique().scalars().all()
-        if not alerts:
-            return 0
         triggered = 0
         for alert in alerts:
             try:
@@ -43,14 +36,7 @@ class AlertEvaluationService:
         return triggered
 
     async def evaluate_watchlist_alerts(self, watchlist_id: int) -> list[dict[str, Any]]:
-        result = await self._session.execute(
-            select(WatchlistAlert)
-            .options(selectinload(WatchlistAlert.item))
-            .where(
-                WatchlistAlert.is_active == True,
-                WatchlistAlert.watchlist_item_id.in_(select(WatchlistItem.id).where(WatchlistItem.watchlist_id == watchlist_id)),
-            )
-        )
+        result = await self._session.execute(select(WatchlistAlert).options(selectinload(WatchlistAlert.item)).where(WatchlistAlert.is_active == True, WatchlistAlert.watchlist_item_id.in_(select(WatchlistItem.id).where(WatchlistItem.watchlist_id == watchlist_id))))
         alerts = result.unique().scalars().all()
         triggered: list[dict[str, Any]] = []
         for alert in alerts:
@@ -60,18 +46,11 @@ class AlertEvaluationService:
 
     async def _evaluate_alert(self, alert: WatchlistAlert) -> bool:
         item = alert.item
-        if item is None:
+        if item is None or item.watchlist is None:
             return False
         watchlist = item.watchlist
-        if watchlist is None:
-            return False
-
+        alert_type, op, threshold, symbol = alert.alert_type, alert.operator, alert.threshold_value, item.symbol
         triggered = False
-        alert_type = alert.alert_type
-        op = alert.operator
-        threshold = alert.threshold_value
-        symbol = item.symbol
-
         if alert_type.startswith("price."):
             triggered = await self._evaluate_price_alert(symbol, alert_type, op, threshold)
         elif alert_type.startswith("volume."):
@@ -84,7 +63,6 @@ class AlertEvaluationService:
             triggered = await self._evaluate_ai_score_alert(watchlist.id, symbol, alert_type, op, threshold)
         elif alert_type.startswith("portfolio."):
             triggered = await self._evaluate_portfolio_alert(watchlist.id, alert_type, op, threshold)
-
         if triggered:
             alert.last_triggered_at = utcnow()
             await self._create_and_deliver_notification(alert, watchlist)
@@ -111,39 +89,35 @@ class AlertEvaluationService:
         if alert_type in {"volume.above", "volume.below"}:
             vol = await self._get_latest_volume(symbol)
             return vol is not None and self._compare(float(vol), op, threshold)
-        if alert_type == "volume.spike":
-            return await self._detect_volume_spike(symbol, threshold)
-        return False
+        return await self._detect_volume_spike(symbol, threshold) if alert_type == "volume.spike" else False
 
     async def _evaluate_news_alert(self, symbol: str, alert_type: str, op: str, threshold: float) -> bool:
         from titan_x.models.news import NewsArticle
-        two_days_ago = date.today() - timedelta(days=2)
-        result = await self._session.execute(select(func.count()).select_from(NewsArticle).where(NewsArticle.symbol == symbol, NewsArticle.published_at >= two_days_ago))
-        count = result.scalar() or 0
-        return self._compare(float(count), op, threshold) if alert_type == "news.mention" else False
+        cutoff = date.today() - timedelta(days=2)
+        result = await self._session.execute(select(func.count()).select_from(NewsArticle).where(NewsArticle.symbol == symbol, NewsArticle.published_at >= cutoff))
+        return self._compare(float(result.scalar() or 0), op, threshold) if alert_type == "news.mention" else False
 
     async def _evaluate_pattern_alert(self, symbol: str, alert_type: str) -> bool:
         from titan_x.models.chart_pattern import ChartPattern
         pattern_name = alert_type.replace("pattern.", "")
-        three_days_ago = date.today() - timedelta(days=3)
-        result = await self._session.execute(select(func.count()).select_from(ChartPattern).where(ChartPattern.symbol == symbol, ChartPattern.pattern_name == pattern_name, func.date(ChartPattern.created_at) >= three_days_ago))
+        cutoff = date.today() - timedelta(days=3)
+        result = await self._session.execute(select(func.count()).select_from(ChartPattern).where(ChartPattern.symbol == symbol, ChartPattern.pattern_name == pattern_name, func.date(ChartPattern.created_at) >= cutoff))
         return (result.scalar() or 0) > 0
 
     async def _evaluate_ai_score_alert(self, watchlist_id: int, symbol: str | None, alert_type: str, op: str, threshold: float) -> bool:
         query = select(func.avg(WatchlistAiInsight.score)).where(WatchlistAiInsight.watchlist_id == watchlist_id)
         if symbol:
             query = query.where(WatchlistAiInsight.symbol == symbol)
-        result = await self._session.execute(query)
-        avg_score = result.scalar()
+        avg_score = (await self._session.execute(query)).scalar()
         return avg_score is not None and self._compare(float(avg_score), op, threshold)
 
     async def _evaluate_portfolio_alert(self, watchlist_id: int, alert_type: str, op: str, threshold: float) -> bool:
         if alert_type == "portfolio.holding_count":
-            result = await self._session.execute(select(func.count()).select_from(WatchlistItem).where(WatchlistItem.watchlist_id == watchlist_id))
-            return self._compare(float(result.scalar() or 0), op, threshold)
+            count = (await self._session.execute(select(func.count()).select_from(WatchlistItem).where(WatchlistItem.watchlist_id == watchlist_id))).scalar() or 0
+            return self._compare(float(count), op, threshold)
         if alert_type == "portfolio.sector_exposure":
-            result = await self._session.execute(select(func.count()).select_from(WatchlistItem).where(WatchlistItem.watchlist_id == watchlist_id, WatchlistItem.symbol.in_(select(Company.symbol).where(Company.sector.isnot(None)))))
-            return self._compare(float(result.scalar() or 0), op, threshold)
+            count = (await self._session.execute(select(func.count()).select_from(WatchlistItem).where(WatchlistItem.watchlist_id == watchlist_id, WatchlistItem.symbol.in_(select(Company.symbol).where(Company.sector.isnot(None)))))).scalar() or 0
+            return self._compare(float(count), op, threshold)
         return False
 
     async def _create_and_deliver_notification(self, alert: WatchlistAlert, watchlist: Watchlist) -> None:
@@ -166,53 +140,45 @@ class AlertEvaluationService:
 
     async def _get_latest_price(self, symbol: str) -> float | None:
         try:
-            quote = await self._market_data.get_quote(symbol)
-            value = quote.get("last_price")
+            value = (await self._market_data.get_quote(symbol)).get("last_price")
             return float(value) if value is not None and float(value) > 0 else None
         except Exception:
             logger.warning("live_alert_price_unavailable", symbol=symbol)
             return None
 
     async def _get_prev_price(self, symbol: str) -> float | None:
-        result = await self._session.execute(select(DailyPrice.close).where(DailyPrice.symbol == symbol.upper()).order_by(desc(DailyPrice.trade_date)).offset(1).limit(1))
-        row = result.scalar_one_or_none()
-        return float(row) if row is not None else None
+        value = (await self._session.execute(select(DailyPrice.close).where(DailyPrice.symbol == symbol.upper()).order_by(desc(DailyPrice.trade_date)).offset(1).limit(1))).scalar_one_or_none()
+        return float(value) if value is not None else None
 
     async def _get_price_change_pct(self, symbol: str) -> float | None:
         try:
-            quote = await self._market_data.get_quote(symbol)
-            value = quote.get("change_percent")
+            value = (await self._market_data.get_quote(symbol)).get("change_percent")
             if value is not None:
                 return float(value)
         except Exception:
             pass
-        result = await self._session.execute(select(DailyPrice.close).where(DailyPrice.symbol == symbol.upper()).order_by(desc(DailyPrice.trade_date)).limit(2))
-        rows = result.scalars().all()
+        rows = (await self._session.execute(select(DailyPrice.close).where(DailyPrice.symbol == symbol.upper()).order_by(desc(DailyPrice.trade_date)).limit(2))).scalars().all()
         if len(rows) < 2:
             return None
         p0, p1 = float(rows[0]), float(rows[1])
         return ((p0 - p1) / p1) * 100 if p1 else None
 
     async def _get_moving_average(self, symbol: str, period: int) -> float | None:
-        result = await self._session.execute(select(DailyPrice.close).where(DailyPrice.symbol == symbol.upper()).order_by(desc(DailyPrice.trade_date)).limit(period))
-        prices = result.scalars().all()
+        prices = (await self._session.execute(select(DailyPrice.close).where(DailyPrice.symbol == symbol.upper()).order_by(desc(DailyPrice.trade_date)).limit(period))).scalars().all()
         return sum(float(p) for p in prices) / period if len(prices) >= period else None
 
     async def _get_latest_volume(self, symbol: str) -> int | None:
         try:
-            quote = await self._market_data.get_quote(symbol)
-            value = quote.get("volume")
+            value = (await self._market_data.get_quote(symbol)).get("volume")
             return int(float(value)) if value is not None and float(value) >= 0 else None
         except Exception:
             return None
 
     async def _detect_volume_spike(self, symbol: str, z_threshold: float = 2.0) -> bool:
-        result = await self._session.execute(select(DailyPrice.volume).where(DailyPrice.symbol == symbol.upper()).order_by(desc(DailyPrice.trade_date)).limit(21))
-        volumes = [float(v) for v in result.scalars().all()]
+        volumes = [float(v) for v in (await self._session.execute(select(DailyPrice.volume).where(DailyPrice.symbol == symbol.upper()).order_by(desc(DailyPrice.trade_date)).limit(21))).scalars().all()]
         if len(volumes) < 10:
             return False
-        latest = volumes[0]
-        rest = volumes[1:]
+        latest, rest = volumes[0], volumes[1:]
         mu = sum(rest) / len(rest)
         variance = sum((v - mu) ** 2 for v in rest) / len(rest)
         std = math.sqrt(variance) if variance > 0 else 1
