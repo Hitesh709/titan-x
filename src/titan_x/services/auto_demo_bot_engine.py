@@ -9,14 +9,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from titan_x.core.config import get_settings
 from titan_x.infrastructure.market_data_providers import get_market_data_provider
 from titan_x.services.advanced_strategy_engine import AdvancedStrategyEngine
+from titan_x.services.market_data_gateway_service import MarketDataGateway
 from titan_x.services.paper_trading_service import PaperTradingService
 
 
 class AutoDemoBotEngine:
-    """15-minute paper-only execution using the provider's current market quote.
+    """15-minute paper-only execution using validated current market data.
 
     The account and orders are virtual. Execution prices are never synthetic:
-    a BUY/SELL is allowed only when a valid current provider quote is available.
+    a BUY/SELL is allowed only when the market-data gateway accepts a current,
+    timestamped provider quote.
     """
 
     MAX_CYCLES = 15
@@ -31,23 +33,26 @@ class AutoDemoBotEngine:
         settings = get_settings()
         provider_name = str(getattr(settings, "market_data_provider", "yahoo") or "yahoo").lower()
         provider = get_market_data_provider(provider_name, getattr(settings, "market_data_api_key", None))
-        try:
-            quote: dict[str, Any] | None = None
-            try:
-                quote = await provider.get_quote(symbol)
-            except Exception:
-                quote = None
 
-            # The execution price MUST come from the configured market-data
-            # provider. Stored/synthetic/demo prices are never used for fills.
-            ltp = quote.get("last_price") if quote else None
-            if ltp is None:
-                return None, [], "UNAVAILABLE"
+        async def fetch_quote(name: str) -> dict[str, Any]:
             try:
-                base = float(ltp)
-            except (TypeError, ValueError):
+                return await provider.get_quote(name, synthetic_ok=False)
+            except TypeError:
+                return await provider.get_quote(name)
+
+        gateway = MarketDataGateway(
+            fetch_quote,
+            provider_name=provider_name,
+            stale_after_seconds=15.0,
+        )
+        try:
+            try:
+                quote = await gateway.quote(symbol, refresh=True)
+            except Exception:
                 return None, [], "UNAVAILABLE"
-            if base <= 0:
+
+            base = float(quote["last_price"])
+            if base <= 0 or gateway.is_stale(quote):
                 return None, [], "UNAVAILABLE"
 
             points: list[Any] = []
@@ -59,8 +64,6 @@ class AutoDemoBotEngine:
                 points = []
 
             if len(points) < 35:
-                # No fabricated candles. The strategy may not trade until
-                # enough real market history is available.
                 return base, [], "LIVE_MARKET_REFERENCE"
 
             candles = [
@@ -80,6 +83,7 @@ class AutoDemoBotEngine:
                     await close()
                 except Exception:
                     pass
+            await gateway.close()
 
     async def _execute_at_price(
         self, user_id: int, symbol: str, side: str, quantity: int, price: float
@@ -128,7 +132,7 @@ class AutoDemoBotEngine:
             return {
                 "cycle": cycle,
                 "action": "HOLD",
-                "reason": "current market price unavailable; no synthetic price used",
+                "reason": "current market price unavailable or stale; no synthetic price used",
                 "price": None,
                 "price_source": price_source,
                 "strategy": {"action": "hold", "confidence": 0.0, "metadata": {}},
@@ -164,8 +168,6 @@ class AutoDemoBotEngine:
         held = next((p for p in positions if str(p.get("symbol", "")).upper() == symbol), None)
         held_qty = int(float((held or {}).get("quantity", 0)))
 
-        # Follow the strategy signal. The bot never alternates BUY/SELL merely
-        # because a cycle number changed. A SELL is only possible with holdings.
         if strategy_action in {"buy", "long"} and held_qty <= 0:
             confidence = max(0.0, min(1.0, float(latest_signal.get("confidence", 0.0) or 0.0)))
             if confidence < 0.50:
