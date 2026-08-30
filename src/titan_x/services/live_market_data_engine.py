@@ -32,19 +32,23 @@ QuoteSubscriber = Callable[[LiveQuote], Awaitable[None] | None]
 
 
 class LiveMarketDataEngine:
-    """Provider-neutral live quote engine with canonical validation."""
+    """Provider-neutral live quote engine with canonical validation and throttling."""
 
     def __init__(
         self,
         fetch_quote: QuoteFetcher,
         *,
         stale_after_seconds: float = 15.0,
+        max_concurrency: int = 5,
         normalizer: MarketDataNormalizationService | None = None,
     ):
         if stale_after_seconds <= 0:
             raise ValueError("stale_after_seconds must be positive")
+        if max_concurrency <= 0:
+            raise ValueError("max_concurrency must be positive")
         self._fetch_quote = fetch_quote
         self.stale_after_seconds = stale_after_seconds
+        self._max_concurrency = max_concurrency
         self._normalizer = normalizer or MarketDataNormalizationService()
         self._latest: dict[str, LiveQuote] = {}
         self._sequence: dict[str, int] = {}
@@ -94,8 +98,14 @@ class LiveMarketDataEngine:
         if not normalized_symbols:
             return {"updated": 0, "failed": 0, "quotes": [], "errors": []}
 
+        semaphore = asyncio.Semaphore(self._max_concurrency)
+
+        async def limited_fetch(symbol: str) -> LiveQuote:
+            async with semaphore:
+                return await self._fetch_one(symbol)
+
         results = await asyncio.gather(
-            *(self._fetch_one(symbol) for symbol in normalized_symbols),
+            *(limited_fetch(symbol) for symbol in normalized_symbols),
             return_exceptions=True,
         )
         updated: list[dict[str, Any]] = []
@@ -125,7 +135,7 @@ class LiveMarketDataEngine:
             except Exception:
                 continue
 
-    async def run(self, symbols: list[str], interval_seconds: float = 2.0) -> None:
+    async def run(self, symbols: list[str], interval_seconds: float = 5.0) -> None:
         if interval_seconds <= 0:
             raise ValueError("interval_seconds must be positive")
         self._stop_event.clear()
