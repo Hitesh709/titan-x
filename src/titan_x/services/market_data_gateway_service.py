@@ -43,6 +43,8 @@ class MarketDataGateway:
         quote = self.normalizer.normalize(symbol, payload)
         self.normalizer.validate(quote)
         timestamp = datetime.fromisoformat(quote["timestamp"])
+        if self.is_stale(quote):
+            raise ValueError(f"stale market tick for {symbol}")
         previous = self._last_timestamp.get(symbol)
         if previous is not None and timestamp <= previous:
             raise ValueError(f"out-of-order market tick for {symbol}")
