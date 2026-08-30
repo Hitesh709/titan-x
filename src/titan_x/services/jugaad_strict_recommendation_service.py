@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import date, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -50,26 +49,14 @@ async def _delivery_scan(session_factory, symbols: list[str], state: dict[str, A
                     quote = await provider.get_quote(symbol)
                     live_price = float(quote["last_price"])
                     results.append({
-                        "id": f"strict-delivery-{symbol}",
-                        "symbol": symbol,
-                        "display_name": symbol,
-                        "direction": "BUY" if pillar.direction > 0 else "SELL",
-                        "signal": f"TECHNICAL_{'BUY' if pillar.direction > 0 else 'SELL'}",
-                        "confidence": round(float(pillar.confidence) * 100, 2),
-                        "current_price": live_price,
-                        "price_target": None,
-                        "timeframe": "Delivery / Short Term",
-                        "reasoning": "Delivery Technical Pillar passed the strict threshold using stored historical bars and a live NSE price.",
-                        "recommendation_type": "STRICT_DELIVERY",
-                        "status": "active",
-                        "score": round(float(pillar.score), 2),
-                        "technical_score": round(float(pillar.score), 2),
-                        "technical_pillar_score": round(float(pillar.score), 2),
-                        "strict_technical_gate": True,
-                        "delivery_technical_score": round(float(pillar.score), 2),
-                        "delivery_technical_pillar_score": round(float(pillar.score), 2),
-                        "generated_at": quote.get("timestamp"),
-                        "source": "jugaad-data/NSE",
+                        "id": f"strict-delivery-{symbol}", "symbol": symbol, "display_name": symbol,
+                        "direction": "BUY" if pillar.direction > 0 else "SELL", "signal": f"TECHNICAL_{'BUY' if pillar.direction > 0 else 'SELL'}",
+                        "confidence": round(float(pillar.confidence) * 100, 2), "current_price": live_price, "price_target": None,
+                        "timeframe": "Delivery / Short Term", "reasoning": "Delivery Technical Pillar passed the strict threshold using stored historical bars and a live NSE price.",
+                        "recommendation_type": "STRICT_DELIVERY", "status": "active", "score": round(float(pillar.score), 2),
+                        "technical_score": round(float(pillar.score), 2), "technical_pillar_score": round(float(pillar.score), 2), "strict_technical_gate": True,
+                        "delivery_technical_score": round(float(pillar.score), 2), "delivery_technical_pillar_score": round(float(pillar.score), 2),
+                        "generated_at": quote.get("timestamp"), "source": "jugaad-data/NSE",
                     })
                 except Exception:
                     continue
@@ -80,10 +67,9 @@ async def _delivery_scan(session_factory, symbols: list[str], state: dict[str, A
     return results
 
 
-async def _intraday_scan(symbols: list[str], segment: str, state: dict[str, Any]) -> list[dict[str, Any]]:
+async def _intraday_scan(symbols: list[str], state: dict[str, Any]) -> list[dict[str, Any]]:
     provider = JugaadNSEProvider()
     semaphore = asyncio.Semaphore(5)
-    results: list[dict[str, Any]] = []
 
     async def scan(symbol: str):
         async with semaphore:
@@ -99,25 +85,12 @@ async def _intraday_scan(symbols: list[str], segment: str, state: dict[str, Any]
                 live_price = float(quote["last_price"])
                 direction = "BUY" if pillar.direction > 0 else "SELL"
                 return {
-                    "id": f"strict-intraday-{symbol}",
-                    "symbol": symbol,
-                    "display_name": symbol,
-                    "direction": direction,
-                    "signal": f"TECHNICAL_{direction}",
-                    "confidence": round(float(pillar.confidence) * 100, 2),
-                    "current_price": live_price,
-                    "entry_price": live_price,
-                    "price_target": None,
-                    "stop_price": None,
-                    "timeframe": "Intraday · 5m",
-                    "recommendation_type": "STRICT_INTRADAY",
-                    "status": "active",
-                    "score": round(float(pillar.score), 2),
-                    "technical_score": round(float(pillar.score), 2),
-                    "technical_pillar_score": round(float(pillar.score), 2),
-                    "strict_technical_gate": True,
-                    "source": "jugaad-data/NSE",
-                    "generated_at": quote.get("timestamp"),
+                    "id": f"strict-intraday-{symbol}", "symbol": symbol, "display_name": symbol, "direction": direction,
+                    "signal": f"TECHNICAL_{direction}", "confidence": round(float(pillar.confidence) * 100, 2), "current_price": live_price,
+                    "entry_price": live_price, "price_target": None, "stop_price": None, "timeframe": "Intraday · 5m",
+                    "recommendation_type": "STRICT_INTRADAY", "status": "active", "score": round(float(pillar.score), 2),
+                    "technical_score": round(float(pillar.score), 2), "technical_pillar_score": round(float(pillar.score), 2),
+                    "strict_technical_gate": True, "source": "jugaad-data/NSE", "generated_at": quote.get("timestamp"),
                 }
             except Exception:
                 return None
@@ -127,9 +100,9 @@ async def _intraday_scan(symbols: list[str], segment: str, state: dict[str, Any]
         results = [item for item in scanned if item is not None]
         state["scanned"] = len(symbols)
         state["progress_pct"] = 100
+        return results
     finally:
         await provider.close()
-    return results
 
 
 async def _run(session_factory, mode: str, segment: str, limit: int) -> None:
@@ -140,10 +113,7 @@ async def _run(session_factory, mode: str, segment: str, limit: int) -> None:
             symbols = await _universe(session, segment)
         state["universe_size"] = len(symbols)
         state["status"] = "running"
-        if mode == "intraday":
-            recommendations = await _intraday_scan(symbols, segment, state)
-        else:
-            recommendations = await _delivery_scan(session_factory, symbols, state)
+        recommendations = await _intraday_scan(symbols, state) if mode == "intraday" else await _delivery_scan(session_factory, symbols, state)
         recommendations.sort(key=lambda x: (x.get("technical_pillar_score", 0), x.get("confidence", 0)), reverse=True)
         state["recommendations"] = recommendations[:limit]
         state["status"] = "completed"
