@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from titan_x.core.config import get_settings
+from titan_x.infrastructure.jugaad_nse_provider import JugaadNSEProvider
 from titan_x.infrastructure.market_data_providers import get_market_data_provider
 from titan_x.services.advanced_strategy_engine import AdvancedStrategyEngine
 from titan_x.services.demo_risk_engine import DemoRiskEngine
@@ -38,8 +39,11 @@ class AutoDemoBotEngine:
 
     async def _market_snapshot(self, symbol: str, cycle: int) -> tuple[float | None, list[dict[str, Any]], str]:
         settings = get_settings()
-        provider_name = str(getattr(settings, "market_data_provider", "yahoo") or "yahoo").lower()
-        provider = get_market_data_provider(provider_name, getattr(settings, "market_data_api_key", None))
+        provider_name = str(getattr(settings, "market_data_provider", "jugaad") or "jugaad").lower()
+        if provider_name in {"jugaad", "jugaad_nse", "nse_public"}:
+            provider = JugaadNSEProvider()
+        else:
+            provider = get_market_data_provider(provider_name, getattr(settings, "market_data_api_key", None))
 
         async def fetch_quote(name: str) -> dict[str, Any]:
             try:
@@ -119,8 +123,6 @@ class AutoDemoBotEngine:
         held = next((p for p in positions if str(p.get("symbol", "")).upper() == symbol), None)
         held_qty = int(float((held or {}).get("quantity", 0)))
 
-        # Phase 2 protective exit: stop loss / take profit always outrank a
-        # fresh strategy signal when a position exists.
         if held_qty > 0:
             average_price = float((held or {}).get("average_price", 0) or 0)
             if average_price > 0:
