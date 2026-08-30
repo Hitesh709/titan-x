@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     seed_demo_on_startup: bool = False
     paper_demo_prices: bool = True
     frontend_url: str = "http://localhost:3000"
-    market_data_provider: str = "yahoo"
+    market_data_provider: str = "jugaad"
     market_data_ingest_on_startup: bool = True
     market_data_ingest_max_symbols: int = Field(default=20, ge=1, le=2000)
     rate_limit_enabled: bool = True
@@ -80,8 +80,6 @@ class Settings(BaseSettings):
     sms_aws_secret_key: str | None = None
     sms_aws_region: str = "us-east-1"
 
-    # Inbound SMS number used by the browser's sms: link. The SMS gateway must
-    # forward inbound messages to /api/v1/auth/qr/sms/webhook.
     qr_sms_number: str | None = None
     qr_sms_webhook_secret: SecretStr | None = None
 
