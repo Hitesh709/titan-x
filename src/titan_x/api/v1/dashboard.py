@@ -9,6 +9,7 @@ from titan_x.api.dependencies import get_cache, get_current_active_user, request
 from titan_x.infrastructure.cache import RedisCache
 from titan_x.models.user import User
 from titan_x.services.dashboard_service import DashboardService
+from titan_x.services.live_portfolio_mark_service import LivePortfolioMarkService
 
 logger = structlog.get_logger(__name__)
 
@@ -32,12 +33,20 @@ async def get_dashboard(
         logger.warning("dashboard_cache_get_failed", user_id=current_user.id, exc_info=True)
     if cached is not None:
         return cached  # type: ignore[return-value]
+
+    # Mark paper positions from the configured live market-data provider before
+    # calculating portfolio value. Failure never fabricates a price.
+    try:
+        await LivePortfolioMarkService(session).refresh_user(current_user.id)
+    except Exception:  # noqa: BLE001
+        logger.warning("dashboard_live_mark_failed", user_id=current_user.id, exc_info=True)
+
     svc = DashboardService(session)
     result = await svc.get_dashboard(current_user.id)
     try:
-        asyncio.ensure_future(cache.set(cache_key, result, ttl=30))
+        asyncio.ensure_future(cache.set(cache_key, result, ttl=5))
     except Exception:  # noqa: BLE001
-        logger.warning("dashboard_cache_set_failed", user_id=current_user.id)
+        logger.warning("dashboard_cache_set_failed", user_id=current_user.id, exc_info=True)
     return result
 
 
