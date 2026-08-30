@@ -1,7 +1,7 @@
-import copy
 import csv
 import io
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
@@ -16,6 +16,18 @@ logger = structlog.get_logger(__name__)
 
 
 class PriceValidationError(ValueError): pass
+
+
+@dataclass
+class LivePriceSnapshot:
+    id: int | None
+    symbol: str
+    trade_date: date
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: int
 
 
 class BulkImportResult:
@@ -71,16 +83,15 @@ class PriceService:
         reader = csv.DictReader(io.StringIO(csv_content)); records = [{"trade_date": row.get("trade_date", row.get("date", "")), "open": float(row.get("open", 0)), "high": float(row.get("high", 0)), "low": float(row.get("low", 0)), "close": float(row.get("close", 0)), "volume": int(row.get("volume", 0))} for row in reader]
         return await self.bulk_import(symbol, records)
 
-    async def get_latest_price(self, symbol: str) -> DailyPrice | None:
-        """Return a detached live-price snapshot; never overwrite stored history."""
+    async def get_latest_price(self, symbol: str) -> LivePriceSnapshot | DailyPrice | None:
+        """Return current NSE LTP as a detached snapshot; never overwrite history."""
         result = await self._session.execute(select(DailyPrice).where(DailyPrice.symbol == symbol.upper()).order_by(DailyPrice.trade_date.desc()).limit(1)); latest = result.scalar_one_or_none()
         try:
             from titan_x.services.market_data_service import MarketDataService
             quote = await MarketDataService(self._session).get_quote(symbol); live_price = quote.get("last_price")
             if live_price is not None and float(live_price) > 0:
-                if latest is None:
-                    return DailyPrice(symbol=symbol.upper(), trade_date=date.today(), open=float(live_price), high=float(live_price), low=float(live_price), close=float(live_price), volume=int(quote.get("volume") or 0))
-                snapshot = copy.copy(latest); snapshot.close = float(live_price); snapshot.high = max(float(latest.high), float(live_price)); snapshot.low = min(float(latest.low), float(live_price)); return snapshot
+                live = float(live_price)
+                return LivePriceSnapshot(id=getattr(latest, "id", None), symbol=symbol.upper(), trade_date=getattr(latest, "trade_date", date.today()), open=float(getattr(latest, "open", live)), high=max(float(getattr(latest, "high", live)), live), low=min(float(getattr(latest, "low", live)), live), close=live, volume=int(quote.get("volume") or getattr(latest, "volume", 0) or 0))
         except Exception as exc:
             logger.warning("live_price_unavailable", symbol=symbol, error=str(exc))
         return latest
