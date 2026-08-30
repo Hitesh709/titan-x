@@ -14,6 +14,7 @@ from titan_x.services.live_market_data_engine import LiveMarketDataEngine
 from titan_x.services.live_market_websocket_service import LiveMarketWebSocketService
 
 router = APIRouter(prefix="/live-market", tags=["live-market"])
+MAX_LIVE_SYMBOLS = 20
 
 
 def _service() -> LiveMarketWebSocketService:
@@ -25,16 +26,16 @@ def _service() -> LiveMarketWebSocketService:
         provider = get_market_data_provider(provider_name)
 
     async def poll(symbols: list[str]) -> dict:
-        engine = LiveMarketDataEngine(lambda symbol: provider.get_quote(symbol))
+        engine = LiveMarketDataEngine(lambda symbol: provider.get_quote(symbol), max_concurrency=5)
         return await engine.poll_once(symbols)
 
-    return LiveMarketWebSocketService(poll, interval=1.0)
+    return LiveMarketWebSocketService(poll, interval=5.0)
 
 
 @router.websocket("/ws")
 async def live_market_websocket(
     websocket: WebSocket,
-    symbols: Annotated[str, Query(description="Comma-separated symbols, maximum 100")],
+    symbols: Annotated[str, Query(description="Comma-separated symbols, maximum 20")],
     api_key: Annotated[str | None, Query(description="API key for browser WebSocket clients")] = None,
 ) -> None:
     settings = get_settings()
@@ -44,8 +45,8 @@ async def live_market_websocket(
         return
 
     syms = [s.strip().upper() for s in symbols.split(",") if s.strip()]
-    if not syms or len(syms) > 100:
-        await websocket.close(code=1008, reason="Provide 1-100 symbols")
+    if not syms or len(syms) > MAX_LIVE_SYMBOLS:
+        await websocket.close(code=1008, reason=f"Provide 1-{MAX_LIVE_SYMBOLS} symbols")
         return
 
     await websocket.accept()
