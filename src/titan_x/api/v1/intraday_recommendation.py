@@ -8,7 +8,7 @@ from titan_x.api.deps import get_app_session_factory
 from titan_x.models.company import Company
 from titan_x.models.user import User
 from titan_x.services.jugaad_intraday_recommendation_service import get_intraday_recommendations
-from titan_x.services.strict_recommendation_service import get_strict_recommendations, get_strict_scan_status
+from titan_x.services.jugaad_strict_recommendation_service import get_strict_recommendations, get_strict_scan_status
 
 router = APIRouter(tags=["intraday-recommendations"])
 
@@ -50,7 +50,7 @@ async def strict_recommendations(
     session_factory=Depends(get_app_session_factory),
     _: User = Depends(deps.get_current_active_user),
 ):
-    """Start/return a non-blocking strict scan."""
+    """Start/return a non-blocking strict scan using live Jugaad/NSE prices."""
     try:
         return await get_strict_recommendations(session_factory=session_factory, mode=mode, segment=segment, limit=limit)
     except ValueError as exc:
