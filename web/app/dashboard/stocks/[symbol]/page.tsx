@@ -155,7 +155,7 @@ export default function StockDetailPage() {
         </div>
 
         <div className="mt-5 grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Stat label="Open" value={quote?.prev_close} />
+          <Stat label="Previous Close" value={quote?.prev_close} />
           <Stat label="Day High" value={quote?.day_high} />
           <Stat label="Day Low" value={quote?.day_low} />
           <Stat label="Volume" value={quote?.volume} compact />
@@ -225,7 +225,7 @@ function ResearchBlock({ symbol, research, loaded, onRefresh }: { symbol: string
           </div>
           {research.reasoning && <div className="mt-4 flex items-start gap-2 text-sm text-gray-300 bg-white/5 rounded-lg p-4"><Sparkles size={15} className="text-titan-400 shrink-0 mt-0.5" /><p>{research.reasoning}</p></div>}
           {(research.evidence?.length ?? 0) > 0 && <div className="mt-3"><p className="text-xs text-gray-500 mb-2">Evidence</p><ul className="space-y-1.5">{research.evidence!.slice(0, 8).map((e, i) => <li key={i} className="text-xs text-gray-400 flex items-start gap-2"><CheckCircle2 size={13} className="text-emerald-500 shrink-0 mt-0.5" />{e}</li>)}</ul></div>}
-          {(research.caution?.length ?? 0) > 0 && <div className="mt-3"><p className="text-xs text-gray-500 mb-2">Caution</p><ul className="space-y-1.5">{research.caution!.slice(0, 5).map((c, i) => <li key={i} className="text-xs text-amber-400/90 flex items-start gap-2"><AlertTriangle size={13} className="shrink-0 mt-0.5" />{c}</li>)}</ul></div>}
+          {(research.caution?.length ?? 0) > 0 && <div className="mt-3"><p className="text-xs text-gray-500 mb-2">Caution</p><ul className="space-y-1.5">{research.caution!.slice(0, 5).map((c, i) => <li key={i} className="text-xs text-amber-400/90 flex items-start gap-2"><AlertTriangle size={13} className="shrink-0 mt-0.5" />{c}</li></ul></div>}
           <div className="mt-4 flex justify-end"><button onClick={onRefresh} className="text-xs text-titan-400 hover:text-titan-300 inline-flex items-center gap-1"><Activity size={12} /> Refresh research</button></div>
         </>
       )}
