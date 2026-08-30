@@ -1,13 +1,23 @@
-# INDstocks integration
+# Market Data Provider Migration
 
-Titan-X now contains an INDstocks read-only market-data adapter. It is intentionally not connected to real order placement.
+The previous INDstocks experiment has been retired. Titan-X now uses the
+provider-independent market-data gateway with Upstox as the selected primary
+market-data adapter.
 
-Required Render environment variables:
-- `INDSTOCKS_CLIENT_ID`
-- `INDSTOCKS_MPIN`
-- `INDSTOCKS_TOTP_SECRET`
+## Current provider
 
-Alternatively, for temporary testing only:
-- `INDSTOCKS_ACCESS_TOKEN`
+- Upstox Market Data Feed V3
+- Read-only Analytics Token
+- WebSocket streaming through `MarketDataStreamerV3`
+- Demo execution only; this adapter does not place broker orders
 
-The TOTP secret must be configured by the account owner in the INDstocks dashboard. Tokens expire after 24 hours; the adapter can generate a fresh token from TOTP. Never commit these secrets.
+## Environment
+
+```text
+UPSTOX_ANALYTICS_TOKEN=<secret>
+UPSTOX_API_BASE_URL=https://api.upstox.com/v2
+UPSTOX_WS_MODE=ltpc
+```
+
+The filename is retained temporarily for repository history compatibility;
+no INDstocks code is used by the application.
