@@ -28,6 +28,7 @@ _ROUTER_SPECS: tuple[tuple[str, str | None], ...] = (
     ("intraday_recommendation", "router"), ("knowledge_graph", "kg_router"), ("learning", "router"),
     ("live_market_websocket", "router"), ("macro", "router"), ("market_breadth", "market_breadth_router"),
     ("market_data", "router"), ("market_data_collector", "router"), ("market_heatmap", "router"),
+    ("market_data_gateway", "router"),
     ("market_scanner", "router"), ("master_decision", "router"), ("microstructure", "router"),
     ("model_evaluation", "router"), ("model_registry", "router"), ("monitoring", "router"),
     ("news", "news_router"), ("news_nlp", "news_nlp_router"), ("news_scanner", "router"),
