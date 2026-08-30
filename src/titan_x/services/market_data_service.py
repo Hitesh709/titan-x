@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from titan_x.core.config import get_settings
+from titan_x.infrastructure.jugaad_nse_provider import JugaadNSEProvider
 from titan_x.infrastructure.market_data_providers import get_market_data_provider
 from titan_x.models.company import Company
 from titan_x.models.price import DailyPrice
@@ -21,15 +22,20 @@ class MarketDataService:
 
     def _resolve_provider(self, provider_name: str | None) -> str:
         if provider_name and provider_name != "default":
-            return provider_name
-        return get_settings().market_data_provider
+            return provider_name.lower()
+        return str(get_settings().market_data_provider or "jugaad").lower()
+
+    def _provider(self, provider_name: str, api_key: str | None = None):
+        if provider_name in {"jugaad", "jugaad_nse", "nse_public"}:
+            return JugaadNSEProvider(api_key)
+        return get_market_data_provider(provider_name, api_key)
 
     def _is_mock(self, provider_name: str) -> bool:
         return provider_name.lower() == "mock"
 
     async def fetch_and_store_historical(self, symbol: str, provider_name: str | None = None, api_key: str | None = None, start: date | None = None, end: date | None = None) -> dict:
         provider_name = self._resolve_provider(provider_name)
-        provider = get_market_data_provider(provider_name, api_key)
+        provider = self._provider(provider_name, api_key)
         try:
             points = await provider.get_historical_prices(symbol, start=start, end=end, synthetic_ok=self._is_mock(provider_name))
         finally:
@@ -65,7 +71,7 @@ class MarketDataService:
 
     async def get_quote(self, symbol: str, provider_name: str | None = None, api_key: str | None = None) -> dict:
         provider_name = self._resolve_provider(provider_name)
-        provider = get_market_data_provider(provider_name, api_key)
+        provider = self._provider(provider_name, api_key)
         try:
             quote = await provider.get_quote(symbol.upper())
             self._normalize_quote_change(quote)
@@ -86,11 +92,11 @@ class MarketDataService:
         return q
 
     async def get_quotes(self, symbols: list[str]) -> dict:
-        """Return real quotes for a large universe without creating a 100-request burst.
+        """Return fresh real quotes from the configured provider.
 
-        Yahoo's public chart endpoint is rate-sensitive on cloud IPs. Requests are
-        therefore made in small controlled batches with per-symbol retries. Failed
-        symbols are omitted rather than replaced with fake/demo prices.
+        Failed symbols are omitted rather than replaced with dummy/demo prices.
+        The provider's own cache/rate limits are respected by keeping the batch
+        size small and using a short application cache.
         """
         symbols = list(dict.fromkeys(s.upper().replace(".NS", "").replace(".BO", "") for s in symbols if s.strip()))[:100]
         now = time.monotonic()
@@ -103,7 +109,8 @@ class MarketDataService:
             else:
                 to_fetch.append(symbol)
 
-        provider = get_market_data_provider(self._resolve_provider(None))
+        provider_name = self._resolve_provider(None)
+        provider = self._provider(provider_name)
         try:
             for start in range(0, len(to_fetch), 10):
                 batch = to_fetch[start:start + 10]
@@ -119,18 +126,15 @@ class MarketDataService:
             if hasattr(provider, "close"):
                 await provider.close()
 
-        # Preserve the requested ordering only as a stable tie-breaker; the UI ranks it.
         order = {symbol: i for i, symbol in enumerate(symbols)}
         out.sort(key=lambda q: order.get(str(q.get("symbol", "")).replace(".NS", "").replace(".BO", ""), 9999))
-        return {"quotes": out, "count": len(out), "requested": len(symbols), "live": True, "source": "yahoo_finance"}
+        return {"quotes": out, "count": len(out), "requested": len(symbols), "live": True, "provider": provider_name, "source": "jugaad-data/NSE" if provider_name in {"jugaad", "jugaad_nse", "nse_public"} else provider_name}
 
     async def _fetch_quote_with_retry(self, provider, symbol: str) -> dict | None:
-        last_error: Exception | None = None
         for attempt in range(3):
             try:
                 return await provider.get_quote(symbol)
-            except Exception as exc:
-                last_error = exc
+            except Exception:
                 if attempt < 2:
                     await asyncio.sleep(0.8 * (attempt + 1))
         return None
@@ -142,7 +146,7 @@ class MarketDataService:
             return {"symbol": company.symbol, "name": company.company_name, "isin": company.isin, "exchange": company.exchange, "sector": company.sector, "industry": company.industry, "market_cap": company.market_cap, "currency": "INR", "description": company.description, "website": company.website, "listing_date": company.listing_date.isoformat() if company.listing_date else None}
         try:
             provider_name = self._resolve_provider(provider_name)
-            provider = get_market_data_provider(provider_name, api_key)
+            provider = self._provider(provider_name, api_key)
             try:
                 profile = await provider.get_company_profile(symbol)
             finally:
@@ -160,7 +164,7 @@ class MarketDataService:
         return {"symbol": symbol, "points": []}
 
     def get_available_providers(self) -> list[str]:
-        return ["mock", "alphavantage", "yahoo", "nse"]
+        return ["jugaad", "mock", "alphavantage", "stooq"]
 
 
 async def load_active_symbols(session: AsyncSession, symbol: str | None = None, limit: int = 100) -> list[str]:
