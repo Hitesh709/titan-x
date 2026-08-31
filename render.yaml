@@ -40,6 +40,20 @@ services:
         value: "true"
       - key: PAPER_DEMO_PRICES
         value: "false"
+      - key: MARKET_DATA_PROVIDER
+        value: angelone
+      - key: ANGEL_ONE_API_KEY
+        sync: false
+      - key: ANGEL_ONE_CLIENT_ID
+        sync: false
+      - key: ANGEL_ONE_PIN
+        sync: false
+      - key: ANGEL_ONE_TOTP_SECRET
+        sync: false
+      - key: MARKET_DATA_INGEST_ON_STARTUP
+        value: "true"
+      - key: MARKET_DATA_INGEST_MAX_SYMBOLS
+        value: "20"
       - key: DATABASE_URL
         fromDatabase:
           name: titan-x-db
