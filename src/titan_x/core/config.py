@@ -37,13 +37,18 @@ class Settings(BaseSettings):
     trusted_hosts: str = ""
     enable_https_redirect: bool = False
     seed_demo_on_startup: bool = False
-    # Demo accounts use virtual money, but prices must always come from the
-    # configured live market-data provider. Synthetic prices are disabled.
     paper_demo_prices: bool = False
     frontend_url: str = "http://localhost:3000"
-    market_data_provider: str = "jugaad"
+
+    # Market data / Angel One SmartAPI
+    market_data_provider: str = "angelone"
+    angel_one_api_key: str | None = None
+    angel_one_client_id: str | None = None
+    angel_one_pin: str | None = None
+    angel_one_totp_secret: str | None = None
     market_data_ingest_on_startup: bool = True
     market_data_ingest_max_symbols: int = Field(default=20, ge=1, le=2000)
+
     rate_limit_enabled: bool = True
     rate_limit_requests: int = Field(default=60, ge=1, le=10000)
     rate_limit_window_seconds: int = Field(default=60, ge=1, le=3600)
