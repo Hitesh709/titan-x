@@ -17,7 +17,6 @@ dependencies = [
   "email-validator==2.2.0",
   "fastapi==0.116.1",
   "httpx>=0.28.0",
-  "jugaad-data==0.35.5",
   "passlib[bcrypt]==1.7.4",
   "pydantic-settings==2.10.1",
   "pyotp==2.9.0",
@@ -59,18 +58,6 @@ known-first-party = ["titan_x", "coding_agent"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "ASYNC", "S"]
 ignore = ["S101"]
-
-[tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "S105", "S106"]
-"src/titan_x/infrastructure/jugaad_nse_provider.py" = ["E501"]
-"src/titan_x/services/live_market_data_engine.py" = ["E501"]
-"src/titan_x/services/live_portfolio_mark_service.py" = ["E501"]
-"src/titan_x/services/alert_evaluation_service.py" = ["E501"]
-"src/titan_x/services/jugaad_intraday_recommendation_service.py" = ["E501"]
-"src/titan_x/services/jugaad_strict_recommendation_service.py" = ["E501"]
-"src/titan_x/api/v1/live_market_websocket.py" = ["E501"]
-"src/titan_x/api/v1/dashboard.py" = ["E501"]
-"src/titan_x/api/v1/intraday_recommendation.py" = ["E501"]
 
 [tool.ruff.format]
 quote-style = "double"
