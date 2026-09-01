@@ -24,9 +24,9 @@ class MarketDataService:
         if provider_name and provider_name != "default":
             candidate = provider_name.lower().strip()
         else:
-            candidate = str(get_settings().market_data_provider or "angelone").lower().strip()
-        allowed = {"angelone", "angel_one", "smartapi", "mock", "alphavantage", "stooq"}
-        return candidate if candidate in allowed else "angelone"
+            candidate = str(get_settings().market_data_provider or "yahoo").lower().strip()
+        allowed = {"angelone", "angel_one", "smartapi", "yahoo", "mock", "alphavantage", "stooq"}
+        return candidate if candidate in allowed else "yahoo"
 
     def _provider(self, provider_name: str, api_key: str | None = None):
         if provider_name in {"angelone", "angel_one", "smartapi"}:
@@ -304,7 +304,7 @@ class MarketDataService:
         return {"symbol": symbol, "points": []}
 
     def get_available_providers(self) -> list[str]:
-        return ["angelone", "mock", "alphavantage", "stooq"]
+        return ["angelone", "yahoo", "mock", "alphavantage", "stooq"]
 
 
 async def load_active_symbols(
