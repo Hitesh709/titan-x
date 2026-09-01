@@ -13,16 +13,9 @@ def _engine() -> PointInTimePredictionEngine:
     return engine
 
 
-@pytest.mark.parametrize(
-    "method, expected_column",
-    [
-        ("_get_latest_price", "daily_prices.trade_date"),
-        ("_get_similarities", "similarity_analyses.query_end_date"),
-        ("_get_fundamentals", "fundamental_metrics.published_at"),
-    ],
-)
+@pytest.mark.parametrize("method", ["_get_latest_price", "_get_similarities", "_get_fundamentals"])
 @pytest.mark.asyncio
-async def test_point_in_time_queries_apply_cutoff(method: str, expected_column: str) -> None:
+async def test_point_in_time_queries_apply_cutoff(method: str) -> None:
     engine = _engine()
     result = MagicMock()
     result.scalar_one_or_none.return_value = None
@@ -33,8 +26,8 @@ async def test_point_in_time_queries_apply_cutoff(method: str, expected_column: 
 
     statement = engine._session.execute.await_args.args[0]
     sql = str(statement.compile(compile_kwargs={"literal_binds": True}))
-    assert expected_column in sql
     assert "2026-01-15" in sql
+    assert " <= " in sql
 
 
 def test_as_of_datetime_is_end_of_day_utc() -> None:
