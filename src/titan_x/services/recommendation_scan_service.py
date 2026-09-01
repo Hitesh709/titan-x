@@ -13,6 +13,7 @@ from titan_x.services.ai_recommendation_engine import AIRecommendationEngine, ba
 from titan_x.services.recommendation_service import RecommendationService
 from titan_x.services.technical_strength_engine import score_technical_strength
 from titan_x.infrastructure.market_data_providers import YahooFinanceProvider
+from titan_x.services.nse_universe_service import NSEUniverseService
 
 logger=structlog.get_logger(__name__)
 FAST_GATE_SCORE=70.0
@@ -48,13 +49,12 @@ class RecommendationScanService:
         if _scan_lock.locked(): return {"started":False,"reason":"A scan is already running"}
         async with _scan_lock:
             _scan_state.update(running=True,last_error=None)
-            started=time.perf_counter() if False else None
             try:return await self._scan(max_age_minutes,concurrency,limit)
             except Exception as e:_scan_state["last_error"]=str(e); logger.exception("scan_failed",error=str(e)); raise
             finally:_scan_state["running"]=False
     async def _scan(self,max_age_minutes,concurrency,limit):
-        symbols=await self.get_active_symbols(limit); stale=sorted(await self._stale(symbols,max_age_minutes)); sector=await self._sector_ctx(); breadth=await self._breadth_ctx(); exchange={}
-        rows=(await self.session.execute(select(Company.symbol,Company.exchange).where(Company.symbol.in_(stale)))).all(); exchange={str(s).upper():str(e or "NSE").upper() for s,e in rows}
+        symbols=await self.get_active_symbols(limit); stale=sorted(await self._stale(symbols,max_age_minutes)); sector=await self._sector_ctx(); breadth=await self._breadth_ctx()
+        rows=(await self.session.execute(select(Company.symbol,Company.exchange).where(Company.symbol.in_(stale)))).all()
         provider=YahooFinanceProvider(); sem=asyncio.Semaphore(max(1,min(concurrency,8))); market={}; errors=[]
         async def one(s):
             async with sem:
@@ -71,7 +71,8 @@ class RecommendationScanService:
                 bars=bars_from_records(points); intraday,delivery=await asyncio.gather(asyncio.to_thread(score_technical_strength,bars,mode="intraday"),asyncio.to_thread(score_technical_strength,bars,mode="delivery")); score=max(intraday.score,delivery.score)
                 if score<FAST_GATE_SCORE: no_trade+=1; continue
                 fast_passed+=1
-                rec=engine.build(s,bars,sector_ctx=sector.get(next((c[1] for c in rows if str(c[0]).upper()==s),"") or ""),breadth_ctx=breadth); rec["data_points"]=len(points); rec["fast_technical_gate"]={"threshold":FAST_GATE_SCORE,"intraday_score":intraday.score,"delivery_score":delivery.score,"selected_score":score}
+                sector_name=next((c[1] for c in rows if str(c[0]).upper()==s),"") or ""
+                rec=engine.build(s,bars,sector_ctx=sector.get(sector_name),breadth_ctx=breadth); rec["data_points"]=len(points); rec["fast_technical_gate"]={"threshold":FAST_GATE_SCORE,"intraday_score":intraday.score,"delivery_score":delivery.score,"selected_score":score}
                 if rec.get("insufficient_data") or rec.get("no_trade"): no_trade+=1; continue
                 await self._store(rec,svc); stored+=1
             except Exception as e: failed+=1; logger.warning("scan_symbol_failed",symbol=s,error=str(e))
@@ -86,7 +87,12 @@ class RecommendationScanService:
 
 async def run_universe_load(session_factory:async_sessionmaker)->dict[str,Any]:
     async with session_factory() as session:
-        rows=(await session.execute(select(Company.symbol).where(Company.status=="active"))).all(); result={"loaded":True,"active_symbols":len(rows)}; _scan_state["last_universe"]=result; return result
+        result=await NSEUniverseService(session).load_universe()
+        await session.commit()
+        result={"loaded":True,**result}
+        _scan_state["last_universe"]=result
+        logger.info("full_nse_universe_loaded",**result)
+        return result
 
 async def run_background_scan(session_factory:async_sessionmaker,max_age_minutes=60,limit=None)->dict[str,Any]:
     async with session_factory() as session: return await RecommendationScanService(session).scan_all(max_age_minutes=max_age_minutes,limit=limit)
