@@ -14,7 +14,7 @@ router = APIRouter(prefix="/prediction-audit", tags=["prediction_audit"])
 @router.get("/{prediction_id}", summary="Get the provenance and outcomes for a prediction")
 async def get_prediction_audit(
     prediction_id: int,
-    session: AsyncSession = Depends(deps.get_session),
+    session: AsyncSession = Depends(deps.request_session),
     _current_user: Any = Depends(deps.get_current_active_user),
 ) -> dict[str, Any]:
     audit = await session.scalar(
@@ -63,7 +63,7 @@ async def get_prediction_audit(
 async def list_prediction_audits(
     symbol: str = Query(..., min_length=1, max_length=20),
     limit: int = Query(50, ge=1, le=200),
-    session: AsyncSession = Depends(deps.get_session),
+    session: AsyncSession = Depends(deps.request_session),
     _current_user: Any = Depends(deps.get_current_active_user),
 ) -> dict[str, Any]:
     result = await session.execute(
