@@ -29,73 +29,51 @@ async def _intraday_segment(symbols, segment_id):
                 if len(p)<30:return None
                 t=await asyncio.to_thread(score_technical_strength,bars_from_records(p),mode="intraday")
                 q=await provider.get_quote(s)
-                return {"symbol":s,"signal":t.label,"direction":t.direction,"score":round(t.score,2),"confidence":round(t.score,2),"current_price":q.get("last_price"),"change":q.get("change"),"change_percent":q.get("change_percent"),"factors":t.factors,"evidence":t.evidence,"data_points":len(p),"source":"yahoo","segment_id":segment_id}
-            except Exception:
-                return None
-    try:
-        return [x for x in await asyncio.gather(*(one(s) for s in symbols)) if x]
-    finally:
-        await provider.close()
+                return {"symbol":s.split(".")[0],"yahoo_symbol":s,"signal":t.label,"direction":t.direction,"score":round(t.score,2),"confidence":round(t.score,2),"current_price":q.get("last_price"),"change":q.get("change"),"change_percent":q.get("change_percent"),"factors":t.factors,"evidence":t.evidence,"data_points":len(p),"source":"yahoo","segment_id":segment_id}
+            except Exception:return None
+    try:return [x for x in await asyncio.gather(*(one(s) for s in symbols)) if x]
+    finally:await provider.close()
 
 async def _symbols(session):
     rows=(await session.execute(select(Company.symbol,Company.exchange).where(Company.status=="active").where(Company.exchange.in_(["NSE","BSE"])).order_by(Company.exchange,Company.symbol))).all()
-    # Preserve exchange identity for Yahoo; the base symbol is retained for UI.
-    return [f"{str(symbol).upper()}.{str(exchange).upper() if str(exchange).upper() in {'NSE','BSE'} else 'NSE'}" for symbol,exchange in rows if symbol]
+    suffix={"NSE":"NS","BSE":"BO"}
+    return [f"{str(symbol).upper()}.{suffix.get(str(exchange).upper(),'NS')}" for symbol,exchange in rows if symbol]
 
-async def _full_universe(session):
-    return await _symbols(session)
+async def _full_universe(session):return await _symbols(session)
 
 async def _run_cached_scan(symbols):
     global _intraday_cache
-    if _cache_lock.locked():
-        return {"started":False,"reason":"A full-market intraday scan is already running"}
+    if _cache_lock.locked():return {"started":False,"reason":"A full-market intraday scan is already running"}
     async with _cache_lock:
         _cache_state.update({"running":True,"started_at":datetime.now(timezone.utc).isoformat(),"finished_at":None,"universe":len(symbols),"scanned":0,"successful":0,"failed":0,"segment_progress":{str(i):"queued" for i in range(1,SCAN_SEGMENTS+1)},"last_error":None})
         try:
             segments=[symbols[i::SCAN_SEGMENTS] for i in range(SCAN_SEGMENTS)]
-            results=[]
-            # Keep all ten segments concurrent while tracking completion independently.
             async def run_segment(chunk,segment_id):
                 try:
-                    out=await _intraday_segment(chunk,segment_id)
-                    _cache_state["scanned"]+=len(chunk)
-                    _cache_state["successful"]+=len(out)
-                    _cache_state["segment_progress"][str(segment_id)]="completed"
-                    return out
+                    out=await _intraday_segment(chunk,segment_id); _cache_state["scanned"]+=len(chunk); _cache_state["successful"]+=len(out); _cache_state["segment_progress"][str(segment_id)]="completed"; return out
                 except Exception as exc:
-                    _cache_state["scanned"]+=len(chunk)
-                    _cache_state["failed"]+=len(chunk)
-                    _cache_state["segment_progress"][str(segment_id)]=f"failed: {exc}"
-                    return []
+                    _cache_state["scanned"]+=len(chunk); _cache_state["failed"]+=len(chunk); _cache_state["segment_progress"][str(segment_id)]=f"failed: {exc}"; return []
             parts=await asyncio.gather(*(run_segment(chunk,i+1) for i,chunk in enumerate(segments)))
-            for part in parts: results.extend(part)
-            results.sort(key=lambda x:x["score"],reverse=True)
-            _intraday_cache=results
-            _cache_state["finished_at"]=datetime.now(timezone.utc).isoformat()
+            results=[item for part in parts for item in part]; results.sort(key=lambda x:x["score"],reverse=True); _intraday_cache=results; _cache_state["finished_at"]=datetime.now(timezone.utc).isoformat()
             return {"started":True,"universe":len(symbols),"scanned":len(symbols),"successful":len(results),"failed":_cache_state["failed"],"cache_count":len(results),"provider":"yahoo"}
-        except Exception as exc:
-            _cache_state["last_error"]=str(exc)
-            raise
-        finally:
-            _cache_state["running"]=False
+        except Exception as exc:_cache_state["last_error"]=str(exc); raise
+        finally:_cache_state["running"]=False
 
 @router.get("/recommendations/intraday")
 async def intraday_recommendations(segment:str=Query("equity",pattern=r"^(equity|fno)$"),limit:int=Query(20,ge=1,le=100),session=Depends(deps.get_session),_:User=Depends(deps.get_current_active_user)):
-    if segment=="fno": raise HTTPException(400,"F&O universe is not enabled yet; use equity")
+    if segment=="fno":raise HTTPException(400,"F&O universe is not enabled yet; use equity")
     symbols=await _full_universe(session)
     if not symbols:raise HTTPException(503,"No active Indian equity symbols available")
-    if not _intraday_cache and not _cache_state["running"]:
-        asyncio.create_task(_run_cached_scan(symbols))
+    if not _intraday_cache and not _cache_state["running"]:asyncio.create_task(_run_cached_scan(symbols))
     return {"recommendations":_intraday_cache[:limit],"count":min(limit,len(_intraday_cache)),"universe_scanned":len(symbols),"scan_segments":SCAN_SEGMENTS,"cache_ready":bool(_intraday_cache),"scan_running":_cache_state["running"],"provider":"yahoo","live":True}
 
 @router.post("/recommendations/intraday/refresh")
 async def refresh_intraday_recommendations(segment:str=Query("equity",pattern=r"^(equity|fno)$"),session=Depends(deps.get_session),_:User=Depends(deps.get_current_active_user)):
-    if segment=="fno": raise HTTPException(400,"F&O universe is not enabled yet; use equity")
+    if segment=="fno":raise HTTPException(400,"F&O universe is not enabled yet; use equity")
     symbols=await _full_universe(session)
     if not symbols:raise HTTPException(503,"No active Indian equity symbols available")
-    if _cache_state["running"]: return {"started":False,"reason":"A full-market intraday scan is already running",**_cache_state}
-    asyncio.create_task(_run_cached_scan(symbols))
-    return {"started":True,"universe":len(symbols),"scan_segments":SCAN_SEGMENTS,"provider":"yahoo","message":"Full-market scan started in background"}
+    if _cache_state["running"]:return {"started":False,"reason":"A full-market intraday scan is already running",**_cache_state}
+    asyncio.create_task(_run_cached_scan(symbols)); return {"started":True,"universe":len(symbols),"scan_segments":SCAN_SEGMENTS,"provider":"yahoo","message":"Full-market scan started in background"}
 
 @router.get("/recommendations/intraday/status")
 async def intraday_scan_status(_:User=Depends(deps.get_current_active_user)):
@@ -103,10 +81,10 @@ async def intraday_scan_status(_:User=Depends(deps.get_current_active_user)):
 
 @router.get("/recommendations/strict")
 async def strict_recommendations(mode:str=Query("delivery",pattern=r"^(delivery|intraday)$"),segment:str=Query("equity",pattern=r"^(equity|fno)$"),limit:int=Query(20,ge=1,le=100),session_factory=Depends(get_app_session_factory),_:User=Depends(deps.get_current_active_user)):
-    if segment=="fno": raise HTTPException(400,"F&O universe is not enabled yet; use equity")
+    if segment=="fno":raise HTTPException(400,"F&O universe is not enabled yet; use equity")
     if mode=="intraday":
         async with session_factory() as s:symbols=await _full_universe(s)
-        if not _intraday_cache and not _cache_state["running"]: asyncio.create_task(_run_cached_scan(symbols))
+        if not _intraday_cache and not _cache_state["running"]:asyncio.create_task(_run_cached_scan(symbols))
         return {"recommendations":_intraday_cache[:limit],"count":min(limit,len(_intraday_cache)),"universe_scanned":len(symbols),"scan_segments":SCAN_SEGMENTS,"mode":mode,"cache_ready":bool(_intraday_cache),"scan_running":_cache_state["running"],"provider":"yahoo","live":True}
     result=await run_background_scan(session_factory,max_age_minutes=0,limit=None)
     async with session_factory() as s:
