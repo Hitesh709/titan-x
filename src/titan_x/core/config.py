@@ -40,12 +40,8 @@ class Settings(BaseSettings):
     paper_demo_prices: bool = False
     frontend_url: str = "http://localhost:3000"
 
-    # Market data / Angel One SmartAPI
-    market_data_provider: str = "angelone"
-    angel_one_api_key: str | None = None
-    angel_one_client_id: str | None = None
-    angel_one_pin: str | None = None
-    angel_one_totp_secret: str | None = None
+    # Market data: Yahoo Finance is the default keyless public source.
+    market_data_provider: str = "yahoo"
     market_data_ingest_on_startup: bool = True
     market_data_ingest_max_symbols: int = Field(default=20, ge=1, le=2000)
 
