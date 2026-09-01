@@ -1,21 +1,141 @@
-"""API v1 router registry."""
+"""API v1 router registry.
+
+The registry intentionally imports routers defensively so one optional feature
+cannot prevent the FastAPI application from starting. Core market and
+recommendation routers are explicitly registered first.
+"""
 from __future__ import annotations
-import importlib, inspect, logging
+
+import importlib
+import inspect
+import logging
+from typing import Iterable
+
 from fastapi import APIRouter
-logger=logging.getLogger(__name__)
-_ROUTER_SPECS=tuple(x for x in (
-("analytics_dashboard","router"),("adaptive_stop_loss","router"),("admin","admin_router"),("advanced_screener","router"),("ai_ranking_v2","router"),("ai_registry","router"),("audit","router"),("auth","auth_router"),("automated_training","router"),("backtest","backtest_router"),("broker","router"),("companies","companies_router"),("company_research","router"),("corporate_action_detection","cad_router"),("corporate_actions_engine","ca_engine_router"),("corporate_reminders","router"),("corporate_tracking","corp_track_router"),("correlation","router"),("dashboard","router"),("data_io","router"),("data_validation","router"),("datalake","router"),("decision","decision_router"),("drift_detection","router"),("dynamic_ai_score","router"),("ensemble_ai","ensemble_router"),("event_intelligence","router"),("experiment_manager","router"),("explainability","explainability_router"),("export","router"),("feature_engineering","router"),("feature_store","router"),("financial_analysis","router"),("financial_statements","fin_stmt_router"),("fundamental_scanner","router"),("fundamentals","fund_router"),("global_market","router"),("health","health_router"),("historical_similarity","hist_sim_router"),("indices","router"),("institutional_analysis","inst_router"),("intraday","intraday_router"),("intraday_recommendation","router"),("knowledge_graph","kg_router"),("learning","router"),("macro","router"),("market_breadth","market_breadth_router"),("market_data","router"),("market_data_collector","router"),("market_heatmap","router"),("market_data_gateway","router"),("market_scanner","router"),("master_decision","router"),("microstructure","router"),("model_evaluation","router"),("model_registry","router"),("monitoring","router"),("news","news_router"),("news_nlp","news_nlp_router"),("news_scanner","router"),("nightly_evaluation","router"),("opportunity_rejection","router"),("order","router"),("paper_trading","router"),("pattern_library","router"),("pattern_recognition","pattern_router"),("pattern_search","router"),("performance_measurement","router"),("portfolio","portfolio_router"),("portfolio_optimizer","router"),("prediction","router"),("preferences","router"),("price_target","router"),("prices",None),("professional_report","router"),("ranking","router"),("recommendation","router"),("research","router"),("regime_detection","router"),("reports","router"),("risk","risk_router"),("scheduler","scheduler_router"),("search","router"),("sector_rotation","router"),("sectors","sector_router"),("strategy","strategy_router"),("technical_indicators","tech_ind_router"),("technical_strength","router"),("timescaledb","router"),("top_picks","router"),("trade_journal","router"),("trading_calendar","router"),("trading_portfolio","router"),("users","users_router"),("valuation","router"),("version","version_router"),("watchlists","router"),("public_market","router"),("mfa","router"),("qr_auth","router"))
-def _routers(m): return [v for _,v in inspect.getmembers(m) if isinstance(v,APIRouter)]
-def _resolve(n,p):
-    m=importlib.import_module(f"{__package__}.{n}"); r=getattr(m,p,None) if p else None; return [r] if isinstance(r,APIRouter) else _routers(m)
-def _build_router():
-    r=APIRouter(prefix="/api/v1"); seen=set(); failures=[]
-    for n,p in _ROUTER_SPECS:
+
+logger = logging.getLogger(__name__)
+
+_ROUTER_SPECS: tuple[tuple[str, str | None], ...] = (
+    ("auth", "auth_router"),
+    ("health", "health_router"),
+    ("users", "users_router"),
+    ("companies", "companies_router"),
+    ("market_data", "router"),
+    ("indices", "router"),
+    ("prices", None),
+    ("dashboard", "router"),
+    ("top_picks", "router"),
+    ("recommendation", "router"),
+    ("intraday_recommendation", "router"),
+    ("intraday", "intraday_router"),
+    ("prediction", "router"),
+    ("fundamentals", "fund_router"),
+    ("financial_statements", "fin_stmt_router"),
+    ("fundamental_scanner", "router"),
+    ("technical_indicators", "tech_ind_router"),
+    ("technical_strength", "router"),
+    ("sectors", "sector_router"),
+    ("market_breadth", "market_breadth_router"),
+    ("pattern_recognition", "pattern_router"),
+    ("risk", "risk_router"),
+    ("portfolio", "portfolio_router"),
+    ("watchlists", "router"),
+    ("news", "news_router"),
+    ("news_nlp", "news_nlp_router"),
+    ("macro", "router"),
+    ("global_market", "router"),
+    ("valuation", "router"),
+    ("strategy", "strategy_router"),
+    ("backtest", "backtest_router"),
+    ("learning", "router"),
+    ("knowledge_graph", "kg_router"),
+    ("decision", "decision_router"),
+    ("master_decision", "router"),
+    ("ensemble_ai", "ensemble_router"),
+    ("explainability", "explainability_router"),
+    ("ai_ranking_v2", "router"),
+    ("advanced_screener", "router"),
+    ("market_scanner", "router"),
+    ("market_heatmap", "router"),
+    ("sector_rotation", "router"),
+    ("regime_detection", "router"),
+    ("correlation", "router"),
+    ("institutional_analysis", "inst_router"),
+    ("corporate_actions_engine", "ca_engine_router"),
+    ("corporate_action_detection", "cad_router"),
+    ("event_intelligence", "router"),
+    ("price_target", "router"),
+    ("professional_report", "router"),
+    ("reports", "router"),
+    ("search", "router"),
+    ("export", "router"),
+    ("data_io", "router"),
+    ("data_validation", "router"),
+    ("datalake", "router"),
+    ("feature_engineering", "router"),
+    ("feature_store", "router"),
+    ("model_registry", "router"),
+    ("model_evaluation", "router"),
+    ("drift_detection", "router"),
+    ("monitoring", "router"),
+    ("scheduler", "scheduler_router"),
+    ("trading_calendar", "router"),
+    ("paper_trading", "router"),
+    ("trade_journal", "router"),
+    ("trading_portfolio", "router"),
+    ("order", "router"),
+    ("broker", "router"),
+    ("preferences", "router"),
+    ("mfa", "router"),
+    ("qr_auth", "router"),
+    ("admin", "admin_router"),
+    ("audit", "router"),
+    ("version", "version_router"),
+    ("public_market", "router"),
+)
+
+
+def _routers(module: object) -> Iterable[APIRouter]:
+    for _, value in inspect.getmembers(module):
+        if isinstance(value, APIRouter):
+            yield value
+
+
+def _resolve(module_name: str, router_name: str | None) -> list[APIRouter]:
+    module = importlib.import_module(f"{__package__}.{module_name}")
+    if router_name is not None:
+        router = getattr(module, router_name, None)
+        return [router] if isinstance(router, APIRouter) else []
+    return list(_routers(module))
+
+
+def _build_router() -> APIRouter:
+    router = APIRouter(prefix="/api/v1")
+    seen: set[int] = set()
+    failures: list[str] = []
+
+    for module_name, router_name in _ROUTER_SPECS:
         try:
-            for x in _resolve(n,p):
-                if id(x) not in seen:r.include_router(x);seen.add(id(x))
-        except Exception as e: failures.append(f"{n}: {type(e).__name__}: {e}")
-    if failures: logger.error("API v1 router registration failures: %s"," | ".join(failures))
-    return r
-v1_router=_build_router()
-__all__=["v1_router"]
+            resolved = _resolve(module_name, router_name)
+            if not resolved:
+                failures.append(f"{module_name}: router '{router_name}' not found")
+                continue
+            for child in resolved:
+                marker = id(child)
+                if marker not in seen:
+                    router.include_router(child)
+                    seen.add(marker)
+        except Exception as exc:
+            failures.append(f"{module_name}: {type(exc).__name__}: {exc}")
+
+    if failures:
+        logger.error("API v1 router registration failures: %s", " | ".join(failures))
+    else:
+        logger.info("API v1 routers registered successfully: %d", len(seen))
+
+    return router
+
+
+v1_router = _build_router()
+
+__all__ = ["v1_router"]
