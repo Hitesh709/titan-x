@@ -6,7 +6,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from titan_x.infrastructure.yahoo_finance_provider import YahooFinanceProvider
+from titan_x.infrastructure.market_data_providers import YahooFinanceProvider
 from titan_x.services.advanced_strategy_engine import AdvancedStrategyEngine
 from titan_x.services.paper_trading_service import PaperTradingService
 
@@ -58,12 +58,7 @@ class AutoDemoBotEngine:
                 return float(ltp), candles, "YAHOO_LIVE_INSUFFICIENT_HISTORY"
             return float(ltp), candles, "YAHOO_LIVE"
         finally:
-            close = getattr(provider, "close", None)
-            if close:
-                try:
-                    await close()
-                except Exception:
-                    pass
+            await provider.close()
 
     async def _execute_at_price(
         self, user_id: int, symbol: str, side: str, quantity: int, price: float
@@ -146,7 +141,6 @@ class AutoDemoBotEngine:
         held = next((p for p in positions if str(p.get("symbol", "")).upper() == symbol), None)
         held_qty = int(float((held or {}).get("quantity", 0)))
 
-        # Preserve the original demo cadence: odd cycles open, even cycles close.
         if cycle % 2 == 1:
             if held_qty > 0:
                 return {"cycle": cycle, "action": "HOLD", "reason": "existing demo position", "price": price, "price_source": price_source, "strategy": latest_signal}
