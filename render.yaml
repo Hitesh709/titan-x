@@ -41,7 +41,7 @@ services:
       - key: PAPER_DEMO_PRICES
         value: "false"
       - key: MARKET_DATA_PROVIDER
-        value: angelone
+        value: yahoo
       - key: ANGEL_ONE_API_KEY
         sync: false
       - key: ANGEL_ONE_CLIENT_ID
