@@ -77,11 +77,19 @@ class AuthService:
         return await self.issue_tokens(user)
 
     async def refresh(self, refresh_token_jti: str, user_id: int) -> tuple[str, str, str]:
+        """Rotate a refresh token exactly once, even under concurrent requests.
+
+        The row lock is held by the current database transaction while the
+        token is checked and revoked. This closes the race where two requests
+        could both observe an active token and both mint replacement tokens.
+        """
         result = await self._session.execute(
-            select(RefreshToken).where(
+            select(RefreshToken)
+            .where(
                 RefreshToken.token_jti == refresh_token_jti,
                 RefreshToken.user_id == user_id,
             )
+            .with_for_update()
         )
         token_record = result.scalar_one_or_none()
         if token_record is None:
