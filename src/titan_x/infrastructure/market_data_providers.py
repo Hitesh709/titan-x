@@ -35,7 +35,7 @@ class YahooFinanceProvider(MarketDataProvider):
             p["period1"]=int(datetime.combine(start,dt_time.min).replace(tzinfo=timezone.utc).timestamp()); p["period2"]=int(datetime.combine(end or date.today()+timedelta(days=1),dt_time.min).replace(tzinfo=timezone.utc).timestamp())
         else:p["range"]="5d" if interval in {"5m","15m","30m"} else "1y"
         data=await self._get(symbol,p); result=(data.get("chart") or {}).get("result")
-        if not result: raise ValueError(f"No Yahoo data for {symbol}")
+        if not result:raise ValueError(f"No Yahoo data for {symbol}")
         c=result[0]; ts=c.get("timestamp") or []; q=((c.get("indicators") or {}).get("quote") or [{}])[0]; out=[]
         for i,t in enumerate(ts):
             a=q.get("close",[]); close=a[i] if i<len(a) else None
@@ -51,6 +51,10 @@ class YahooFinanceProvider(MarketDataProvider):
     async def get_company_profile(self,symbol:str)->dict:
         q=await self.get_quote(symbol); s=self._normalize_symbol(symbol); return {"symbol":symbol.upper(),"name":q.get("name") or symbol.upper(),"sector":None,"industry":None,"market_cap":None,"exchange":"NSE" if s.endswith(".NS") else "BSE" if s.endswith(".BO") else q.get("exchange"),"currency":q.get("currency") or "INR"}
     async def close(self):await self._client.aclose()
+# Compatibility names only: they no longer represent independent data sources.
+NSEProvider=YahooFinanceProvider
+StooqProvider=YahooFinanceProvider
+AlphaVantageProvider=YahooFinanceProvider
 def get_market_data_provider(provider_name:str="yahoo",api_key:str|None=None)->MarketDataProvider:
     if provider_name.lower()!="yahoo":raise ValueError("Only Yahoo Finance is supported")
     return YahooFinanceProvider(api_key)
