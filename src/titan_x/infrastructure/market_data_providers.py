@@ -15,7 +15,10 @@ class MarketDataProvider(ABC):
     async def get_company_profile(self,symbol:str)->dict: ...
 class YahooFinanceProvider(MarketDataProvider):
     BASE_URL="https://query1.finance.yahoo.com/v8/finance/chart"
-    def __init__(self,api_key:str|None=None): self._client=httpx.AsyncClient(headers={"User-Agent":YAHOO_USER_AGENT},timeout=20,follow_redirects=True); self._sem=asyncio.Semaphore(5)
+    # One process-wide limiter protects Yahoo even when multiple scan workers
+    # create independent provider instances (for example the 10 scan segments).
+    _global_sem=asyncio.Semaphore(10)
+    def __init__(self,api_key:str|None=None): self._client=httpx.AsyncClient(headers={"User-Agent":YAHOO_USER_AGENT},timeout=20,follow_redirects=True)
     @staticmethod
     def _normalize_symbol(symbol:str)->str:
         s=symbol.strip().upper()
@@ -25,7 +28,7 @@ class YahooFinanceProvider(MarketDataProvider):
         last=None
         for host in ("query1.finance.yahoo.com","query2.finance.yahoo.com"):
             try:
-                async with self._sem:
+                async with self._global_sem:
                     r=await self._client.get(f"https://{host}/v8/finance/chart/{self._normalize_symbol(symbol)}",params=params); r.raise_for_status(); return r.json()
             except Exception as e:last=e
         raise last or RuntimeError("Yahoo request failed")
@@ -51,7 +54,6 @@ class YahooFinanceProvider(MarketDataProvider):
     async def get_company_profile(self,symbol:str)->dict:
         q=await self.get_quote(symbol); s=self._normalize_symbol(symbol); return {"symbol":symbol.upper(),"name":q.get("name") or symbol.upper(),"sector":None,"industry":None,"market_cap":None,"exchange":"NSE" if s.endswith(".NS") else "BSE" if s.endswith(".BO") else q.get("exchange"),"currency":q.get("currency") or "INR"}
     async def close(self):await self._client.aclose()
-# Compatibility names only: they no longer represent independent data sources.
 NSEProvider=YahooFinanceProvider
 StooqProvider=YahooFinanceProvider
 AlphaVantageProvider=YahooFinanceProvider
