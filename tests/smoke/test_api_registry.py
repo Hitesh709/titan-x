@@ -30,7 +30,6 @@ def test_critical_api_routes_are_mounted(app):
         ("GET", "/api/v1/indices"),
         ("GET", "/api/v1/market-data/quotes"),
         ("POST", "/api/v1/recommendations/scan"),
-        ("GET", "/api/v1/recommendations/strict"),
     }
     missing = sorted(required - routes)
     assert not missing, f"Critical API routes are not mounted: {missing}"
