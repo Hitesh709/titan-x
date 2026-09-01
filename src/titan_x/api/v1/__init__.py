@@ -1,20 +1,25 @@
 """API v1 router registry.
 
-The registry imports routers defensively so an optional feature cannot prevent
-FastAPI from starting. Core market and recommendation routers are registered
-explicitly and first.
+Core routers are registered explicitly for deterministic startup. Every other
+API module/package is discovered automatically so a newly-created endpoint
+cannot silently become a 404 simply because it was omitted from a registry.
+Import failures are recorded and exposed through startup logging rather than
+preventing unrelated API routes from starting.
 """
 from __future__ import annotations
 
 import importlib
 import inspect
 import logging
+import pkgutil
 from typing import Iterable
 
 from fastapi import APIRouter
 
 logger = logging.getLogger(__name__)
 
+# Explicit entries are kept for stable ordering and for routers whose exported
+# name is not the conventional ``router``.
 _ROUTER_SPECS: tuple[tuple[str, str | None], ...] = (
     ("auth", "auth_router"),
     ("health", "health_router"),
@@ -109,12 +114,59 @@ def _resolve(module_name: str, router_name: str | None) -> list[APIRouter]:
     return list(_routers(module))
 
 
+def _discover_specs() -> list[tuple[str, str | None]]:
+    """Discover API modules/packages not present in the explicit registry.
+
+    A package such as ``datalake`` is discovered through its package __init__;
+    conventional nested ``router.py`` modules are also discovered. Explicit
+    modules always win so discovery cannot duplicate them.
+    """
+    discovered: list[tuple[str, str | None]] = []
+    explicit = {name for name, _ in _ROUTER_SPECS}
+    package = importlib.import_module(__package__)
+
+    for item in pkgutil.iter_modules(package.__path__):
+        name = item.name
+        if name.startswith("_") or name in explicit:
+            continue
+        if item.ispkg:
+            # Prefer the package's exported router. If absent, its conventional
+            # router.py will be inspected as a separate module below.
+            discovered.append((name, "router"))
+            continue
+        discovered.append((name, "router"))
+
+    # Nested API packages currently use this convention (e.g. datalake/router).
+    for item in pkgutil.iter_modules(package.__path__):
+        if not item.ispkg or item.name.startswith("_"):
+            continue
+        try:
+            subpackage = importlib.import_module(f"{__package__}.{item.name}")
+        except Exception:
+            continue
+        subpath = getattr(subpackage, "__path__", None)
+        if subpath is None:
+            continue
+        for child in pkgutil.iter_modules(subpath):
+            if child.name == "router":
+                discovered.append((f"{item.name}.router", "router"))
+
+    return discovered
+
+
 def _build_router() -> APIRouter:
     router = APIRouter(prefix="/api/v1")
     seen: set[int] = set()
     failures: list[str] = []
+    registered_modules: set[str] = set()
 
-    for module_name, router_name in _ROUTER_SPECS:
+    specs = list(_ROUTER_SPECS)
+    specs.extend(_discover_specs())
+
+    for module_name, router_name in specs:
+        if module_name in registered_modules:
+            continue
+        registered_modules.add(module_name)
         try:
             resolved = _resolve(module_name, router_name)
             if not resolved:
@@ -129,9 +181,18 @@ def _build_router() -> APIRouter:
             failures.append(f"{module_name}: {type(exc).__name__}: {exc}")
 
     if failures:
-        logger.error("API v1 router registration failures: %s", " | ".join(failures))
-    else:
-        logger.info("API v1 routers registered successfully: %d", len(seen))
+        logger.error(
+            "API v1 router registration failures: %d; %s",
+            len(failures),
+            " | ".join(failures),
+        )
+    logger.info(
+        "API v1 router audit: registered=%d modules=%d failures=%d discovered=%d",
+        len(seen),
+        len(registered_modules),
+        len(failures),
+        max(0, len(specs) - len(_ROUTER_SPECS)),
+    )
 
     return router
 
