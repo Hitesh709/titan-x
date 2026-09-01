@@ -32,7 +32,7 @@ async def test_point_in_time_queries_apply_cutoff(method: str, expected_column: 
     await getattr(engine, method)("ABC")
 
     statement = engine._session.execute.await_args.args[0]
-    sql = str(statement)
+    sql = str(statement.compile(compile_kwargs={"literal_binds": True}))
     assert expected_column in sql
     assert "2026-01-15" in sql
 
