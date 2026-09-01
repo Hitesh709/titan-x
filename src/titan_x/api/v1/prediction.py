@@ -89,7 +89,10 @@ async def get_point_in_time_prediction_engine(
 @prediction_router.post("/{symbol}", response_model=PredictionResponse)
 async def create_prediction(
     symbol: str,
-    engine: Annotated[PointInTimePredictionEngine, Depends(get_point_in_time_prediction_engine)],
+    engine: Annotated[
+        PointInTimePredictionEngine,
+        Depends(get_point_in_time_prediction_engine),
+    ],
     session: Annotated[AsyncSession, Depends(deps.request_session)],
     as_of_date: date | None = Query(None),
     store: bool = Query(True),
@@ -104,7 +107,10 @@ async def create_prediction(
     if store and result.get("id") is not None:
         effective_date = result.get("as_of_date")
         if not isinstance(effective_date, date):
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Prediction audit date missing")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Prediction audit date missing",
+            )
 
         try:
             horizon_summary = json.loads(result.get("horizon_summary_json", "{}"))
@@ -125,7 +131,9 @@ async def create_prediction(
                 input_payload=audit_input,
                 data_snapshot_ref={
                     "as_of_date": effective_date.isoformat(),
-                    "inputs_used": sorted(k for k, enabled in data_sources.items() if enabled),
+                    "inputs_used": sorted(
+                        k for k, enabled in data_sources.items() if enabled
+                    ),
                 },
                 data_source_ref=data_sources,
                 feature_version_ref="prediction-inputs:v1",
@@ -150,8 +158,17 @@ async def get_prediction(
 ) -> StoredPredictionResponse:
     pred = await engine.get_prediction(symbol, as_of_date)
     if pred is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No prediction found")
-    return StoredPredictionResponse(**{k: v for k, v in pred.__dict__.items() if k in StoredPredictionResponse.model_fields})
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No prediction found",
+        )
+    return StoredPredictionResponse(
+        **{
+            k: v
+            for k, v in pred.__dict__.items()
+            if k in StoredPredictionResponse.model_fields
+        }
+    )
 
 
 @prediction_router.get("", response_model=PaginatedResponse[StoredPredictionResponse])
@@ -166,9 +183,24 @@ async def list_predictions(
     limit: int = Query(100, ge=1, le=500),
 ) -> PaginatedResponse[StoredPredictionResponse]:
     rows, total = await engine.get_prediction_history(
-        symbol, signal, min_confidence, start_date, end_date, skip, limit,
+        symbol,
+        signal,
+        min_confidence,
+        start_date,
+        end_date,
+        skip,
+        limit,
     )
-    items = [StoredPredictionResponse(**{k: v for k, v in r.__dict__.items() if k in StoredPredictionResponse.model_fields}) for r in rows]
+    items = [
+        StoredPredictionResponse(
+            **{
+                k: v
+                for k, v in row.__dict__.items()
+                if k in StoredPredictionResponse.model_fields
+            }
+        )
+        for row in rows
+    ]
     return PaginatedResponse(items=items, total=total, skip=skip, limit=limit)
 
 
@@ -179,5 +211,8 @@ async def delete_prediction(
 ) -> MessageResponse:
     deleted = await engine.delete_prediction(prediction_id)
     if not deleted:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Prediction not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Prediction not found",
+        )
     return MessageResponse(message="Prediction deleted")
