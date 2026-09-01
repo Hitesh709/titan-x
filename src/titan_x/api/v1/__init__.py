@@ -15,8 +15,6 @@ from fastapi import APIRouter
 
 logger = logging.getLogger(__name__)
 
-# Keep this as a normal tuple literal. The previous deployment contained a
-# malformed tuple/comprehension here, which caused SyntaxError at startup.
 _ROUTER_SPECS: tuple[tuple[str, str | None], ...] = (
     ("auth", "auth_router"),
     ("health", "health_router"),
@@ -30,7 +28,7 @@ _ROUTER_SPECS: tuple[tuple[str, str | None], ...] = (
     ("recommendation", "router"),
     ("intraday_recommendation", "router"),
     ("intraday", "intraday_router"),
-    ("prediction", "router"),
+    ("prediction", "prediction_router"),
     ("fundamentals", "fund_router"),
     ("financial_statements", "fin_stmt_router"),
     ("fundamental_scanner", "router"),
@@ -49,7 +47,7 @@ _ROUTER_SPECS: tuple[tuple[str, str | None], ...] = (
     ("valuation", "router"),
     ("strategy", "strategy_router"),
     ("backtest", "backtest_router"),
-    ("learning", "router"),
+    ("learning", "learning_router"),
     ("knowledge_graph", "kg_router"),
     ("decision", "decision_router"),
     ("master_decision", "router"),
