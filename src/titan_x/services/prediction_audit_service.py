@@ -27,7 +27,10 @@ class PredictionAuditService:
     def canonical_hash(payload: Any) -> str:
         """Return a deterministic SHA-256 hash for JSON-serializable payloads."""
         encoded = json.dumps(
-            payload, sort_keys=True, separators=(",", ":"), default=str,
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
         ).encode("utf-8")
         return hashlib.sha256(encoded).hexdigest()
 
@@ -47,27 +50,51 @@ class PredictionAuditService:
         explanation_payload: Any = None,
         recommendation_id: int | None = None,
     ) -> PredictionAudit:
-        """Persist one audit envelope; repeated writes for a prediction are rejected."""
+        """Persist one audit envelope; repeated writes return the existing record."""
         existing = await self.session.scalar(
             select(PredictionAudit).where(PredictionAudit.prediction_id == prediction_id)
         )
         if existing is not None:
             return existing
 
-        generated_at = generated_at.astimezone(timezone.utc) if generated_at.tzinfo else generated_at.replace(tzinfo=timezone.utc)
+        if generated_at.tzinfo:
+            generated_at = generated_at.astimezone(timezone.utc)
+        else:
+            generated_at = generated_at.replace(tzinfo=timezone.utc)
+
         audit = PredictionAudit(
             prediction_id=prediction_id,
             recommendation_id=recommendation_id,
             symbol=symbol,
             as_of_date=as_of_date,
             generated_at=generated_at,
-            data_snapshot_ref=json.dumps(data_snapshot_ref, sort_keys=True, default=str) if data_snapshot_ref is not None else None,
-            data_source_ref=json.dumps(data_source_ref, sort_keys=True, default=str) if data_source_ref is not None else None,
-            feature_version_ref=json.dumps(feature_version_ref, sort_keys=True, default=str) if feature_version_ref is not None else None,
-            model_version_ref=json.dumps(model_version_ref, sort_keys=True, default=str) if model_version_ref is not None else None,
+            data_snapshot_ref=(
+                json.dumps(data_snapshot_ref, sort_keys=True, default=str)
+                if data_snapshot_ref is not None
+                else None
+            ),
+            data_source_ref=(
+                json.dumps(data_source_ref, sort_keys=True, default=str)
+                if data_source_ref is not None
+                else None
+            ),
+            feature_version_ref=(
+                json.dumps(feature_version_ref, sort_keys=True, default=str)
+                if feature_version_ref is not None
+                else None
+            ),
+            model_version_ref=(
+                json.dumps(model_version_ref, sort_keys=True, default=str)
+                if model_version_ref is not None
+                else None
+            ),
             market_regime=market_regime,
             input_hash=self.canonical_hash(input_payload),
-            explanation_hash=self.canonical_hash(explanation_payload) if explanation_payload is not None else None,
+            explanation_hash=(
+                self.canonical_hash(explanation_payload)
+                if explanation_payload is not None
+                else None
+            ),
         )
         self.session.add(audit)
         await self.session.flush()
@@ -119,6 +146,10 @@ class PredictionAuditService:
         outcome.direction_correct = direction_correct
         outcome.resolution_status = "resolved"
         outcome.resolved_at = datetime.now(timezone.utc)
-        outcome.outcome_metadata_json = json.dumps(metadata, sort_keys=True, default=str) if metadata is not None else None
+        outcome.outcome_metadata_json = (
+            json.dumps(metadata, sort_keys=True, default=str)
+            if metadata is not None
+            else None
+        )
         await self.session.flush()
         return outcome
