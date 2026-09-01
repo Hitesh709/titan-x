@@ -26,7 +26,8 @@ def test_critical_api_routes_are_mounted(app):
         for method in (getattr(route, "methods", None) or set())
     }
     required = {
-        ("GET", "/api/v1/health"),
+        ("GET", "/api/v1/health/live"),
+        ("GET", "/api/v1/health/ready"),
         ("GET", "/api/v1/indices"),
         ("GET", "/api/v1/market-data/quotes"),
         ("POST", "/api/v1/recommendations/scan"),
