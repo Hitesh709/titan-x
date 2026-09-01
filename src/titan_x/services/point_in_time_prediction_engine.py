@@ -8,9 +8,9 @@ from accidentally reading data that was not available at the requested
 from __future__ import annotations
 
 from datetime import date, datetime, time, timezone
-from typing import Any
 
 from sqlalchemy import desc, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from titan_x.models.fundamental import FundamentalMetric
 from titan_x.models.historical_similarity import SimilarityAnalysis
@@ -21,7 +21,7 @@ from titan_x.services.prediction_engine import PredictionEngine
 class PointInTimePredictionEngine(PredictionEngine):
     """Existing prediction engine with leakage-safe historical data access."""
 
-    def __init__(self, session: Any) -> None:
+    def __init__(self, session: AsyncSession) -> None:
         super().__init__(session)
         self._prediction_as_of_date: date | None = None
 
@@ -88,7 +88,7 @@ class PointInTimePredictionEngine(PredictionEngine):
 
     async def predict(
         self, symbol: str, as_of_date: date | None = None, store: bool = True
-    ) -> dict[str, Any]:
+    ) -> dict:
         """Run the existing engine with point-in-time-safe inputs."""
         if as_of_date is None:
             as_of_date = date.today()
