@@ -6,7 +6,17 @@ and its realized outcomes at the project's supported short-term horizons.
 """
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from titan_x.db.base import Base
@@ -45,7 +55,9 @@ class PredictionAudit(PrimaryKeyMixin, TimestampMixin, Base):
     market_regime: Mapped[str | None] = mapped_column(String(32), nullable=True)
     input_hash: Mapped[str] = mapped_column(String(128), nullable=False)
     explanation_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    audit_schema_version: Mapped[str] = mapped_column(String(16), default="1.0.0", nullable=False)
+    audit_schema_version: Mapped[str] = mapped_column(
+        String(16), default="1.0.0", nullable=False,
+    )
 
     outcomes: Mapped[list["PredictionOutcome"]] = relationship(
         back_populates="audit", cascade="all, delete-orphan",
@@ -75,7 +87,9 @@ class PredictionOutcome(PrimaryKeyMixin, TimestampMixin, Base):
     target_hit: Mapped[bool | None] = mapped_column(nullable=True)
     stop_hit: Mapped[bool | None] = mapped_column(nullable=True)
     direction_correct: Mapped[bool | None] = mapped_column(nullable=True)
-    resolution_status: Mapped[str] = mapped_column(String(16), default="pending", nullable=False)
+    resolution_status: Mapped[str] = mapped_column(
+        String(16), default="pending", nullable=False,
+    )
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     outcome_metadata_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
