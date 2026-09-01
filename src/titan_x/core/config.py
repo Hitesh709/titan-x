@@ -41,7 +41,9 @@ class Settings(BaseSettings):
     frontend_url: str = "http://localhost:3000"
 
     # Market data / Angel One SmartAPI
-    market_data_provider: str = "angelone"
+    # Yahoo is the no-key demo/reference provider until Angel One static-IP
+    # access is configured in production.
+    market_data_provider: str = "yahoo"
     angel_one_api_key: str | None = None
     angel_one_client_id: str | None = None
     angel_one_pin: str | None = None
