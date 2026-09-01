@@ -18,8 +18,6 @@ from fastapi import APIRouter
 
 logger = logging.getLogger(__name__)
 
-# Explicit entries are kept for stable ordering and for routers whose exported
-# name is not the conventional ``router``.
 _ROUTER_SPECS: tuple[tuple[str, str | None], ...] = (
     ("auth", "auth_router"),
     ("health", "health_router"),
@@ -115,12 +113,7 @@ def _resolve(module_name: str, router_name: str | None) -> list[APIRouter]:
 
 
 def _discover_specs() -> list[tuple[str, str | None]]:
-    """Discover API modules/packages not present in the explicit registry.
-
-    A package such as ``datalake`` is discovered through its package __init__;
-    conventional nested ``router.py`` modules are also discovered. Explicit
-    modules always win so discovery cannot duplicate them.
-    """
+    """Discover API modules/packages not present in the explicit registry."""
     discovered: list[tuple[str, str | None]] = []
     explicit = {name for name, _ in _ROUTER_SPECS}
     package = importlib.import_module(__package__)
@@ -129,14 +122,11 @@ def _discover_specs() -> list[tuple[str, str | None]]:
         name = item.name
         if name.startswith("_") or name in explicit:
             continue
-        if item.ispkg:
-            # Prefer the package's exported router. If absent, its conventional
-            # router.py will be inspected as a separate module below.
-            discovered.append((name, "router"))
-            continue
-        discovered.append((name, "router"))
+        # Use automatic APIRouter inspection rather than assuming the exported
+        # variable is named ``router``. This catches modules such as
+        # adaptive_stop_loss and analytics_dashboard safely.
+        discovered.append((name, None))
 
-    # Nested API packages currently use this convention (e.g. datalake/router).
     for item in pkgutil.iter_modules(package.__path__):
         if not item.ispkg or item.name.startswith("_"):
             continue
@@ -149,7 +139,7 @@ def _discover_specs() -> list[tuple[str, str | None]]:
             continue
         for child in pkgutil.iter_modules(subpath):
             if child.name == "router":
-                discovered.append((f"{item.name}.router", "router"))
+                discovered.append((f"{item.name}.router", None))
 
     return discovered
 
@@ -193,7 +183,6 @@ def _build_router() -> APIRouter:
         len(failures),
         max(0, len(specs) - len(_ROUTER_SPECS)),
     )
-
     return router
 
 
