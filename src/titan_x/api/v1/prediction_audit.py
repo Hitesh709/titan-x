@@ -11,7 +11,10 @@ from titan_x.models.prediction_audit import PredictionAudit
 router = APIRouter(prefix="/prediction-audit", tags=["prediction_audit"])
 
 
-@router.get("/{prediction_id}", summary="Get the provenance and outcomes for a prediction")
+@router.get(
+    "/{prediction_id}",
+    summary="Get the provenance and outcomes for a prediction",
+)
 async def get_prediction_audit(
     prediction_id: int,
     session: AsyncSession = Depends(deps.request_session),
@@ -23,7 +26,10 @@ async def get_prediction_audit(
         .where(PredictionAudit.prediction_id == prediction_id)
     )
     if audit is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Prediction audit not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Prediction audit not found",
+        )
 
     return {
         "prediction_id": audit.prediction_id,
@@ -42,7 +48,11 @@ async def get_prediction_audit(
         "outcomes": [
             {
                 "horizon_days": outcome.horizon_days,
-                "observation_date": outcome.observation_date.isoformat() if outcome.observation_date else None,
+                "observation_date": (
+                    outcome.observation_date.isoformat()
+                    if outcome.observation_date
+                    else None
+                ),
                 "entry_price": outcome.entry_price,
                 "close_price": outcome.close_price,
                 "close_return_pct": outcome.close_return_pct,
@@ -52,7 +62,9 @@ async def get_prediction_audit(
                 "stop_hit": outcome.stop_hit,
                 "direction_correct": outcome.direction_correct,
                 "resolution_status": outcome.resolution_status,
-                "resolved_at": outcome.resolved_at.isoformat() if outcome.resolved_at else None,
+                "resolved_at": (
+                    outcome.resolved_at.isoformat() if outcome.resolved_at else None
+                ),
             }
             for outcome in sorted(audit.outcomes, key=lambda item: item.horizon_days)
         ],
