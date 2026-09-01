@@ -1,7 +1,7 @@
 from __future__ import annotations
 import asyncio
 from abc import ABC, abstractmethod
-from datetime import date, datetime, timedelta, time as dt_time
+from datetime import date, datetime, timedelta, time as dt_time, timezone
 import httpx
 YAHOO_USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0 Safari/537.36"
 class MarketDataPoint:
@@ -32,27 +32,25 @@ class YahooFinanceProvider(MarketDataProvider):
     async def get_historical_prices(self,symbol:str,interval:str="1d",start:date|None=None,end:date|None=None,synthetic_ok:bool=False)->list[MarketDataPoint]:
         p={"interval":interval}
         if start is not None:
-            p["period1"]=int(datetime.combine(start,dt_time.min).replace(tzinfo=__import__('datetime').timezone.utc).timestamp()); p["period2"]=int(datetime.combine(end or date.today()+timedelta(days=1),dt_time.min).replace(tzinfo=__import__('datetime').timezone.utc).timestamp())
-        else:
-            p["range"]="5d" if interval in {"5m","15m","30m"} else "1y"
+            p["period1"]=int(datetime.combine(start,dt_time.min).replace(tzinfo=timezone.utc).timestamp()); p["period2"]=int(datetime.combine(end or date.today()+timedelta(days=1),dt_time.min).replace(tzinfo=timezone.utc).timestamp())
+        else:p["range"]="5d" if interval in {"5m","15m","30m"} else "1y"
         data=await self._get(symbol,p); result=(data.get("chart") or {}).get("result")
         if not result: raise ValueError(f"No Yahoo data for {symbol}")
         c=result[0]; ts=c.get("timestamp") or []; q=((c.get("indicators") or {}).get("quote") or [{}])[0]; out=[]
         for i,t in enumerate(ts):
-            close=q.get("close",[])[i] if i<len(q.get("close",[])) else None
-            if close is None: continue
+            a=q.get("close",[]); close=a[i] if i<len(a) else None
+            if close is None:continue
             def val(k):
-                a=q.get(k,[]); return float(a[i]) if i<len(a) and a[i] is not None else float(close)
-            out.append(MarketDataPoint(symbol.upper(),datetime.fromtimestamp(t,timezone.utc).date(),val("open"),val("high"),val("low"),float(close),int(q.get("volume",[])[i] or 0) if i<len(q.get("volume",[])) else 0))
+                x=q.get(k,[]); return float(x[i]) if i<len(x) and x[i] is not None else float(close)
+            v=q.get("volume",[]); out.append(MarketDataPoint(symbol.upper(),datetime.fromtimestamp(t,timezone.utc).date(),val("open"),val("high"),val("low"),float(close),int(v[i] or 0) if i<len(v) else 0))
         return out
     async def get_quote(self,symbol:str)->dict:
         data=await self._get(symbol,{"range":"5d","interval":"1d"}); result=(data.get("chart") or {}).get("result")
-        if not result: raise ValueError(f"No Yahoo quote for {symbol}")
+        if not result:raise ValueError(f"No Yahoo quote for {symbol}")
         m=result[0].get("meta") or {}; return {"symbol":m.get("symbol",self._normalize_symbol(symbol)),"last_price":m.get("regularMarketPrice"),"prev_close":m.get("chartPreviousClose"),"change":None,"change_percent":None,"volume":m.get("regularMarketVolume"),"day_high":m.get("regularMarketDayHigh"),"day_low":m.get("regularMarketDayLow"),"currency":m.get("currency"),"name":m.get("longName") or m.get("shortName"),"exchange":m.get("fullExchangeName"),"timestamp":datetime.now(timezone.utc).isoformat()}
     async def get_company_profile(self,symbol:str)->dict:
         q=await self.get_quote(symbol); s=self._normalize_symbol(symbol); return {"symbol":symbol.upper(),"name":q.get("name") or symbol.upper(),"sector":None,"industry":None,"market_cap":None,"exchange":"NSE" if s.endswith(".NS") else "BSE" if s.endswith(".BO") else q.get("exchange"),"currency":q.get("currency") or "INR"}
-    async def close(self): await self._client.aclose()
-
+    async def close(self):await self._client.aclose()
 def get_market_data_provider(provider_name:str="yahoo",api_key:str|None=None)->MarketDataProvider:
-    if provider_name.lower()!="yahoo": raise ValueError("Only Yahoo Finance is supported")
+    if provider_name.lower()!="yahoo":raise ValueError("Only Yahoo Finance is supported")
     return YahooFinanceProvider(api_key)
