@@ -40,7 +40,10 @@ class PointInTimePredictionEngine(PredictionEngine):
         query = (
             select(SimilarityAnalysis)
             .where(SimilarityAnalysis.symbol == symbol.upper())
-            .order_by(desc(SimilarityAnalysis.query_end_date), desc(SimilarityAnalysis.created_at))
+            .order_by(
+                desc(SimilarityAnalysis.query_end_date),
+                desc(SimilarityAnalysis.created_at),
+            )
             .limit(1)
         )
         if cutoff is not None:
@@ -76,7 +79,10 @@ class PointInTimePredictionEngine(PredictionEngine):
                 FundamentalMetric.period_type == "annual",
                 FundamentalMetric.metric_name.in_(["PE_RATIO", "QUALITY_SCORE", "ROE"]),
             )
-            .order_by(desc(FundamentalMetric.fiscal_year), desc(FundamentalMetric.published_at))
+            .order_by(
+                desc(FundamentalMetric.fiscal_year),
+                desc(FundamentalMetric.published_at),
+            )
             .limit(10)
         )
         if cutoff is not None:
