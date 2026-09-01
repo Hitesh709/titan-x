@@ -1,6 +1,6 @@
 from __future__ import annotations
 import asyncio
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from titan_x.api import deps
@@ -15,62 +15,99 @@ from titan_x.infrastructure.market_data_providers import YahooFinanceProvider
 router=APIRouter(tags=["intraday-recommendations"])
 SCAN_SEGMENTS=10
 SYMBOL_CONCURRENCY_PER_SEGMENT=5
+_cache_lock=asyncio.Lock()
+_cache_state={"running":False,"started_at":None,"finished_at":None,"universe":0,"scanned":0,"successful":0,"failed":0,"segment_progress":{},"last_error":None}
+_intraday_cache=[]
 
-def _yahoo_ticker(symbol:str,exchange:str|None)->str:
-    s=str(symbol).strip().upper()
-    if "." in s or s.startswith("^"): return s
-    return f"{s}.BO" if str(exchange or "NSE").upper()=="BSE" else f"{s}.NS"
-
-def _base_symbol(symbol:str)->str:
-    return str(symbol).upper().split(".",1)[0]
-
-async def _intraday_segment(securities, segment_id):
-    provider=YahooFinanceProvider()
-    async def one(item):
-        symbol,exchange=item; ticker=_yahoo_ticker(symbol,exchange)
-        try:
-            p=await provider.get_historical_prices(ticker,interval="5m",start=date.today()-timedelta(days=5),end=date.today(),synthetic_ok=False)
-            if len(p)<30:return None
-            t=await asyncio.to_thread(score_technical_strength,bars_from_records(p),mode="intraday")
-            q=await provider.get_quote(ticker)
-            return {"symbol":_base_symbol(symbol),"exchange":str(exchange).upper(),"yahoo_symbol":ticker,"signal":t.label,"direction":t.direction,"score":round(t.score,2),"confidence":round(t.score,2),"current_price":q.get("last_price"),"change":q.get("change"),"change_percent":q.get("change_percent"),"factors":t.factors,"evidence":t.evidence,"data_points":len(p),"source":"yahoo","segment_id":segment_id}
-        except Exception:return None
-    return [x for x in await asyncio.gather(*(one(item) for item in securities)) if x]
-
-async def _intraday(securities,limit):
-    if not securities:return []
-    segments=[securities[i::SCAN_SEGMENTS] for i in range(SCAN_SEGMENTS)]
-    results=await asyncio.gather(*(_intraday_segment(chunk,i+1) for i,chunk in enumerate(segments)))
-    r=[item for segment in results for item in segment]
-    r.sort(key=lambda x:x["score"],reverse=True)
-    return r[:limit]
+async def _intraday_segment(symbols, segment_id):
+    provider=YahooFinanceProvider(); sem=asyncio.Semaphore(SYMBOL_CONCURRENCY_PER_SEGMENT)
+    start=date.today()-timedelta(days=5); end=date.today()
+    async def one(s):
+        async with sem:
+            try:
+                p=await provider.get_historical_prices(s,interval="5m",start=start,end=end,synthetic_ok=False)
+                if len(p)<30:return None
+                t=await asyncio.to_thread(score_technical_strength,bars_from_records(p),mode="intraday")
+                q=await provider.get_quote(s)
+                return {"symbol":s,"signal":t.label,"direction":t.direction,"score":round(t.score,2),"confidence":round(t.score,2),"current_price":q.get("last_price"),"change":q.get("change"),"change_percent":q.get("change_percent"),"factors":t.factors,"evidence":t.evidence,"data_points":len(p),"source":"yahoo","segment_id":segment_id}
+            except Exception:
+                return None
+    try:
+        return [x for x in await asyncio.gather(*(one(s) for s in symbols)) if x]
+    finally:
+        await provider.close()
 
 async def _symbols(session):
-    rows=(await session.execute(select(Company.symbol,Company.exchange).where(Company.status=="active").where(Company.exchange.in_(["NSE","BSE"])).order_by(Company.symbol,Company.exchange))).all()
-    seen=set(); out=[]
-    for symbol,exchange in rows:
-        key=(_base_symbol(symbol),str(exchange or "NSE").upper())
-        if symbol and key not in seen: seen.add(key); out.append((str(symbol).upper(),str(exchange or "NSE").upper()))
-    return out
+    rows=(await session.execute(select(Company.symbol,Company.exchange).where(Company.status=="active").where(Company.exchange.in_(["NSE","BSE"])).order_by(Company.exchange,Company.symbol))).all()
+    # Preserve exchange identity for Yahoo; the base symbol is retained for UI.
+    return [f"{str(symbol).upper()}.{str(exchange).upper() if str(exchange).upper() in {'NSE','BSE'} else 'NSE'}" for symbol,exchange in rows if symbol]
 
 async def _full_universe(session):
     return await _symbols(session)
 
+async def _run_cached_scan(symbols):
+    global _intraday_cache
+    if _cache_lock.locked():
+        return {"started":False,"reason":"A full-market intraday scan is already running"}
+    async with _cache_lock:
+        _cache_state.update({"running":True,"started_at":datetime.now(timezone.utc).isoformat(),"finished_at":None,"universe":len(symbols),"scanned":0,"successful":0,"failed":0,"segment_progress":{str(i):"queued" for i in range(1,SCAN_SEGMENTS+1)},"last_error":None})
+        try:
+            segments=[symbols[i::SCAN_SEGMENTS] for i in range(SCAN_SEGMENTS)]
+            results=[]
+            # Keep all ten segments concurrent while tracking completion independently.
+            async def run_segment(chunk,segment_id):
+                try:
+                    out=await _intraday_segment(chunk,segment_id)
+                    _cache_state["scanned"]+=len(chunk)
+                    _cache_state["successful"]+=len(out)
+                    _cache_state["segment_progress"][str(segment_id)]="completed"
+                    return out
+                except Exception as exc:
+                    _cache_state["scanned"]+=len(chunk)
+                    _cache_state["failed"]+=len(chunk)
+                    _cache_state["segment_progress"][str(segment_id)]=f"failed: {exc}"
+                    return []
+            parts=await asyncio.gather(*(run_segment(chunk,i+1) for i,chunk in enumerate(segments)))
+            for part in parts: results.extend(part)
+            results.sort(key=lambda x:x["score"],reverse=True)
+            _intraday_cache=results
+            _cache_state["finished_at"]=datetime.now(timezone.utc).isoformat()
+            return {"started":True,"universe":len(symbols),"scanned":len(symbols),"successful":len(results),"failed":_cache_state["failed"],"cache_count":len(results),"provider":"yahoo"}
+        except Exception as exc:
+            _cache_state["last_error"]=str(exc)
+            raise
+        finally:
+            _cache_state["running"]=False
+
 @router.get("/recommendations/intraday")
 async def intraday_recommendations(segment:str=Query("equity",pattern=r"^(equity|fno)$"),limit:int=Query(20,ge=1,le=100),session=Depends(deps.get_session),_:User=Depends(deps.get_current_active_user)):
-    if segment=="fno": raise HTTPException(400,"F&O universe is not configured yet; use equity until the official F&O master is added")
-    securities=await _full_universe(session)
-    if not securities:raise HTTPException(503,"No active Indian equity symbols available")
-    r=await _intraday(securities,limit)
-    return {"recommendations":r,"count":len(r),"universe_scanned":len(securities),"scan_segments":SCAN_SEGMENTS,"segment":segment,"provider":"yahoo","live":True}
+    if segment=="fno": raise HTTPException(400,"F&O universe is not enabled yet; use equity")
+    symbols=await _full_universe(session)
+    if not symbols:raise HTTPException(503,"No active Indian equity symbols available")
+    if not _intraday_cache and not _cache_state["running"]:
+        asyncio.create_task(_run_cached_scan(symbols))
+    return {"recommendations":_intraday_cache[:limit],"count":min(limit,len(_intraday_cache)),"universe_scanned":len(symbols),"scan_segments":SCAN_SEGMENTS,"cache_ready":bool(_intraday_cache),"scan_running":_cache_state["running"],"provider":"yahoo","live":True}
+
+@router.post("/recommendations/intraday/refresh")
+async def refresh_intraday_recommendations(segment:str=Query("equity",pattern=r"^(equity|fno)$"),session=Depends(deps.get_session),_:User=Depends(deps.get_current_active_user)):
+    if segment=="fno": raise HTTPException(400,"F&O universe is not enabled yet; use equity")
+    symbols=await _full_universe(session)
+    if not symbols:raise HTTPException(503,"No active Indian equity symbols available")
+    if _cache_state["running"]: return {"started":False,"reason":"A full-market intraday scan is already running",**_cache_state}
+    asyncio.create_task(_run_cached_scan(symbols))
+    return {"started":True,"universe":len(symbols),"scan_segments":SCAN_SEGMENTS,"provider":"yahoo","message":"Full-market scan started in background"}
+
+@router.get("/recommendations/intraday/status")
+async def intraday_scan_status(_:User=Depends(deps.get_current_active_user)):
+    return {"provider":"yahoo","scan_segments":SCAN_SEGMENTS,"cache_count":len(_intraday_cache),**_cache_state}
 
 @router.get("/recommendations/strict")
 async def strict_recommendations(mode:str=Query("delivery",pattern=r"^(delivery|intraday)$"),segment:str=Query("equity",pattern=r"^(equity|fno)$"),limit:int=Query(20,ge=1,le=100),session_factory=Depends(get_app_session_factory),_:User=Depends(deps.get_current_active_user)):
-    if segment=="fno": raise HTTPException(400,"F&O universe is not configured yet; use equity until the official F&O master is added")
+    if segment=="fno": raise HTTPException(400,"F&O universe is not enabled yet; use equity")
     if mode=="intraday":
-        async with session_factory() as s:securities=await _full_universe(s)
-        r=await _intraday(securities,limit)
-        return {"recommendations":r,"count":len(r),"universe_scanned":len(securities),"scan_segments":SCAN_SEGMENTS,"mode":mode,"segment":segment,"provider":"yahoo","live":True}
+        async with session_factory() as s:symbols=await _full_universe(s)
+        if not _intraday_cache and not _cache_state["running"]: asyncio.create_task(_run_cached_scan(symbols))
+        return {"recommendations":_intraday_cache[:limit],"count":min(limit,len(_intraday_cache)),"universe_scanned":len(symbols),"scan_segments":SCAN_SEGMENTS,"mode":mode,"cache_ready":bool(_intraday_cache),"scan_running":_cache_state["running"],"provider":"yahoo","live":True}
     result=await run_background_scan(session_factory,max_age_minutes=0,limit=None)
     async with session_factory() as s:
         from titan_x.services.recommendation_service import RecommendationService
@@ -80,4 +117,4 @@ async def strict_recommendations(mode:str=Query("delivery",pattern=r"^(delivery|
 
 @router.get("/recommendations/strict/status")
 async def strict_scan_status(mode:str=Query("delivery",pattern=r"^(delivery|intraday)$"),segment:str=Query("equity",pattern=r"^(equity|fno)$"),_:User=Depends(deps.get_current_active_user)):
-    return {"mode":mode,"segment":segment,"provider":"yahoo",**get_scan_status()}
+    return {"mode":mode,"segment":segment,"provider":"yahoo","intraday_cache":_cache_state,"delivery_scan":get_scan_status()}
