@@ -1,0 +1,86 @@
+"""Point-in-time data policy for the existing prediction engine.
+
+This is deliberately a thin policy layer over ``PredictionEngine``. It does
+not introduce another prediction algorithm; it prevents the existing engine
+from accidentally reading data that was not available at the requested
+``as_of_date``.
+"""
+from __future__ import annotations
+
+from datetime import date, datetime, time, timezone
+from typing import Any
+
+from sqlalchemy import desc, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from titan_x.models.fundamental import FundamentalMetric
+from titan_x.models.historical_similarity import SimilarityAnalysis
+from titan_x.models.price import DailyPrice
+from titan_x.services.prediction_engine import PredictionEngine
+
+
+class PointInTimePredictionEngine(PredictionEngine):
+    """Existing prediction engine with leakage-safe historical data access."""
+
+    @staticmethod
+    def _as_of_datetime(as_of_date: date) -> datetime:
+        return datetime.combine(as_of_date, time.max, tzinfo=timezone.utc)
+
+    async def _get_similarities(
+        self, symbol: str, as_of_date: date | None = None
+    ) -> list[SimilarityAnalysis]:
+        """Use the newest similarity analysis whose query ended by the cutoff."""
+        query = (
+            select(SimilarityAnalysis)
+            .where(SimilarityAnalysis.symbol == symbol.upper())
+            .order_by(desc(SimilarityAnalysis.query_end_date), desc(SimilarityAnalysis.created_at))
+            .limit(1)
+        )
+        if as_of_date is not None:
+            query = query.where(SimilarityAnalysis.query_end_date <= as_of_date)
+        result = await self._session.execute(query)
+        return list(result.scalars().all())
+
+    async def _get_latest_price(
+        self, symbol: str, as_of_date: date | None = None
+    ) -> DailyPrice | None:
+        """Never use a price after the prediction cutoff date."""
+        query = (
+            select(DailyPrice)
+            .where(DailyPrice.symbol == symbol.upper())
+            .order_by(desc(DailyPrice.trade_date))
+            .limit(1)
+        )
+        if as_of_date is not None:
+            query = query.where(DailyPrice.trade_date <= as_of_date)
+        result = await self._session.execute(query)
+        return result.scalar_one_or_none()
+
+    async def _get_fundamentals(
+        self, symbol: str, as_of_date: date | None = None
+    ) -> list[FundamentalMetric]:
+        """Use only filings published on or before the requested cutoff."""
+        query = (
+            select(FundamentalMetric)
+            .where(
+                FundamentalMetric.symbol == symbol.upper(),
+                FundamentalMetric.period_type == "annual",
+                FundamentalMetric.metric_name.in_(["PE_RATIO", "QUALITY_SCORE", "ROE"]),
+            )
+            .order_by(desc(FundamentalMetric.fiscal_year), desc(FundamentalMetric.published_at))
+            .limit(10)
+        )
+        if as_of_date is not None:
+            query = query.where(
+                FundamentalMetric.published_at <= self._as_of_datetime(as_of_date)
+            )
+        result = await self._session.execute(query)
+        return list(result.scalars().all())
+
+    async def predict(
+        self, symbol: str, as_of_date: date | None = None, store: bool = True
+    ) -> dict[str, Any]:
+        """Run the existing engine with point-in-time-safe inputs."""
+        if as_of_date is None:
+            as_of_date = date.today()
+        return await super().predict(symbol, as_of_date, store=store)
