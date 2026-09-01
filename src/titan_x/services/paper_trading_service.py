@@ -41,11 +41,16 @@ class PaperTradingService:
     async def create_account(
         self, user_id: int, initial_capital: Decimal = Decimal("100000.00"),
     ) -> PaperAccount:
-        existing = await self._session.execute(
-            select(PaperAccount).where(PaperAccount.user_id == user_id)
-        )
-        if existing.scalar_one_or_none():
-            raise PaperTradingError("Account already exists")
+        """Return the user's existing paper account or create it once.
+
+        Paper trading is persistent account state, not browser/session state.
+        Making this operation idempotent prevents a frontend refresh/login race
+        from trying to create a second account and accidentally treating the
+        existing portfolio as missing.
+        """
+        existing = await self.get_account(user_id)
+        if existing is not None:
+            return existing
         account = await self._account_repo.create(
             user_id=user_id,
             initial_capital=initial_capital,
@@ -64,7 +69,10 @@ class PaperTradingService:
         if account is None:
             return None
         positions = (await self._session.execute(
-            select(PaperPosition).where(PaperPosition.account_id == account.id)
+            select(PaperPosition).where(
+                PaperPosition.account_id == account.id,
+                PaperPosition.user_id == user_id,
+            )
         )).scalars().all()
         total_invested = Decimal("0")
         total_current = Decimal("0")
@@ -130,9 +138,6 @@ class PaperTradingService:
         latest = await self._price_service.get_latest_price(symbol)
         current_price = Decimal(str(latest.close)) if latest else None
 
-        # A market order with no stored price (e.g. after a fresh deploy before
-        # the scan backfills daily prices) could never fill. Try a live quote so
-        # it executes immediately at the real market price.
         if current_price is None and order_type == "market":
             current_price = await self._try_fetch_market_price(symbol)
 
@@ -158,8 +163,6 @@ class PaperTradingService:
         return order
 
     async def _try_fetch_market_price(self, symbol: str) -> Decimal | None:
-        """Fetch a real market quote for ``symbol`` using MarketDataService
-        (cached, pooled) so a market order can fill when no daily price stored."""
         try:
             settings = get_settings()
             if settings.market_data_provider.lower() == "mock":
@@ -271,6 +274,7 @@ class PaperTradingService:
         position = (await self._session.execute(
             select(PaperPosition).where(
                 PaperPosition.account_id == account.id,
+                PaperPosition.user_id == order.user_id,
                 PaperPosition.symbol == order.symbol,
             )
         )).scalar_one_or_none()
@@ -361,6 +365,7 @@ class PaperTradingService:
             sim = (await self._session.execute(
                 select(SimulatedOrder).where(
                     SimulatedOrder.account_id == account.id,
+                    SimulatedOrder.user_id == order.user_id,
                     SimulatedOrder.symbol == order.symbol,
                     SimulatedOrder.status == "open",
                 ).order_by(SimulatedOrder.entry_date).limit(1)
@@ -395,7 +400,11 @@ class PaperTradingService:
         if account is None:
             return []
         positions = (await self._session.execute(
-            select(PaperPosition).where(PaperPosition.account_id == account.id)
+            select(PaperPosition).where(
+                PaperPosition.account_id == account.id,
+                PaperPosition.user_id == user_id,
+                PaperPosition.quantity > 0,
+            )
         )).scalars().all()
         result = []
         for p in positions:
@@ -428,188 +437,3 @@ class PaperTradingService:
             select(Company.sector).where(Company.symbol == symbol.upper())
         )
         return result.scalar_one_or_none()
-
-    async def get_sector_exposure(self, user_id: int) -> list[dict]:
-        portfolio = await self.get_portfolio(user_id)
-        total_value = sum(p["market_value"] for p in portfolio) or 1
-        exposure: dict[str, dict] = {}
-        for p in portfolio:
-            sector = p["sector"] or "Unknown"
-            entry = exposure.setdefault(sector, {"sector": sector, "market_value": 0.0, "positions": 0})
-            entry["market_value"] += p["market_value"]
-            entry["positions"] += 1
-        for entry in exposure.values():
-            entry["allocation_pct"] = round(entry["market_value"] / total_value * 100, 2)
-        return sorted(exposure.values(), key=lambda x: x["market_value"], reverse=True)
-
-    async def get_equity_curve(self, user_id: int) -> list[dict]:
-        account = await self.get_account(user_id)
-        if account is None:
-            return []
-        closed = (await self._session.execute(
-            select(SimulatedOrder)
-            .where(SimulatedOrder.user_id == user_id, SimulatedOrder.status == "closed")
-            .order_by(SimulatedOrder.exit_date)
-        )).scalars().all()
-        positions = (await self._session.execute(
-            select(PaperPosition).where(PaperPosition.account_id == account.id)
-        )).scalars().all()
-        unrealized = Decimal("0")
-        for p in positions:
-            if p.current_price and p.quantity:
-                unrealized += p.current_price * p.quantity - p.cost_basis
-
-        curve: list[dict] = []
-        running = account.initial_capital
-        for sim in closed:
-            running += sim.net_pnl or Decimal("0")
-            curve.append({
-                "date": (sim.exit_date or datetime.now(timezone.utc)).isoformat(),
-                "equity": round(float(running), 2),
-                "event": f"{sim.symbol} {sim.outcome or 'closed'}",
-            })
-        running += unrealized
-        curve.append({
-            "date": datetime.now(timezone.utc).isoformat(),
-            "equity": round(float(running), 2),
-            "event": "current",
-        })
-        return curve
-
-    async def refresh_prices(self, user_id: int) -> int:
-        from titan_x.core.config import get_settings
-
-        settings = get_settings()
-        account = await self.get_account(user_id)
-        if account is None:
-            return 0
-        positions = (await self._session.execute(
-            select(PaperPosition).where(PaperPosition.account_id == account.id)
-        )).scalars().all()
-        updated = 0
-        for p in positions:
-            latest = await self._price_service.get_latest_price(p.symbol)
-            if latest is None:
-                continue
-            base = Decimal(str(latest.close))
-            if settings.paper_demo_prices:
-                # Demo mode: mark the price around the last close so P&L is live
-                # without a real-time feed. Bounded oscillation re-derived from
-                # the last close each refresh (never accumulates).
-                drift = Decimal(str(random.uniform(-0.015, 0.015)))
-                p.current_price = (base * (1 + drift)).quantize(Decimal("0.01"))
-            else:
-                p.current_price = base
-            updated += 1
-        await self._session.flush()
-        return updated
-
-    # ── PnL ──
-
-    async def get_pnl_summary(self, user_id: int) -> dict[str, Any]:
-        account = await self.get_account(user_id)
-        if account is None:
-            return {"total_realized_pnl": 0, "total_unrealized_pnl": 0, "total_pnl": 0, "total_pnl_pct": 0}
-        positions = (await self._session.execute(
-            select(PaperPosition).where(PaperPosition.account_id == account.id)
-        )).scalars().all()
-        total_realized = sum(p.realized_pnl for p in positions)
-        total_unrealized = Decimal("0")
-        total_cost = Decimal("0")
-        for p in positions:
-            total_cost += p.cost_basis
-            if p.current_price and p.quantity:
-                mkt_val = p.current_price * p.quantity
-                total_unrealized += mkt_val - p.cost_basis
-        total_pnl = total_realized + total_unrealized
-        pnl_pct = round(float(total_pnl / account.initial_capital * 100), 2) if account.initial_capital else 0
-        return {
-            "initial_capital": float(account.initial_capital),
-            "cash_balance": float(account.cash_balance),
-            "total_realized_pnl": float(total_realized),
-            "total_unrealized_pnl": float(total_unrealized),
-            "total_pnl": float(total_pnl),
-            "total_pnl_pct": pnl_pct,
-        }
-
-    # ── Reports ──
-
-    async def get_trade_history(
-        self, user_id: int, skip: int = 0, limit: int = 50,
-    ) -> tuple[Sequence[PaperTrade], int]:
-        count_stmt = select(func.count()).select_from(PaperTrade).where(PaperTrade.user_id == user_id)
-        total = (await self._session.execute(count_stmt)).scalar() or 0
-        stmt = (
-            select(PaperTrade)
-            .where(PaperTrade.user_id == user_id)
-            .order_by(desc(PaperTrade.trade_time))
-            .offset(skip).limit(limit)
-        )
-        rows = (await self._session.execute(stmt)).scalars().all()
-        return list(rows), total
-
-    # ── Simulated Orders ──
-
-    async def list_simulated_orders(
-        self, user_id: int, status: str | None = None,
-        outcome: str | None = None, skip: int = 0, limit: int = 50,
-    ) -> tuple[Sequence[SimulatedOrder], int]:
-        stmt = select(SimulatedOrder).where(SimulatedOrder.user_id == user_id)
-        count_stmt = select(func.count()).select_from(SimulatedOrder).where(SimulatedOrder.user_id == user_id)
-        if status:
-            stmt = stmt.where(SimulatedOrder.status == status)
-            count_stmt = count_stmt.where(SimulatedOrder.status == status)
-        if outcome:
-            stmt = stmt.where(SimulatedOrder.outcome == outcome)
-            count_stmt = count_stmt.where(SimulatedOrder.outcome == outcome)
-        total = (await self._session.execute(count_stmt)).scalar() or 0
-        stmt = stmt.order_by(desc(SimulatedOrder.entry_date)).offset(skip).limit(limit)
-        rows = (await self._session.execute(stmt)).scalars().all()
-        return list(rows), total
-
-    async def get_simulated_order(self, order_id: int, user_id: int) -> SimulatedOrder | None:
-        sim = await self._simulated_repo.get(order_id)
-        if sim is None or sim.user_id != user_id:
-            return None
-        return sim
-
-    async def get_performance_report(self, user_id: int) -> dict[str, Any]:
-        account = await self.get_account(user_id)
-        if account is None:
-            return {}
-        summary = await self.get_account_summary(user_id)
-        trades_count_stmt = select(func.count()).select_from(PaperTrade).where(PaperTrade.user_id == user_id)
-        total_trades = (await self._session.execute(trades_count_stmt)).scalar() or 0
-        filled_orders_stmt = select(func.count()).select_from(PaperOrder).where(
-            PaperOrder.user_id == user_id, PaperOrder.status == "filled",
-        )
-        filled_count = (await self._session.execute(filled_orders_stmt)).scalar() or 0
-        cancelled_stmt = select(func.count()).select_from(PaperOrder).where(
-            PaperOrder.user_id == user_id, PaperOrder.status == "cancelled",
-        )
-        cancelled_count = (await self._session.execute(cancelled_stmt)).scalar() or 0
-        win_stmt = select(func.count()).select_from(PaperTrade).where(
-            PaperTrade.user_id == user_id,
-            PaperTrade.side == "sell",
-            PaperTrade.realized_pnl.isnot(None),
-            PaperTrade.realized_pnl > 0,
-        )
-        win_count = (await self._session.execute(win_stmt)).scalar() or 0
-        loss_stmt = select(func.count()).select_from(PaperTrade).where(
-            PaperTrade.user_id == user_id,
-            PaperTrade.side == "sell",
-            PaperTrade.realized_pnl.isnot(None),
-            PaperTrade.realized_pnl < 0,
-        )
-        loss_count = (await self._session.execute(loss_stmt)).scalar() or 0
-        total_closed = win_count + loss_count
-        win_rate = round(win_count / total_closed * 100, 2) if total_closed else 0
-        return {
-            "account": summary,
-            "total_trades": total_trades,
-            "filled_orders": filled_count,
-            "cancelled_orders": cancelled_count,
-            "winning_trades": win_count,
-            "losing_trades": loss_count,
-            "win_rate": win_rate,
-        }
