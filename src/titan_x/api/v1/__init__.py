@@ -1,8 +1,8 @@
 """API v1 router registry.
 
-The registry intentionally imports routers defensively so one optional feature
-cannot prevent the FastAPI application from starting. Core market and
-recommendation routers are explicitly registered first.
+The registry imports routers defensively so an optional feature cannot prevent
+FastAPI from starting. Core market and recommendation routers are registered
+explicitly and first.
 """
 from __future__ import annotations
 
@@ -15,6 +15,8 @@ from fastapi import APIRouter
 
 logger = logging.getLogger(__name__)
 
+# Keep this as a normal tuple literal. The previous deployment contained a
+# malformed tuple/comprehension here, which caused SyntaxError at startup.
 _ROUTER_SPECS: tuple[tuple[str, str | None], ...] = (
     ("auth", "auth_router"),
     ("health", "health_router"),
