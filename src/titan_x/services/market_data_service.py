@@ -7,7 +7,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from titan_x.core.config import get_settings
-from titan_x.infrastructure.angel_one_provider import AngelOneProvider
 from titan_x.infrastructure.market_data_providers import get_market_data_provider
 from titan_x.models.company import Company
 from titan_x.models.price import DailyPrice
@@ -24,13 +23,13 @@ class MarketDataService:
         if provider_name and provider_name != "default":
             candidate = provider_name.lower().strip()
         else:
-            candidate = str(get_settings().market_data_provider or "angelone").lower().strip()
-        allowed = {"angelone", "angel_one", "smartapi", "mock", "alphavantage", "stooq"}
-        return candidate if candidate in allowed else "angelone"
+            candidate = str(get_settings().market_data_provider or "yahoo").lower().strip()
+        allowed = {"yahoo", "mock", "alphavantage", "stooq"}
+        if candidate not in allowed:
+            return "yahoo"
+        return candidate
 
     def _provider(self, provider_name: str, api_key: str | None = None):
-        if provider_name in {"angelone", "angel_one", "smartapi"}:
-            return AngelOneProvider(api_key)
         return get_market_data_provider(provider_name, api_key)
 
     def _is_mock(self, provider_name: str) -> bool:
@@ -155,7 +154,6 @@ class MarketDataService:
 
     @staticmethod
     def _normalize_quote_change(q: dict) -> dict:
-        """Ensure every real quote has an accurate day change and percentage."""
         last = q.get("last_price")
         prev = q.get("prev_close")
         if q.get("change") is None and last is not None and prev not in (None, 0):
@@ -165,7 +163,6 @@ class MarketDataService:
         return q
 
     async def get_quotes(self, symbols: list[str]) -> dict:
-        """Return fresh real quotes from the configured provider."""
         symbols = list(
             dict.fromkeys(
                 s.upper().replace(".NS", "").replace(".BO", "")
@@ -304,7 +301,7 @@ class MarketDataService:
         return {"symbol": symbol, "points": []}
 
     def get_available_providers(self) -> list[str]:
-        return ["angelone", "mock", "alphavantage", "stooq"]
+        return ["yahoo", "mock", "alphavantage", "stooq"]
 
 
 async def load_active_symbols(
