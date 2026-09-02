@@ -44,17 +44,22 @@ const globalIndexUniverse: MarketRow[] = [
   { name: "ASX 200", symbol: "^AXJO", price: null, change_pct: null, region: "Australia" },
 ]
 
-function mergeUniverse(apiMarkets: MarketRow[] | undefined) {
-  const incoming = apiMarkets ?? []
+function safeMarkets(value: unknown): MarketRow[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((m): m is MarketRow => !!m && typeof m === "object" && typeof (m as any).symbol === "string" && typeof (m as any).name === "string")
+}
+
+function mergeUniverse(apiMarkets: unknown) {
+  const incoming = safeMarkets(apiMarkets)
   return globalIndexUniverse.map((base) => {
-    const match = incoming.find((m) => m.symbol?.toUpperCase() === base.symbol.toUpperCase() || m.name?.toUpperCase() === base.name.toUpperCase())
+    const match = incoming.find((m) => m.symbol.toUpperCase() === base.symbol.toUpperCase() || m.name.toUpperCase() === base.name.toUpperCase())
     return match ? { ...base, ...match, region: match.region ?? base.region } : base
   })
 }
 
 /** Live 0-100 market score derived from the current index feed. */
 export function calculateLiveMarketScore(markets: MarketRow[]) {
-  const live = markets.filter((m) => typeof m.change_pct === "number")
+  const live = markets.filter((m) => typeof m.change_pct === "number" && Number.isFinite(m.change_pct))
   if (!live.length) return null
   const averageChange = live.reduce((sum, m) => sum + Number(m.change_pct || 0), 0) / live.length
   const up = live.filter((m) => Number(m.change_pct || 0) > 0).length
@@ -78,20 +83,18 @@ export function usePublicMarket() {
         if (active) setSnapshot((current) => ({ ...current, markets: current.markets?.length ? current.markets : globalIndexUniverse }))
       }
     }
-    load()
-    const timer = window.setInterval(load, 30_000)
+    void load()
+    const timer = window.setInterval(() => { void load() }, 30_000)
     return () => { active = false; window.clearInterval(timer) }
   }, [])
 
   const markets = useMemo(() => mergeUniverse(snapshot.markets), [snapshot.markets])
   const liveScore = useMemo(() => calculateLiveMarketScore(markets), [markets])
-  // The homepage score is always derived from the current live index feed.
-  // This removes the previous hard-coded 50 fallback.
   return { ...snapshot, score: liveScore, markets, liveScore }
 }
 
 function formatPrice(value: number | null) {
-  if (value == null) return "—"
+  if (value == null || !Number.isFinite(value)) return "—"
   return value.toLocaleString("en-IN", { maximumFractionDigits: 2 })
 }
 
@@ -104,14 +107,15 @@ export default function MarketTicker() {
       <div className="market-ticker__viewport">
         <div className="market-ticker__track">
           {items.map((item, index) => {
-            const positive = (item.change_pct ?? 0) >= 0
+            const change = typeof item.change_pct === "number" && Number.isFinite(item.change_pct) ? item.change_pct : null
+            const positive = (change ?? 0) >= 0
             return (
               <div className="market-ticker__item" key={`${item.symbol}-${index}`}>
                 <span className="market-ticker__region">{item.region}</span>
                 <span className="market-ticker__name">{item.name}</span>
                 <span className="market-ticker__price">{formatPrice(item.price)}</span>
                 <span className={positive ? "market-ticker__change is-up" : "market-ticker__change is-down"}>
-                  {item.change_pct == null ? "FEED" : `${positive ? "▲" : "▼"} ${Math.abs(item.change_pct).toFixed(2)}%`}
+                  {change == null ? "FEED" : `${positive ? "▲" : "▼"} ${Math.abs(change).toFixed(2)}%`}
                 </span>
               </div>
             )
