@@ -12,6 +12,20 @@ const nextConfig = {
   images: {
     domains: [],
   },
+  // Never let the browser/CDN reuse an HTML document from an older build.
+  // Next.js fingerprints JS chunks, so stale HTML can otherwise reference
+  // chunks that no longer exist after a Render deployment and produce the
+  // generic "client-side exception" screen.
+  async headers() {
+    return [
+      {
+        source: '/((?!_next/static|_next/image).*)',
+        headers: [
+          { key: 'Cache-Control', value: 'no-store, max-age=0, must-revalidate' },
+        ],
+      },
+    ]
+  },
   async rewrites() {
     return [
       {
