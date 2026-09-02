@@ -1,6 +1,6 @@
 from datetime import date
 
-from sqlalchemy import BigInteger, Boolean, Date, Numeric, String, Text
+from sqlalchemy import BigInteger, Date, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym
 
 from titan_x.db.base import Base
@@ -23,6 +23,7 @@ class Company(PrimaryKeyMixin, TimestampMixin, Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     website: Mapped[str | None] = mapped_column(String(256), nullable=True)
 
+    listings: Mapped[list["CompanyListing"]] = relationship(back_populates="company", cascade="all, delete-orphan")
     promoter_transactions: Mapped[list["PromoterTransaction"]] = relationship(back_populates="company", foreign_keys="PromoterTransaction.company_id")
     insider_trades: Mapped[list["InsiderTrade"]] = relationship(back_populates="company", foreign_keys="InsiderTrade.company_id")
     shareholding_patterns: Mapped[list["ShareholdingPattern"]] = relationship(back_populates="company", foreign_keys="ShareholdingPattern.company_id")
