@@ -6,7 +6,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from titan_x.models.paper_trading import PaperPosition, PaperTrade
+from titan_x.models.paper_trading import PaperPosition
 from titan_x.services.paper_trading_service import PaperTradingService
 
 
@@ -35,8 +35,7 @@ class PersistentTradingPortfolioService:
             )
             .order_by(PaperPosition.symbol)
         )
-        rows = result.scalars().all()
-        return [self._position(row) for row in rows]
+        return [self._position(row) for row in result.scalars().all()]
 
     async def orders(self, user_id: int, limit: int = 100) -> list[dict[str, Any]]:
         rows, _ = await self.paper.list_orders(user_id, skip=0, limit=limit)
@@ -77,22 +76,18 @@ class PersistentTradingPortfolioService:
         orders = await self.orders(user_id)
         fills = await self.fills(user_id)
         account = await self.paper.get_account_summary(user_id)
-        summary = account or {
-            "position_count": len(positions),
-            "market_value": sum(item["market_value"] for item in positions),
-            "realized_pnl": sum(item["realized_pnl"] for item in positions),
-            "unrealized_pnl": sum(item["unrealized_pnl"] for item in positions),
-        }
         return {
             "positions": positions,
             "orders": orders,
             "fills": fills,
             "summary": {
                 "position_count": len(positions),
-                "market_value": float(summary.get("portfolio_value", 0)),
-                "realized_pnl": float(summary.get("total_realized_pnl", 0)),
-                "unrealized_pnl": float(summary.get("total_unrealized_pnl", 0)),
-                "total_pnl": float(summary.get("total_pnl", 0)),
+                "market_value": sum(item["market_value"] for item in positions),
+                "cash_balance": float(account.get("cash_balance", 0)) if account else 0.0,
+                "portfolio_value": float(account.get("portfolio_value", 0)) if account else 0.0,
+                "realized_pnl": float(account.get("total_realized_pnl", 0)) if account else 0.0,
+                "unrealized_pnl": float(account.get("total_unrealized_pnl", 0)) if account else 0.0,
+                "total_pnl": float(account.get("total_pnl", 0)) if account else 0.0,
             },
         }
 
