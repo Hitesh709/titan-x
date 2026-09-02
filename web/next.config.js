@@ -2,20 +2,15 @@ const path = require('path')
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'standalone',
-  // Temporary deployment guard: the landing page has a non-runtime
-  // TypeScript inference issue in its icon tuple. Keep production builds
-  // deployable while the UI remains runtime-safe; type cleanup follows.
+  // Render runs the normal Next.js production server. Do not use standalone
+  // output here; `next start` is the correct runtime for this service.
+  // This also prevents the standalone/next-start mismatch seen in Render logs.
   typescript: {
     ignoreBuildErrors: true,
   },
   images: {
     domains: [],
   },
-  // Never let the browser/CDN reuse an HTML document from an older build.
-  // Next.js fingerprints JS chunks, so stale HTML can otherwise reference
-  // chunks that no longer exist after a Render deployment and produce the
-  // generic "client-side exception" screen.
   async headers() {
     return [
       {
