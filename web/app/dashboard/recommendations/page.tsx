@@ -14,7 +14,6 @@ type SortDir = "asc" | "desc"
 type StrictDeliveryResponse = { recommendations: StockRecommendation[]; strict_technical_threshold?: number; strict_gate?: string; scanning?: boolean; scan_status?: { scanned?: number; universe_size?: number; progress_pct?: number; error?: string | null } }
 
 const DELIVERY_CACHE_KEY = "titanx.strict.delivery.equity.v2"
-const DELIVERY_AUTO_SCAN_KEY = "titanx.delivery.auto-scan.v1"
 const riskRank = (risk?: string | null) => risk === "Low" ? 1 : risk === "Medium" ? 2 : risk === "High" ? 3 : 0
 
 export default function RecommendationsPage() {
@@ -35,7 +34,7 @@ export default function RecommendationsPage() {
     if (!silent) setLoading(true)
     try {
       const res = await api.get<StrictDeliveryResponse>("/recommendations/strict?mode=delivery&segment=equity&limit=100")
-      if (!mounted.current) return
+      if (!mounted.current) return res
       if ((res.recommendations ?? []).length > 0 || !res.scanning) {
         setRecommendations(res.recommendations ?? [])
         if ((res.recommendations ?? []).length > 0) localStorage.setItem(DELIVERY_CACHE_KEY, JSON.stringify(res.recommendations))
@@ -49,11 +48,13 @@ export default function RecommendationsPage() {
       } else if (res.recommendations?.length) {
         setScanInfo(`Full-market delivery scan complete: ${res.recommendations.length} stock(s) with Delivery Technical Pillar ≥95.`)
       } else {
-        setScanInfo("Scan complete. No stock currently meets the Delivery Technical Pillar ≥95 strict gate.")
+        setScanInfo("No saved recommendations found. Starting the full-market delivery scan…")
       }
+      return res
     } catch (e) {
-      if (!mounted.current) return
+      if (!mounted.current) return null
       setError(e instanceof Error ? e.message : "Failed to load delivery recommendations")
+      return null
     } finally {
       if (mounted.current) { setLoading(false); setRefreshing(false) }
     }
@@ -62,11 +63,11 @@ export default function RecommendationsPage() {
   const startDeliveryScan = useCallback(async () => {
     if (!mounted.current) return
     setScanning(true)
+    setLoading(true)
     setError(null)
     setScanInfo("Starting full-market delivery scan across the active NSE/BSE universe…")
     try {
       await api.post("/recommendations/scan?sync=false&limit=3000", {})
-      try { localStorage.setItem(DELIVERY_AUTO_SCAN_KEY, String(Date.now())) } catch { /* optional */ }
       await load(true)
     } catch (e) {
       if (mounted.current) setError(e instanceof Error ? e.message : "Delivery scan failed")
@@ -77,32 +78,30 @@ export default function RecommendationsPage() {
 
   useEffect(() => {
     mounted.current = true
-    let cachedRecommendations = false
-    try {
-      const cached = localStorage.getItem(DELIVERY_CACHE_KEY)
-      if (cached) {
-        const parsed = JSON.parse(cached) as StockRecommendation[]
-        if (Array.isArray(parsed) && parsed.length) {
-          cachedRecommendations = true
-          setRecommendations(parsed)
-          setLoading(false)
-          setScanInfo("Showing saved Delivery recommendations. Run Scan when you want fresh results.")
-        }
-      }
-    } catch { /* ignore malformed browser cache */ }
-
-    if (!cachedRecommendations) {
-      let recentlyStarted = false
+    let active = true
+    const initialize = async () => {
+      let cachedRecommendations = false
       try {
-        const ts = Number(localStorage.getItem(DELIVERY_AUTO_SCAN_KEY) ?? 0)
-        recentlyStarted = Number.isFinite(ts) && ts > 0 && Date.now() - ts < 15 * 60 * 1000
-      } catch { /* optional */ }
-      if (!recentlyStarted) void startDeliveryScan()
-      else void load(true)
-    } else {
-      void load(true)
+        const cached = localStorage.getItem(DELIVERY_CACHE_KEY)
+        if (cached) {
+          const parsed = JSON.parse(cached) as StockRecommendation[]
+          if (Array.isArray(parsed) && parsed.length) {
+            cachedRecommendations = true
+            setRecommendations(parsed)
+            setLoading(false)
+            setScanInfo("Showing saved Delivery recommendations while the server checks for fresh results.")
+          }
+        }
+      } catch { /* ignore malformed browser cache */ }
+
+      const res = await load(true)
+      if (!active || !mounted.current) return
+      if (!cachedRecommendations && res && !res.scanning && !(res.recommendations ?? []).length && !res.scan_status?.error) {
+        await startDeliveryScan()
+      }
     }
-    return () => { mounted.current = false }
+    void initialize()
+    return () => { active = false; mounted.current = false }
   }, [load, startDeliveryScan])
 
   useEffect(() => {
@@ -157,7 +156,7 @@ export default function RecommendationsPage() {
     {mode === "intraday" ? <IntradayRecommendations key={intradayRefreshKey} /> : <>
       {error && !scanning && <WidgetError message={error} onRetry={() => void load(false)} />}
       {scanInfo && <div className="glass-card p-3 text-sm text-titan-300 border border-titan-500/20">{scanInfo}</div>}
-      <div className="glass-card p-3 text-xs text-titan-300 border border-titan-500/20">Delivery strict gate: <b>Delivery Technical Pillar Score ≥95</b>. Intraday Technical Pillar is independent and is not required for Delivery. Recommendations are saved in the browser so logout/login does not force a rescan.</div>
+      <div className="glass-card p-3 text-xs text-titan-300 border border-titan-500/20">Delivery strict gate: <b>Delivery Technical Pillar Score ≥95</b>. Intraday Technical Pillar is independent and is not required for Delivery. Recommendations are saved on the server and browser cache is only a display optimization.</div>
       <SymbolAnalyzer />
       {loading && recommendations.length === 0 ? <div className="glass-card p-8 text-center text-gray-400">Starting the full-market delivery scan…</div> : <>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4"><StatCard label="Buy signals" value={buyCount} tone="text-emerald-400" icon={<TrendingUp size={16} />} /><StatCard label="Sell signals" value={sellCount} tone="text-red-400" icon={<TrendingDown size={16} />} /><StatCard label="Neutral" value={neutralCount} tone="text-gray-400" icon={<Minus size={16} />} /><StatCard label="Avg confidence" value={avgConfidence} tone="text-titan-400" icon={<Zap size={16} />} /></div>
