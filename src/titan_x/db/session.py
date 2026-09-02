@@ -35,6 +35,12 @@ def create_engine(settings: Settings) -> AsyncEngine:
         parsed = parsed.set(drivername="postgresql+asyncpg")
         url = str(parsed)
     if url.startswith("postgresql"):
+        # Render Postgres requires TLS.  `ssl=require` in the URL is accepted
+        # by asyncpg, but connect_args keeps this safe when the URL has no SSL
+        # query parameter (for example a copied Render Internal URL).
+        query = dict(parsed.query)
+        if query.get("ssl") not in {"require", "verify-ca", "verify-full"}:
+            connect_args["ssl"] = "require"
         connect_args["server_settings"] = {"application_name": settings.app_name}
     elif url.startswith("sqlite"):
         connect_args["check_same_thread"] = False
