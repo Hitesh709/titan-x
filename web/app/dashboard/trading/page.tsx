@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Clock, CheckCircle } from "lucide-react"
 import api from "@/lib/api"
+import { useLiveRefresh } from "@/lib/live"
 import type { PaperAccountSummary, PaperPosition } from "@/types"
 import { WidgetError, RefreshButton } from "@/components/dashboard/widget"
 import {
@@ -45,7 +46,6 @@ export default function TradingPage() {
         api.get<{ items: OrderRow[] }>("/paper-trading/orders?limit=50&skip=0"),
       ])
       if (!mounted.current) return
-
       const failures: string[] = []
       if (accRes.status === "fulfilled") setAccount(accRes.value)
       else failures.push(accRes.reason instanceof Error ? accRes.reason.message : "Failed to load account")
@@ -92,8 +92,6 @@ export default function TradingPage() {
       return
     } catch (error) {
       const message = error instanceof Error ? error.message : ""
-      // Only create an account when the server explicitly says none exists.
-      // Do not create/reinitialize anything after a transient/network/auth error.
       if (!/no paper account/i.test(message)) throw error
     }
     await api.post("/paper-trading/account?initial_capital=100000", {})
@@ -103,23 +101,15 @@ export default function TradingPage() {
     e.preventDefault()
     setFormError(null)
     setFormSuccess(null)
-
     const sym = symbol.trim().toUpperCase()
     const qty = Number(quantity)
     if (!sym) return setFormError("Enter a symbol (e.g. RELIANCE)")
     if (!qty || qty <= 0) return setFormError("Enter a valid quantity")
     if (orderType === "limit" && (!Number(price) || Number(price) <= 0)) return setFormError("Enter a limit price")
-
     setSubmitting(true)
     try {
       await ensureAccount()
-      const orderParams = new URLSearchParams({
-        symbol: sym,
-        side,
-        order_type: orderType,
-        quantity: String(qty),
-        time_in_force: "day",
-      })
+      const orderParams = new URLSearchParams({ symbol: sym, side, order_type: orderType, quantity: String(qty), time_in_force: "day" })
       if (orderType === "limit" && price) orderParams.set("price", String(Number(price)))
       const placed = await api.post<PlacedOrder>(`/paper-trading/orders?${orderParams.toString()}`, {})
       if (placed.status === "rejected") setFormError(placed.rejection_reason || "Order rejected")
@@ -132,9 +122,7 @@ export default function TradingPage() {
       await load(true)
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Failed to place order")
-    } finally {
-      setSubmitting(false)
-    }
+    } finally { setSubmitting(false) }
   }
 
   const handleCancel = async (id: number) => {
@@ -149,37 +137,21 @@ export default function TradingPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold text-white">Trading</h1>
-            <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30" title="Simulated trading with virtual cash — no real broker, no real money">Demo · Paper</span>
-          </div>
+          <div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-white">Trading</h1><span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30" title="Simulated trading with virtual cash — no real broker, no real money">Demo · Paper</span></div>
           <p className="text-gray-500 text-sm mt-1">Place paper trades and track your positions, orders, and P&amp;L</p>
         </div>
         <RefreshButton onClick={handleRefresh} spinning={refreshing} />
       </div>
-
       {error && <WidgetError message={error} onRetry={() => load(false)} />}
-
       {loading ? (
-        <div className="grid md:grid-cols-3 gap-4">
-          <div className="glass-card p-5 md:col-span-2"><div className="h-24 animate-pulse bg-white/5 rounded-lg" /></div>
-          <div className="glass-card p-5"><div className="h-24 animate-pulse bg-white/5 rounded-lg" /></div>
-        </div>
+        <div className="grid md:grid-cols-3 gap-4"><div className="glass-card p-5 md:col-span-2"><div className="h-24 animate-pulse bg-white/5 rounded-lg" /></div><div className="glass-card p-5"><div className="h-24 animate-pulse bg-white/5 rounded-lg" /></div></div>
       ) : (
         <>
           <AccountSummary account={account} />
           <AutoBotPanel initialSymbol={symbol || "RELIANCE"} onSymbolChange={setSymbol} />
           <div className="grid lg:grid-cols-2 gap-6">
-            <QuickTradeForm
-              symbol={symbol} side={side} orderType={orderType} quantity={quantity} price={price}
-              onSymbolChange={setSymbol} onSideChange={setSide} onOrderTypeChange={setOrderType}
-              onQuantityChange={setQuantity} onPriceChange={setPrice} onSubmit={handlePlaceOrder}
-              submitting={submitting} formError={formError} formSuccess={formSuccess}
-            />
-            <div className="glass-card p-5">
-              <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">Current Holdings</h3>
-              <HoldingsList positions={positions} />
-            </div>
+            <QuickTradeForm symbol={symbol} side={side} orderType={orderType} quantity={quantity} price={price} onSymbolChange={setSymbol} onSideChange={setSide} onOrderTypeChange={setOrderType} onQuantityChange={setQuantity} onPriceChange={setPrice} onSubmit={handlePlaceOrder} submitting={submitting} formError={formError} formSuccess={formSuccess} />
+            <div className="glass-card p-5"><h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">Current Holdings</h3><HoldingsList positions={positions} /></div>
           </div>
           <div className="grid lg:grid-cols-2 gap-6">
             <OrdersTable title="Open Orders" icon={<Clock size={16} className="text-titan-400" />} orders={openOrders} onCancel={handleCancel} emptyMessage="No open orders." />
