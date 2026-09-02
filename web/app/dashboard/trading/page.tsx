@@ -3,9 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Clock, CheckCircle } from "lucide-react"
 import api from "@/lib/api"
-import { useLiveRefresh } from "@/lib/live"
 import type { PaperAccountSummary, PaperPosition } from "@/types"
-import { WidgetLoading, WidgetError, RefreshButton } from "@/components/dashboard/widget"
+import { WidgetError, RefreshButton } from "@/components/dashboard/widget"
 import {
   AccountSummary,
   QuickTradeForm,
@@ -46,12 +45,15 @@ export default function TradingPage() {
         api.get<{ items: OrderRow[] }>("/paper-trading/orders?limit=50&skip=0"),
       ])
       if (!mounted.current) return
+
+      const failures: string[] = []
       if (accRes.status === "fulfilled") setAccount(accRes.value)
-      if (accRes.status === "rejected")
-        setError(accRes.reason instanceof Error ? accRes.reason.message : "Failed to load account")
+      else failures.push(accRes.reason instanceof Error ? accRes.reason.message : "Failed to load account")
       if (posRes.status === "fulfilled") setPositions(posRes.value)
+      else failures.push(posRes.reason instanceof Error ? posRes.reason.message : "Failed to load portfolio")
       if (ordRes.status === "fulfilled") setOrders(ordRes.value.items ?? [])
-      else setError(null)
+      else failures.push(ordRes.reason instanceof Error ? ordRes.reason.message : "Failed to load orders")
+      setError(failures.length ? failures.join(" · ") : null)
     } catch (e) {
       if (!mounted.current) return
       setError(e instanceof Error ? e.message : "Failed to load trading data")
@@ -65,26 +67,18 @@ export default function TradingPage() {
 
   useEffect(() => {
     mounted.current = true
-    // Preserve the selected stock across Recommendation → Research → Trade Signal → Trading.
-    // URL query state is intentionally read client-side so the existing static Next.js route remains build-safe.
     const params = new URLSearchParams(window.location.search)
     const requestedSymbol = params.get("symbol")?.trim().toUpperCase()
     const requestedSide = params.get("side")?.toLowerCase()
     if (requestedSymbol) setSymbol(requestedSymbol)
     if (requestedSide === "buy" || requestedSide === "sell") setSide(requestedSide)
-    return () => {
-      mounted.current = false
-    }
+    return () => { mounted.current = false }
   }, [])
 
   useLiveRefresh(() => void load(true), [load])
 
   const refreshPrices = async () => {
-    try {
-      await api.post("/paper-trading/portfolio/refresh", {})
-    } catch {
-      // non-fatal: positions simply keep their last mark
-    }
+    try { await api.post("/paper-trading/portfolio/refresh", {}) } catch { /* keep last persisted marks */ }
   }
 
   const handleRefresh = () => {
@@ -94,10 +88,15 @@ export default function TradingPage() {
 
   const ensureAccount = async () => {
     try {
-      await api.get("/paper-trading/account")
-    } catch {
-      await api.post("/paper-trading/account?initial_capital=100000", {})
+      await api.get<PaperAccountSummary>("/paper-trading/account")
+      return
+    } catch (error) {
+      const message = error instanceof Error ? error.message : ""
+      // Only create an account when the server explicitly says none exists.
+      // Do not create/reinitialize anything after a transient/network/auth error.
+      if (!/no paper account/i.test(message)) throw error
     }
+    await api.post("/paper-trading/account?initial_capital=100000", {})
   }
 
   const handlePlaceOrder = async (e: React.FormEvent) => {
@@ -121,16 +120,11 @@ export default function TradingPage() {
         quantity: String(qty),
         time_in_force: "day",
       })
-      if (orderType === "limit" && price) {
-        orderParams.set("price", String(Number(price)))
-      }
+      if (orderType === "limit" && price) orderParams.set("price", String(Number(price)))
       const placed = await api.post<PlacedOrder>(`/paper-trading/orders?${orderParams.toString()}`, {})
-      if (placed.status === "rejected") {
-        setFormError(placed.rejection_reason || "Order rejected")
-      } else {
-        setFormSuccess(
-          `${placed.side.toUpperCase()} ${placed.filled_quantity ?? placed.quantity} ${placed.symbol} @ ${placed.status}`,
-        )
+      if (placed.status === "rejected") setFormError(placed.rejection_reason || "Order rejected")
+      else {
+        setFormSuccess(`${placed.side.toUpperCase()} ${placed.filled_quantity ?? placed.quantity} ${placed.symbol} @ ${placed.status}`)
         setQuantity("")
         setPrice("")
       }
@@ -144,12 +138,8 @@ export default function TradingPage() {
   }
 
   const handleCancel = async (id: number) => {
-    try {
-      await api.delete(`/paper-trading/orders/${id}`)
-      await load(true)
-    } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Failed to cancel order")
-    }
+    try { await api.delete(`/paper-trading/orders/${id}`); await load(true) }
+    catch (err) { setFormError(err instanceof Error ? err.message : "Failed to cancel order") }
   }
 
   const openOrders = orders.filter((o) => OPEN_STATUSES.includes(o.status))
@@ -161,16 +151,9 @@ export default function TradingPage() {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold text-white">Trading</h1>
-            <span
-              className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30"
-              title="Simulated trading with virtual cash — no real broker, no real money"
-            >
-              Demo · Paper
-            </span>
+            <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30" title="Simulated trading with virtual cash — no real broker, no real money">Demo · Paper</span>
           </div>
-          <p className="text-gray-500 text-sm mt-1">
-            Place paper trades and track your positions, orders, and P&amp;L
-          </p>
+          <p className="text-gray-500 text-sm mt-1">Place paper trades and track your positions, orders, and P&amp;L</p>
         </div>
         <RefreshButton onClick={handleRefresh} spinning={refreshing} />
       </div>
@@ -179,58 +162,28 @@ export default function TradingPage() {
 
       {loading ? (
         <div className="grid md:grid-cols-3 gap-4">
-          <div className="glass-card p-5 md:col-span-2">
-            <WidgetLoading lines={3} />
-          </div>
-          <div className="glass-card p-5">
-            <WidgetLoading lines={4} />
-          </div>
+          <div className="glass-card p-5 md:col-span-2"><div className="h-24 animate-pulse bg-white/5 rounded-lg" /></div>
+          <div className="glass-card p-5"><div className="h-24 animate-pulse bg-white/5 rounded-lg" /></div>
         </div>
       ) : (
         <>
           <AccountSummary account={account} />
-
           <AutoBotPanel initialSymbol={symbol || "RELIANCE"} onSymbolChange={setSymbol} />
-
           <div className="grid lg:grid-cols-2 gap-6">
             <QuickTradeForm
-              symbol={symbol}
-              side={side}
-              orderType={orderType}
-              quantity={quantity}
-              price={price}
-              onSymbolChange={setSymbol}
-              onSideChange={setSide}
-              onOrderTypeChange={setOrderType}
-              onQuantityChange={setQuantity}
-              onPriceChange={setPrice}
-              onSubmit={handlePlaceOrder}
-              submitting={submitting}
-              formError={formError}
-              formSuccess={formSuccess}
+              symbol={symbol} side={side} orderType={orderType} quantity={quantity} price={price}
+              onSymbolChange={setSymbol} onSideChange={setSide} onOrderTypeChange={setOrderType}
+              onQuantityChange={setQuantity} onPriceChange={setPrice} onSubmit={handlePlaceOrder}
+              submitting={submitting} formError={formError} formSuccess={formSuccess}
             />
             <div className="glass-card p-5">
-              <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-                Current Holdings
-              </h3>
+              <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">Current Holdings</h3>
               <HoldingsList positions={positions} />
             </div>
           </div>
-
           <div className="grid lg:grid-cols-2 gap-6">
-            <OrdersTable
-              title="Open Orders"
-              icon={<Clock size={16} className="text-titan-400" />}
-              orders={openOrders}
-              onCancel={handleCancel}
-              emptyMessage="No open orders."
-            />
-            <OrdersTable
-              title="Order History"
-              icon={<CheckCircle size={16} className="text-titan-400" />}
-              orders={orderHistory}
-              emptyMessage="No orders yet."
-            />
+            <OrdersTable title="Open Orders" icon={<Clock size={16} className="text-titan-400" />} orders={openOrders} onCancel={handleCancel} emptyMessage="No open orders." />
+            <OrdersTable title="Order History" icon={<CheckCircle size={16} className="text-titan-400" />} orders={orderHistory} emptyMessage="No orders yet." />
           </div>
         </>
       )}
