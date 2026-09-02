@@ -2,11 +2,11 @@ from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from titan_x.api.dependencies import get_current_active_user, request_session
 from titan_x.models.user import User
 from titan_x.services.order_service import OrderService
-from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -64,6 +64,36 @@ async def list_orders(
     return {"items": rows, "total": total}
 
 
+# Static paths must be declared before /{order_id}; otherwise FastAPI can try
+# to parse "positions" or "book" as an integer and return a misleading 422.
+@router.get("/positions/me")
+async def get_positions(
+    user: Annotated[User, Depends(get_current_active_user)],
+    svc: Annotated[OrderService, Depends(get_order_service)],
+):
+    return await svc.get_positions(user.id)
+
+
+@router.get("/positions/{symbol}")
+async def get_position(
+    symbol: str,
+    user: Annotated[User, Depends(get_current_active_user)],
+    svc: Annotated[OrderService, Depends(get_order_service)],
+):
+    pos = await svc.get_position(user.id, symbol)
+    if pos is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Position not found")
+    return pos
+
+
+@router.get("/book/me")
+async def get_order_book(
+    user: Annotated[User, Depends(get_current_active_user)],
+    svc: Annotated[OrderService, Depends(get_order_service)],
+):
+    return await svc.get_order_book(user.id)
+
+
 @router.get("/{order_id}")
 async def get_order(
     order_id: int,
@@ -114,31 +144,3 @@ async def execute_order(
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     return {"order": order_obj, "fill": fill, "position": pos}
-
-
-@router.get("/positions/me")
-async def get_positions(
-    user: Annotated[User, Depends(get_current_active_user)],
-    svc: Annotated[OrderService, Depends(get_order_service)],
-):
-    return await svc.get_positions(user.id)
-
-
-@router.get("/positions/{symbol}")
-async def get_position(
-    symbol: str,
-    user: Annotated[User, Depends(get_current_active_user)],
-    svc: Annotated[OrderService, Depends(get_order_service)],
-):
-    pos = await svc.get_position(user.id, symbol)
-    if pos is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Position not found")
-    return pos
-
-
-@router.get("/book/me")
-async def get_order_book(
-    user: Annotated[User, Depends(get_current_active_user)],
-    svc: Annotated[OrderService, Depends(get_order_service)],
-):
-    return await svc.get_order_book(user.id)
