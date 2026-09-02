@@ -1,5 +1,5 @@
 # TITAN X — Render Blueprint
-# Full stack: Next.js frontend, FastAPI backend, managed PostgreSQL and Redis.
+# Production stack: Next.js frontend, FastAPI backend, managed PostgreSQL and Redis.
 
 services:
   - type: web
@@ -19,8 +19,9 @@ services:
   - type: web
     name: titan-x-api
     plan: free
-    runtime: docker
-    dockerfilePath: ./Dockerfile
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn titan_x.main:app --host 0.0.0.0 --port 10000
     healthCheckPath: /api/v1/health/live
     envVars:
       - key: ENVIRONMENT
@@ -80,11 +81,12 @@ services:
   - type: redis
     name: titan-x-redis
     plan: free
-    maxmemoryPolicy: noeviction
+    maxmemoryPolicy: allkeys_lru
     ipAllowList: []
 
 databases:
   - name: titan-x-db
-    plan: free
-    postgresMajorVersion: "16"
+    plan: basic_256mb
+    postgresMajorVersion: "18"
+    diskSizeGB: 1
     ipAllowList: []
