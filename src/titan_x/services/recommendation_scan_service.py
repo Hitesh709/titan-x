@@ -16,7 +16,6 @@ from titan_x.models.market_breadth import MarketBreadth
 from titan_x.models.recommendation import Recommendation
 from titan_x.models.sector import SectorPerformance
 from titan_x.services.ai_recommendation_engine import AIRecommendationEngine, bars_from_records
-from titan_x.services.bse_universe_service import BSEUniverseService
 from titan_x.services.nse_universe_service import NSEUniverseService
 from titan_x.services.recommendation_service import RecommendationService
 from titan_x.services.technical_strength_engine import score_technical_strength
@@ -45,15 +44,15 @@ class RecommendationScanService:
         stmt = (
             select(CompanyListing.symbol, CompanyListing.exchange, CompanyListing.yahoo_symbol, Company.sector)
             .join(Company, Company.id == CompanyListing.company_id)
-            .where(Company.status == "active", CompanyListing.is_active.is_(True), CompanyListing.exchange.in_(["NSE", "BSE"]))
-            .order_by(CompanyListing.exchange, CompanyListing.symbol)
+            .where(Company.status == "active", CompanyListing.is_active.is_(True), CompanyListing.exchange == "NSE")
+            .order_by(CompanyListing.symbol)
         )
         rows = (await self.session.execute(stmt)).all()
-        seen, out = set(), []
+        out, seen = [], set()
         for symbol, exchange, yahoo_symbol, sector in rows:
-            item = (str(symbol or "").upper().strip(), str(exchange or "NSE").upper().strip(), str(yahoo_symbol or "").upper().strip(), str(sector or ""))
-            if item[0] and item[1] in {"NSE", "BSE"} and item[2] and (item[0], item[1]) not in seen:
-                seen.add((item[0], item[1]))
+            item = (str(symbol or "").upper().strip(), "NSE", str(yahoo_symbol or "").upper().strip(), str(sector or ""))
+            if item[0] and item[2] and item[0] not in seen:
+                seen.add(item[0])
                 out.append(item)
         return out[:limit] if limit else out
 
@@ -196,26 +195,26 @@ class RecommendationScanService:
         return recommendations
 
     async def _store(self, rec, svc):
-        symbol, exchange = rec["symbol"], rec.get("exchange", "NSE")
-        await self.session.execute(delete(Recommendation).where(Recommendation.symbol == symbol, Recommendation.recommendation_type == RECOMMENDATION_TYPE, Recommendation.source == SOURCE, Recommendation.metadata_json.like(f'%"exchange": "{exchange}"%')))
+        symbol = rec["symbol"]
+        await self.session.execute(delete(Recommendation).where(Recommendation.symbol == symbol, Recommendation.recommendation_type == RECOMMENDATION_TYPE, Recommendation.source == SOURCE, Recommendation.metadata_json.like('%"exchange": "NSE"%')))
         signal = rec["signal"]
         direction = "BUY" if signal in ("strong_buy", "buy") else "SELL" if signal in ("strong_sell", "sell") else "HOLD"
         now = datetime.now(timezone.utc).replace(tzinfo=None)
-        metadata = {"signal": signal, "exchange": exchange, "yahoo_symbol": rec.get("yahoo_symbol"), "as_of_date": rec.get("as_of_date"), "data_points": rec.get("data_points", 0), "evidence": rec.get("evidence"), "caution": rec.get("caution"), "returns": rec.get("returns"), "indicators": rec.get("indicators"), "fast_technical_gate": rec.get("fast_technical_gate")}
-        await svc.create_recommendation(symbol=symbol, direction=direction, signal=signal, confidence=rec["confidence"], price_target=rec["price_target"], current_price=rec["current_price"], timeframe=f"{rec['holding_period_days']} days", reasoning=f"{signal.upper()} recommendation for {symbol} ({exchange})", recommendation_type=RECOMMENDATION_TYPE, score=rec["score"], risk_level=rec["risk_level"], predicted_return_pct=rec["expected_return_pct"], source=SOURCE, metadata_json=json.dumps(metadata), status="active", expires_at=now + timedelta(days=1), inputs_json=json.dumps(rec["factors"]), model_version_label="yahoo-live-v1")
+        metadata = {"signal": signal, "exchange": "NSE", "yahoo_symbol": rec.get("yahoo_symbol"), "as_of_date": rec.get("as_of_date"), "data_points": rec.get("data_points", 0), "evidence": rec.get("evidence"), "caution": rec.get("caution"), "returns": rec.get("returns"), "indicators": rec.get("indicators"), "fast_technical_gate": rec.get("fast_technical_gate")}
+        await svc.create_recommendation(symbol=symbol, direction=direction, signal=signal, confidence=rec["confidence"], price_target=rec["price_target"], current_price=rec["current_price"], timeframe=f"{rec['holding_period_days']} days", reasoning=f"{signal.upper()} recommendation for {symbol} (NSE)", recommendation_type=RECOMMENDATION_TYPE, score=rec["score"], risk_level=rec["risk_level"], predicted_return_pct=rec["expected_return_pct"], source=SOURCE, metadata_json=json.dumps(metadata), status="active", expires_at=now + timedelta(days=1), inputs_json=json.dumps(rec["factors"]), model_version_label="yahoo-live-v1")
 
 
 async def run_universe_load(session_factory: async_sessionmaker) -> dict[str, Any]:
     async with session_factory() as session:
         nse = await NSEUniverseService(session).load_universe()
-        bse = await BSEUniverseService(session).load_universe()
         await session.commit()
-        result = {"loaded": True, "nse": nse, "bse": bse}
+        result = {"loaded": True, "nse": nse, "bse": {"disabled": True}}
         _scan_state["last_universe"] = result
-        logger.info("full_nse_bse_universe_loaded", **result)
+        logger.info("full_nse_universe_loaded", **result)
         return result
 
 
 async def run_background_scan(session_factory: async_sessionmaker, max_age_minutes=60, limit=None) -> dict[str, Any]:
     async with session_factory() as session:
-        return await RecommendationScanService(session).scan_all(max_age_minutes=max_age_minutes, limit=limit)
+        service = RecommendationScanService(session)
+        return await service.scan_all(max_age_minutes=max_age_minutes, limit=limit)
