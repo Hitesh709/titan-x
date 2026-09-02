@@ -1,5 +1,4 @@
 "use client"
-
 import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
@@ -10,16 +9,10 @@ import type { PaginatedResponse } from "@/types"
 import {
   LayoutDashboard, BarChart3, Briefcase, TrendingUp, Newspaper,
   Bell, Star, Settings, LogOut, ChevronLeft, ChevronRight,
-  Search, Wallet, LineChart, Target, Brain, PieChart,
-  Activity, Shield, Menu, X, BookOpen, TestTube, Loader2,
+  Search, Target, Brain, Activity, Menu, X, BookOpen, TestTube, Loader2,
 } from "lucide-react"
 
-interface CompanySearchResult {
-  symbol: string
-  company_name: string
-  sector: string | null
-  exchange: string
-}
+interface CompanySearchResult { symbol: string; company_name: string; sector: string | null; exchange: string }
 
 const sidebarItems = [
   { icon: LayoutDashboard, label: "Overview", href: "/dashboard" },
@@ -52,20 +45,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { user, logout, loading, sendVerification } = useAuth()
 
   useEffect(() => {
-    if (!loading && !user) {
-      router.replace("/login")
-    }
+    if (!loading && !user) router.replace("/login")
   }, [loading, user, router])
 
-  useEffect(() => startLiveTicker(), [])
+  useEffect(() => {
+    const stop = startLiveTicker()
+    return stop
+  }, [])
 
-  // Close the search dropdown when clicking outside.
+  useEffect(() => () => { if (searchTimer.current) clearTimeout(searchTimer.current) }, [])
+
   useEffect(() => {
     if (!searchOpen) return
     const onDocMouseDown = (e: MouseEvent) => {
-      if (searchBoxRef.current && !searchBoxRef.current.contains(e.target as Node)) {
-        setSearchOpen(false)
-      }
+      if (searchBoxRef.current && !searchBoxRef.current.contains(e.target as Node)) setSearchOpen(false)
     }
     document.addEventListener("mousedown", onDocMouseDown)
     return () => document.removeEventListener("mousedown", onDocMouseDown)
@@ -73,22 +66,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const runSearch = useCallback(async (q: string) => {
     const term = q.trim()
-    if (!term) {
-      setSearchResults([])
-      setSearching(false)
-      return
-    }
+    if (!term) { setSearchResults([]); setSearching(false); return }
     setSearching(true)
     try {
-      const res = await api.get<PaginatedResponse<CompanySearchResult>>(
-        `/companies?search=${encodeURIComponent(term)}&exchange=NSE&limit=8&order_by=symbol`
-      )
+      const res = await api.get<PaginatedResponse<CompanySearchResult>>(`/companies?search=${encodeURIComponent(term)}&exchange=NSE&limit=8&order_by=symbol`)
       setSearchResults(res.items ?? [])
-    } catch {
-      setSearchResults([])
-    } finally {
-      setSearching(false)
-    }
+    } catch { setSearchResults([]) } finally { setSearching(false) }
   }, [])
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -96,24 +79,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     setSearch(value)
     setSearchOpen(value.trim().length > 0)
     if (searchTimer.current) clearTimeout(searchTimer.current)
-    searchTimer.current = setTimeout(() => runSearch(value), 250)
+    searchTimer.current = setTimeout(() => { void runSearch(value) }, 250)
   }
 
   const goToSymbol = (symbol: string) => {
-    setSearch("")
-    setSearchResults([])
-    setSearchOpen(false)
-    setMobileOpen(false)
+    setSearch(""); setSearchResults([]); setSearchOpen(false); setMobileOpen(false)
     router.push(`/dashboard/stocks/${symbol.toUpperCase()}`)
   }
 
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== "Enter") return
-    if (searchResults.length > 0) {
-      goToSymbol(searchResults[0].symbol)
-    } else if (search.trim()) {
-      goToSymbol(search.trim())
-    }
+    if (searchResults.length > 0) goToSymbol(searchResults[0].symbol)
+    else if (search.trim()) goToSymbol(search.trim())
   }
 
   const handleVerifyClick = async () => {
@@ -124,182 +101,27 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       if (res.verification_url) window.location.href = res.verification_url
     } catch {
       // ignore
-    } finally {
-      setSendingVerification(false)
-    }
+    } finally { setSendingVerification(false) }
   }
 
   if (loading || !user) {
-    return (
-      <div className="min-h-screen bg-titan-950 flex items-center justify-center">
-        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-titan-500 to-titan-700 flex items-center justify-center">
-          <span className="text-white font-bold text-xs">TX</span>
-        </div>
-      </div>
-    )
+    return <div className="min-h-screen bg-titan-950 flex items-center justify-center"><div className="w-8 h-8 rounded-lg bg-gradient-to-br from-titan-500 to-titan-700 flex items-center justify-center"><span className="text-white font-bold text-xs">TX</span></div></div>
   }
 
   return (
     <div className="min-h-screen bg-titan-950 flex">
-      {/* Mobile overlay */}
-      {mobileOpen && (
-        <div className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setMobileOpen(false)} />
-      )}
-
-      {/* Sidebar */}
-      <aside
-        aria-label="Dashboard navigation"
-        className={`fixed lg:static inset-y-0 left-0 z-50 bg-titan-900/50 backdrop-blur-xl border-r border-titan-800/30 flex flex-col transition-all duration-300 ${
-          collapsed ? "w-[68px]" : "w-60"
-        } ${mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
-      >
-        {/* Logo */}
-        <div className="h-16 flex items-center px-4 border-b border-titan-800/30">
-          <Link href="/dashboard" className="flex items-center gap-3 min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-titan-500 to-titan-700 flex items-center justify-center shrink-0">
-              <span className="text-white font-bold text-xs">TX</span>
-            </div>
-            {!collapsed && (
-              <span className="font-bold text-white truncate">
-                TITAN <span className="text-titan-400">X</span>
-              </span>
-            )}
-          </Link>
-        </div>
-
-        {/* Nav */}
-        <nav aria-label="Dashboard sections" className="flex-1 overflow-y-auto p-3 space-y-1">
-          {sidebarItems.map((item) => {
-            const isActive = pathname === item.href
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={isActive ? "sidebar-link-active group" : "sidebar-link group"}
-                title={collapsed ? item.label : undefined}
-                aria-current={isActive ? "page" : undefined}
-                onClick={() => setMobileOpen(false)}
-              >
-                <item.icon size={20} className="shrink-0" />
-                {!collapsed && <span className="text-sm truncate">{item.label}</span>}
-              </Link>
-            )
-          })}
-        </nav>
-
-        {/* Bottom */}
-        <div className="p-3 border-t border-titan-800/30">
-          {!collapsed && user && (
-            <div className="px-3 py-2 mb-2">
-              <div className="text-sm text-white font-medium truncate">{user.full_name || user.email}</div>
-              <div className="text-xs text-gray-500 truncate">{user.email}</div>
-            </div>
-          )}
-            <button
-              onClick={logout}
-              className="sidebar-link w-full"
-              title={collapsed ? "Sign Out" : undefined}
-              aria-label="Sign out"
-            >
-            <LogOut size={20} className="shrink-0" />
-            {!collapsed && <span className="text-sm">Sign Out</span>}
-          </button>
-        </div>
+      {mobileOpen && <div className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setMobileOpen(false)} />}
+      <aside aria-label="Dashboard navigation" className={`fixed lg:static inset-y-0 left-0 z-50 bg-titan-900/50 backdrop-blur-xl border-r border-titan-800/30 flex flex-col transition-all duration-300 ${collapsed ? "w-[68px]" : "w-60"} ${mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}>
+        <div className="h-16 flex items-center px-4 border-b border-titan-800/30"><Link href="/dashboard" className="flex items-center gap-3 min-w-0"><div className="w-8 h-8 rounded-lg bg-gradient-to-br from-titan-500 to-titan-700 flex items-center justify-center shrink-0"><span className="text-white font-bold text-xs">TX</span></div>{!collapsed && <span className="font-bold text-white truncate">TITAN <span className="text-titan-400">X</span></span>}</Link></div>
+        <nav aria-label="Dashboard sections" className="flex-1 overflow-y-auto p-3 space-y-1">{sidebarItems.map((item) => { const isActive = pathname === item.href; return <Link key={item.href} href={item.href} className={isActive ? "sidebar-link-active group" : "sidebar-link group"} title={collapsed ? item.label : undefined} aria-current={isActive ? "page" : undefined} onClick={() => setMobileOpen(false)}><item.icon size={20} className="shrink-0" />{!collapsed && <span className="text-sm truncate">{item.label}</span>}</Link> })}</nav>
+        <div className="p-3 border-t border-titan-800/30">{!collapsed && user && <div className="px-3 py-2 mb-2"><div className="text-sm text-white font-medium truncate">{user.full_name || user.email}</div><div className="text-xs text-gray-500 truncate">{user.email}</div></div>}<button onClick={logout} className="sidebar-link w-full" title={collapsed ? "Sign Out" : undefined} aria-label="Sign out"><LogOut size={20} className="shrink-0" />{!collapsed && <span className="text-sm">Sign Out</span>}</button></div>
       </aside>
-
-      {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Top bar */}
         <header className="h-16 border-b border-titan-800/30 flex items-center justify-between px-4 lg:px-6 bg-titan-950/80 backdrop-blur-xl sticky top-0 z-30">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setMobileOpen(true)}
-              className="lg:hidden text-gray-400 hover:text-white"
-              aria-label="Open navigation menu"
-            >
-              <Menu size={20} aria-hidden="true" />
-            </button>
-            <button
-              onClick={() => setCollapsed(!collapsed)}
-              className="hidden lg:flex text-gray-500 hover:text-white transition-colors"
-              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-              aria-expanded={!collapsed}
-            >
-              {collapsed ? <ChevronRight size={18} aria-hidden="true" /> : <ChevronLeft size={18} aria-hidden="true" />}
-            </button>
-            <div className="relative flex-1 min-w-0 sm:flex-none sm:ml-2" ref={searchBoxRef}>
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-              <input
-                type="text"
-                value={search}
-                onChange={handleSearchChange}
-                onKeyDown={handleSearchKeyDown}
-                onFocus={() => setSearchOpen(search.trim().length > 0)}
-                placeholder="Search NSE scripts (e.g. RELIANCE)…"
-                aria-label="Search NSE scripts"
-                className="pl-9 pr-9 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-gray-300 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-titan-500 w-full sm:w-64"
-              />
-              {searching || (search && searchResults.length > 0) ? (
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500">
-                  {searching ? <Loader2 size={14} className="animate-spin" /> : <span className="text-[10px]">{searchResults.length}</span>}
-                </span>
-              ) : null}
-              {searchOpen && (
-                <div
-                  role="listbox"
-                  aria-label="Search results"
-                  className="absolute left-0 right-0 top-full mt-2 z-50 rounded-lg bg-titan-900/95 border border-titan-800/40 shadow-2xl backdrop-blur-xl overflow-hidden max-h-80 overflow-y-auto"
-                >
-                  {searching ? (
-                    <div className="px-4 py-3 text-xs text-gray-500 flex items-center gap-2">
-                      <Loader2 size={13} className="animate-spin" /> Searching…
-                    </div>
-                  ) : searchResults.length === 0 ? (
-                    <div className="px-4 py-3 text-xs text-gray-500">No NSE scripts match &ldquo;{search}&rdquo;.</div>
-                  ) : (
-                    searchResults.map((r) => (
-                       <button
-                         key={r.symbol}
-                         role="option"
-                         onClick={() => goToSymbol(r.symbol)}
-                         className="w-full flex items-center justify-between gap-2 px-4 py-2.5 text-left hover:bg-titan-800/60 transition-colors"
-                      >
-                        <div className="min-w-0">
-                          <div className="text-sm text-white font-medium">{r.symbol}</div>
-                          <div className="text-[11px] text-gray-500 truncate">{r.company_name}</div>
-                        </div>
-                        <span className="text-[10px] uppercase text-titan-400 shrink-0">{r.sector ?? "—"}</span>
-                      </button>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-gray-600 hidden sm:block">API: Connected</span>
-            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" aria-hidden="true" />
-          </div>
+          <div className="flex items-center gap-3"><button onClick={() => setMobileOpen(true)} className="lg:hidden text-gray-400 hover:text-white" aria-label="Open navigation menu"><Menu size={20} aria-hidden="true" /></button><button onClick={() => setCollapsed(!collapsed)} className="hidden lg:flex text-gray-500 hover:text-white transition-colors" aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={!collapsed}>{collapsed ? <ChevronRight size={18} aria-hidden="true" /> : <ChevronLeft size={18} aria-hidden="true" />}</button><div className="relative flex-1 min-w-0 sm:flex-none sm:ml-2" ref={searchBoxRef}><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" /><input type="text" value={search} onChange={handleSearchChange} onKeyDown={handleSearchKeyDown} onFocus={() => setSearchOpen(search.trim().length > 0)} placeholder="Search NSE scripts (e.g. RELIANCE)…" aria-label="Search NSE scripts" className="pl-9 pr-9 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-gray-300 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-titan-500 w-full sm:w-64" />{searching || (search && searchResults.length > 0) ? <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500">{searching ? <Loader2 size={14} className="animate-spin" /> : <span className="text-[10px]">{searchResults.length}</span>}</span> : null}{searchOpen && <div role="listbox" aria-label="Search results" className="absolute left-0 right-0 top-full mt-2 z-50 rounded-lg bg-titan-900/95 border border-titan-800/40 shadow-2xl backdrop-blur-xl overflow-hidden max-h-80 overflow-y-auto">{searching ? <div className="px-4 py-3 text-xs text-gray-500 flex items-center gap-2"><Loader2 size={13} className="animate-spin" /> Searching…</div> : searchResults.length === 0 ? <div className="px-4 py-3 text-xs text-gray-500">No NSE scripts match &ldquo;{search}&rdquo;.</div> : searchResults.map((r) => <button key={r.symbol} role="option" onClick={() => goToSymbol(r.symbol)} className="w-full flex items-center justify-between gap-2 px-4 py-2.5 text-left hover:bg-titan-800/60 transition-colors"><div className="min-w-0"><div className="text-sm text-white font-medium">{r.symbol}</div><div className="text-[11px] text-gray-500 truncate">{r.company_name}</div></div><span className="text-[10px] uppercase text-titan-400 shrink-0">{r.sector ?? "—"}</span></button>)}</div>}</div></div>
+          <div className="flex items-center gap-3"><span className="text-xs text-gray-600 hidden sm:block">API: Connected</span><div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" aria-hidden="true" /></div>
         </header>
-
-        {/* Page content */}
-        <main className="flex-1 p-4 lg:p-6 overflow-auto">
-          {user && !user.is_verified && (
-            <div className="mb-4 flex items-center justify-between gap-3 px-4 py-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-yellow-300 text-sm">
-              <span>
-                Your email is not verified yet. Some features may be limited until you confirm your address.
-              </span>
-              <button
-                onClick={handleVerifyClick}
-                disabled={sendingVerification}
-                className="text-yellow-200 font-medium hover:text-white shrink-0 disabled:opacity-50"
-              >
-                {sendingVerification ? "Sending..." : "Verify now"}
-              </button>
-            </div>
-          )}
-          {children}
-        </main>
+        <main className="flex-1 p-4 lg:p-6 overflow-auto">{user && !user.is_verified && <div className="mb-4 flex items-center justify-between gap-3 px-4 py-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-yellow-300 text-sm"><span>Your email is not verified yet. Some features may be limited until you confirm your address.</span><button onClick={handleVerifyClick} disabled={sendingVerification} className="text-yellow-200 font-medium hover:text-white shrink-0 disabled:opacity-50">{sendingVerification ? "Sending..." : "Verify now"}</button></div>}{children}</main>
       </div>
     </div>
   )
