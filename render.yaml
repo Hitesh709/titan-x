@@ -7,7 +7,7 @@ services:
     plan: free
     runtime: node
     rootDir: web
-    buildCommand: npm ci && npm run build
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /
     envVars:
