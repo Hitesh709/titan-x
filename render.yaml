@@ -26,6 +26,8 @@ services:
     envVars:
       - key: ENVIRONMENT
         value: production
+      - key: LOG_LEVEL
+        value: INFO
       - key: DOCS_ENABLED
         value: "false"
       - key: UVICORN_WORKERS
@@ -36,6 +38,12 @@ services:
         value: "10"
       - key: CORS_ORIGINS
         value: https://titan-x.onrender.com
+      - key: FRONTEND_URL
+        value: https://titan-x.onrender.com
+      - key: TRUSTED_HOSTS
+        value: titan-x-api.onrender.com
+      - key: ENABLE_HTTPS_REDIRECT
+        value: "false"
       - key: SEED_DEMO_ON_STARTUP
         value: "true"
       - key: PAPER_DEMO_PRICES
