@@ -3,6 +3,7 @@ from typing import Literal
 
 from pydantic import AnyUrl, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import URL
 
 
 class Settings(BaseSettings):
@@ -18,7 +19,16 @@ class Settings(BaseSettings):
     log_slow_request_ms: int = Field(default=1000, ge=0, le=60000)
     host: str = "0.0.0.0"
     port: int = Field(default=8000, ge=1, le=65535)
-    database_url: AnyUrl
+
+    # DATABASE_URL remains supported for local/dev deployments. Production can
+    # instead provide the individual MySQL_* variables supplied by Render.
+    database_url: AnyUrl | None = None
+    mysql_host: str | None = None
+    mysql_port: int = Field(default=3306, ge=1, le=65535)
+    mysql_database: str | None = None
+    mysql_user: str | None = None
+    mysql_password: SecretStr | None = None
+
     redis_url: AnyUrl
     api_key: SecretStr
     cors_origins: str = ""
@@ -40,7 +50,6 @@ class Settings(BaseSettings):
     paper_demo_prices: bool = False
     frontend_url: str = "http://localhost:3000"
 
-    # Market data: Yahoo Finance is the default keyless public source.
     market_data_provider: str = "yahoo"
     market_data_ingest_on_startup: bool = True
     market_data_ingest_max_symbols: int = Field(default=20, ge=1, le=2000)
@@ -128,6 +137,23 @@ class Settings(BaseSettings):
     @property
     def parsed_trusted_hosts(self) -> list[str]:
         return [host.strip() for host in self.trusted_hosts.split(",") if host.strip()]
+
+    @property
+    def resolved_database_url(self) -> str:
+        if self.database_url is not None:
+            return str(self.database_url)
+        if not all((self.mysql_host, self.mysql_database, self.mysql_user, self.mysql_password)):
+            raise ValueError("Database configuration is incomplete: provide DATABASE_URL or all MYSQL_* variables")
+        return str(
+            URL.create(
+                "mysql+aiomysql",
+                username=self.mysql_user,
+                password=self.mysql_password.get_secret_value(),
+                host=self.mysql_host,
+                port=self.mysql_port,
+                database=self.mysql_database,
+            )
+        )
 
 
 @lru_cache
