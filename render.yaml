@@ -1,5 +1,6 @@
 # TITAN X — Render Blueprint
-# Clean production stack: Next.js frontend, FastAPI backend, managed PostgreSQL and Redis.
+# Production stack: Next.js frontend, FastAPI backend, managed PostgreSQL and Redis.
+# DATABASE_URL is intentionally bound from the single managed titan-x-db resource.
 
 services:
   - type: web
