@@ -64,22 +64,23 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
     async def _initialize_database() -> None:
         try:
             async with engine.begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
-            await _sync_missing_columns(engine)
+                await asyncio.wait_for(conn.run_sync(Base.metadata.create_all), timeout=30)
+            await asyncio.wait_for(_sync_missing_columns(engine), timeout=30)
             logger.info("database_tables_ready")
 
             if settings.seed_demo_on_startup:
                 from titan_x.core.seed_demo import seed_all
 
-                await seed_all(session_factory)
+                await asyncio.wait_for(seed_all(session_factory), timeout=60)
                 logger.info("demo_seeded_on_startup")
             app.state.database_ready.set()
         except asyncio.CancelledError:
             raise
         except Exception:
-            # Do not block Uvicorn from binding its public port while a managed
-            # database is unavailable. Render must be able to reach the public
-            # liveness endpoint even when Postgres is temporarily unhealthy.
+            # Never hold the web process in lifespan startup waiting for a
+            # managed database. Render must be able to bind and probe the
+            # public liveness endpoint while Postgres recovers or credentials
+            # are corrected.
             logger.exception("database_initialization_failed")
 
     app.state.database_init_task = asyncio.create_task(_initialize_database())
@@ -155,7 +156,7 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
         redis = Redis.from_url(
             str(settings.redis_url), encoding="utf-8", decode_responses=True
         )
-        await redis.ping()
+        await asyncio.wait_for(redis.ping(), timeout=5)
         logger.info("redis_connected")
     except Exception as exc:
         logger.warning(
