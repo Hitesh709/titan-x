@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 import httpx
 import structlog
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from titan_x.models.company import Company
@@ -70,6 +70,19 @@ class NSEUniverseService:
         return [(e[0], e[1], f"IN{e[0]}001") for e in COMPANIES if e[4] == "NSE" and e[0]]
 
     async def _upsert(self, universe: list[tuple[str, str, str]], source: str = "nse") -> dict:
+        # Titan X is intentionally NSE-only. Deactivate any legacy BSE records
+        # left by older deployments so every consumer sees the same universe.
+        await self.session.execute(
+            update(Company)
+            .where(Company.exchange == "BSE")
+            .values(status="inactive")
+        )
+        await self.session.execute(
+            update(CompanyListing)
+            .where(CompanyListing.exchange == "BSE")
+            .values(is_active=False)
+        )
+
         existing = (await self.session.execute(select(Company).where(Company.exchange == "NSE"))).scalars().all()
         by_symbol = {c.symbol: c for c in existing}
         added = kept = listings_added = listings_kept = 0
@@ -79,7 +92,6 @@ class NSEUniverseService:
                 continue
             company = by_symbol.get(symbol)
             if company is None:
-                # If an ISIN already belongs to a BSE company, attach the NSE listing to it.
                 company = (await self.session.execute(select(Company).where(Company.isin == (isin or "")))).scalar_one_or_none() if isin else None
                 if company is None:
                     company = Company(symbol=symbol, company_name=name, isin=isin or f"IN{symbol}001", sector="Equity", exchange="NSE", status="active", created_at=now, updated_at=now)
