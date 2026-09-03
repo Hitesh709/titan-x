@@ -48,7 +48,7 @@ services:
         value: "20"
       - key: DATABASE_URL
         fromDatabase:
-          name: titan-x-db-final
+          name: titan-x-db
           property: connectionString
       - key: REDIS_URL
         fromService:
@@ -85,7 +85,7 @@ services:
     ipAllowList: []
 
 databases:
-  - name: titan-x-db-final
+  - name: titan-x-db
     plan: basic_256mb
     postgresMajorVersion: "18"
     diskSizeGB: 1
