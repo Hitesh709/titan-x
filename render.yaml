@@ -81,7 +81,7 @@ services:
   - type: redis
     name: titan-x-redis
     plan: free
-    maxmemoryPolicy: allkeys_lru
+    maxmemoryPolicy: allkeys-lru
     ipAllowList: []
 
 databases:
