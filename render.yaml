@@ -23,7 +23,7 @@ services:
     runtime: python
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn titan_x.main:app --host 0.0.0.0 --port ${PORT:-10000}
-    healthCheckPath: /api/v1/health/ready
+    healthCheckPath: /api/v1/health/live
     envVars:
       - key: ENVIRONMENT
         value: production
@@ -63,7 +63,7 @@ services:
           property: connectionString
       - key: REDIS_URL
         fromService:
-          type: redis
+          type: keyvalue
           name: titan-x-redis
           property: connectionString
       - key: API_KEY
@@ -89,7 +89,7 @@ services:
       - key: BACKUP_S3_SECRET_KEY
         sync: false
 
-  - type: redis
+  - type: keyvalue
     name: titan-x-redis
     plan: free
     maxmemoryPolicy: allkeys-lru
