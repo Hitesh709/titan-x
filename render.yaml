@@ -2,6 +2,7 @@
 # Production stack: Next.js frontend, FastAPI backend, managed PostgreSQL and Redis.
 # DATABASE_URL is intentionally bound from the single managed titan-x-db resource.
 # FORCE BLUEPRINT RECONCILIATION: keep Render-managed database credentials authoritative.
+# RECONCILE-2026-09-04: force a fresh Blueprint sync so fromDatabase references overwrite dashboard overrides.
 
 services:
   - type: web
