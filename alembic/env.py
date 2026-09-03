@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import asyncio
 from logging.config import fileConfig
-from urllib.parse import urlsplit
 
 from alembic import context
 from sqlalchemy import pool
