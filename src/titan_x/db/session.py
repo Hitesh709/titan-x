@@ -7,13 +7,7 @@ from titan_x.core.config import Settings
 
 
 def _set_sqlite_pragmas(dbapi_connection, _connection_record) -> None:
-    """Enable WAL + busy timeout on every SQLite connection.
-
-    The default rollback-journal mode blocks writers during long scans/ingestion
-    and fails immediately on lock contention, surfacing as intermittent 500s on
-    write endpoints (e.g. login). WAL allows concurrent readers + a single
-    writer, and busy_timeout makes writers wait instead of erroring.
-    """
+    """Enable WAL + busy timeout on every SQLite connection."""
     cursor = dbapi_connection.cursor()
     try:
         cursor.execute("PRAGMA journal_mode=WAL")
@@ -25,35 +19,26 @@ def _set_sqlite_pragmas(dbapi_connection, _connection_record) -> None:
 
 def create_engine(settings: Settings) -> AsyncEngine:
     connect_args: dict = {}
-    url = str(settings.database_url)
-    # Render/managed Postgres hands over `postgres://` or `postgresql://`, but
-    # SQLAlchemy's async engine needs the `postgresql+asyncpg://` driver.
+    url = settings.resolved_database_url
     parsed = make_url(url)
-    if parsed.get_backend_name() in ("postgres", "postgresql") and "asyncpg" not in (
-        parsed.get_driver_name() or ""
-    ):
-        parsed = parsed.set(drivername="postgresql+asyncpg")
-        url = str(parsed)
-    if url.startswith("postgresql"):
-        # Render Postgres requires TLS.  `ssl=require` in the URL is accepted
-        # by asyncpg, but connect_args keeps this safe when the URL has no SSL
-        # query parameter (for example a copied Render Internal URL).
-        query = dict(parsed.query)
-        if query.get("ssl") not in {"require", "verify-ca", "verify-full"}:
-            connect_args["ssl"] = "require"
-        connect_args["server_settings"] = {"application_name": settings.app_name}
-    elif url.startswith("sqlite"):
+
+    # Keep SQLite support for local development/tests. Production Titan X uses
+    # MySQL with the asyncmy-compatible aiomysql SQLAlchemy driver.
+    if parsed.get_backend_name() == "sqlite":
         connect_args["check_same_thread"] = False
         connect_args["timeout"] = 30
+    elif parsed.get_backend_name() == "mysql" and not parsed.get_driver_name():
+        parsed = parsed.set(drivername="mysql+aiomysql")
+        url = str(parsed)
 
     kwargs: dict = dict(echo=settings.sql_echo, connect_args=connect_args or {})
-    if not url.startswith("sqlite"):
+    if parsed.get_backend_name() != "sqlite":
         kwargs["pool_pre_ping"] = True
         kwargs["pool_size"] = settings.db_pool_size
         kwargs["max_overflow"] = settings.db_max_overflow
 
     engine = create_async_engine(url, **kwargs)
-    if url.startswith("sqlite"):
+    if parsed.get_backend_name() == "sqlite":
         event.listen(engine.sync_engine, "connect", _set_sqlite_pragmas)
     return engine
 
