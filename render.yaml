@@ -15,14 +15,15 @@ services:
       - key: NODE_ENV
         value: production
       - key: NEXT_PUBLIC_API_URL
-        value: https://titan-x-api.onrender.com/api/v1
+        value: https://titan-x-api-oregon.onrender.com/api/v1
       - key: RENDER_BLUEPRINT_REVISION
-        value: "2026-09-04-mysql-1"
+        value: "2026-09-04-mysql-2"
 
   - type: web
-    name: titan-x-api
+    name: titan-x-api-oregon
     plan: free
     runtime: python
+    region: oregon
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn titan_x.main:app --host 0.0.0.0 --port ${PORT:-10000}
     healthCheckPath: /api/v1/health/live
@@ -44,7 +45,7 @@ services:
       - key: FRONTEND_URL
         value: https://titan-x.onrender.com
       - key: TRUSTED_HOSTS
-        value: titan-x-api.onrender.com
+        value: titan-x-api-oregon.onrender.com
       - key: ENABLE_HTTPS_REDIRECT
         value: "false"
       - key: SEED_DEMO_ON_STARTUP
@@ -60,7 +61,7 @@ services:
       - key: ENABLE_TIMESCALEDB
         value: "false"
       - key: RENDER_BLUEPRINT_REVISION
-        value: "2026-09-04-mysql-1"
+        value: "2026-09-04-mysql-2"
       - key: MYSQL_HOST
         fromService:
           type: pserv
@@ -83,7 +84,7 @@ services:
       - key: REDIS_URL
         fromService:
           type: keyvalue
-          name: titan-x-redis
+          name: titan-x-redis-oregon
           property: connectionString
       - key: API_KEY
         generateValue: true
@@ -112,6 +113,7 @@ services:
     name: titan-x-mysql
     plan: starter
     runtime: docker
+    region: oregon
     dockerfilePath: ./docker/mysql/Dockerfile
     disk:
       name: mysql-data
@@ -128,7 +130,9 @@ services:
         generateValue: true
 
   - type: keyvalue
-    name: titan-x-redis
-    plan: free
+    name: titan-x-redis-oregon
+    plan: starter
+    region: oregon
     maxmemoryPolicy: allkeys-lru
+    persistenceMode: snapshot
     ipAllowList: []
