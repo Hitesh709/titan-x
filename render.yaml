@@ -21,7 +21,7 @@ services:
     plan: free
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn titan_x.main:app --host 0.0.0.0 --port 10000
+    startCommand: uvicorn titan_x.main:app --host 0.0.0.0 --port ${PORT:-10000}
     healthCheckPath: /api/v1/health/live
     envVars:
       - key: ENVIRONMENT
