@@ -1,6 +1,7 @@
 # TITAN X — Render Blueprint
 # Production stack: Next.js frontend, FastAPI backend, managed PostgreSQL and Redis.
 # DATABASE_URL is intentionally bound from the single managed titan-x-db resource.
+# FORCE BLUEPRINT RECONCILIATION: keep Render-managed database credentials authoritative.
 
 services:
   - type: web
