@@ -1,8 +1,8 @@
 # TITAN X — Render Blueprint
 # Production stack: Next.js frontend, FastAPI backend, managed PostgreSQL and Redis.
 # DATABASE_URL is intentionally bound from the single managed titan-x-db resource.
-# FORCE BLUEPRINT RECONCILIATION: keep Render-managed database credentials authoritative.
-# RECONCILE-2026-09-04: force a fresh Blueprint sync so fromDatabase references overwrite dashboard overrides.
+# Render Blueprint synchronization marker: changing this value forces reconciliation.
+# IMPORTANT: DATABASE_URL must remain Render-managed via fromDatabase.
 
 services:
   - type: web
@@ -18,6 +18,8 @@ services:
         value: production
       - key: NEXT_PUBLIC_API_URL
         value: https://titan-x-api.onrender.com/api/v1
+      - key: RENDER_BLUEPRINT_REVISION
+        value: "2026-09-04-db-sync-2"
 
   - type: web
     name: titan-x-api
@@ -59,6 +61,8 @@ services:
         value: "20"
       - key: ENABLE_TIMESCALEDB
         value: "false"
+      - key: RENDER_BLUEPRINT_REVISION
+        value: "2026-09-04-db-sync-2"
       - key: DATABASE_URL
         fromDatabase:
           name: titan-x-db
