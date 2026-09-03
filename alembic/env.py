@@ -3,11 +3,11 @@ from __future__ import annotations
 
 import asyncio
 from logging.config import fileConfig
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import urlsplit
 
 from alembic import context
 from sqlalchemy import pool
-from sqlalchemy.engine import Connection
+from sqlalchemy.engine import Connection, make_url
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from titan_x.core.config import get_settings
@@ -25,21 +25,12 @@ target_metadata = Base.metadata
 
 
 def normalized_database_url() -> str:
-    """Normalize Render/PostgreSQL URLs exactly like the runtime engine."""
-    raw = str(settings.database_url)
-    parsed = urlsplit(raw)
-    scheme = parsed.scheme.lower()
-    if scheme in {"postgres", "postgresql"}:
-        scheme = "postgresql+asyncpg"
-    elif scheme == "postgresql+asyncpg":
-        scheme = "postgresql+asyncpg"
-    else:
-        return raw
-
-    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
-    if "ssl" not in query:
-        query["ssl"] = "require"
-    return urlunsplit((scheme, parsed.netloc, parsed.path, urlencode(query), parsed.fragment))
+    """Normalize the configured database URL for the async SQLAlchemy driver."""
+    raw = settings.resolved_database_url
+    parsed = make_url(raw)
+    if parsed.get_backend_name() == "mysql" and not parsed.get_driver_name():
+        parsed = parsed.set(drivername="mysql+aiomysql")
+    return str(parsed)
 
 
 def alembic_config_from_settings() -> dict[str, str]:
@@ -78,7 +69,6 @@ async def run_async_migrations() -> None:
         cfg,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
-        connect_args={"server_settings": {"application_name": settings.app_name}},
     )
     try:
         async with connectable.connect() as connection:
