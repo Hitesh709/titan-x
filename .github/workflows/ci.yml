@@ -29,7 +29,7 @@ jobs:
           pip install -r requirements-dev.txt
           pip install ruff
       - name: Static checks with Ruff
-        run: ruff check src/titan_x tests --select E9,F821 --extend-per-file-ignores 'src/titan_x/models/*.py:F821'
+        run: ruff check src/titan_x tests --select E9,F821
 
   test:
     runs-on: ubuntu-latest
