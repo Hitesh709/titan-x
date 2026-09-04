@@ -38,24 +38,14 @@ async def _symbols(session):
 
 
 async def _load_persisted_cache(session, limit=100):
-    rows = (await session.execute(select(Recommendation).where(Recommendation.status == "active", Recommendation.recommendation_type == "intraday", Recommendation.source == "yahoo").order_by(Recommendation.generated_at.desc(), Recommendation.score.desc()).limit(limit))).scalars().all()
+    rows = (await session.execute(select(Recommendation).where(Recommendation.status == "active", Recommendation.recommendation_type == "intraday", Recommendation.source == "yahoo").order_by(Recommendation.generated_at.desc(), Recommendation.score.desc()).limit(min(limit, 100)))).scalars().all()
     result = []
     for r in rows:
         try:
             metadata = json.loads(r.metadata_json or "{}")
         except Exception:
             metadata = {}
-        result.append({
-            "id": r.id, "symbol": r.symbol, "yahoo_symbol": metadata.get("yahoo_symbol"),
-            "signal": r.signal, "direction": r.direction, "score": r.score,
-            "technical_pillar_score": metadata.get("technical_pillar_score", r.score),
-            "confidence": r.confidence, "current_price": r.current_price, "price_target": r.price_target,
-            "risk_level": r.risk_level, "timeframe": r.timeframe, "reasoning": r.reasoning,
-            "source": "yahoo", "generated_at": r.generated_at.isoformat() if r.generated_at else None,
-            "factors": metadata.get("factors"), "pillar_scores": metadata.get("pillar_scores"),
-            "evidence": metadata.get("evidence"), "data_points": metadata.get("data_points"),
-            "segment_id": metadata.get("segment_id"), "interval": metadata.get("interval", "15m"),
-        })
+        result.append({"id": r.id, "symbol": r.symbol, "yahoo_symbol": metadata.get("yahoo_symbol"), "signal": r.signal, "direction": r.direction, "score": r.score, "technical_pillar_score": metadata.get("technical_pillar_score", r.score), "confidence": r.confidence, "current_price": r.current_price, "price_target": r.price_target, "risk_level": r.risk_level, "timeframe": r.timeframe, "reasoning": r.reasoning, "source": "yahoo", "generated_at": r.generated_at.isoformat() if r.generated_at else None, "factors": metadata.get("factors"), "pillar_scores": metadata.get("pillar_scores"), "evidence": metadata.get("evidence"), "data_points": metadata.get("data_points"), "segment_id": metadata.get("segment_id"), "interval": metadata.get("interval", "15m")})
     return sorted(result, key=lambda x: x.get("score") or 0, reverse=True)
 
 
@@ -81,26 +71,10 @@ async def _intraday_segment(symbols, segment_id):
                 supporting = {}
                 try:
                     rec = ai_engine.build(symbol.split(".")[0], bars)
-                    supporting = {
-                        "overall_score": rec.get("score"),
-                        "pillar_scores": rec.get("pillar_scores") or rec.get("pillars") or rec.get("factors"),
-                        "confidence": rec.get("confidence"),
-                        "risk_level": rec.get("risk_level"),
-                        "signal": rec.get("signal"),
-                    }
+                    supporting = {"overall_score": rec.get("score"), "pillar_scores": rec.get("pillar_scores") or rec.get("pillars") or rec.get("factors"), "confidence": rec.get("confidence"), "risk_level": rec.get("risk_level"), "signal": rec.get("signal")}
                 except Exception:
                     supporting = {}
-                return {
-                    "symbol": symbol.split(".")[0], "yahoo_symbol": symbol,
-                    "signal": technical.label, "direction": technical.direction,
-                    "score": round(score, 2), "technical_pillar_score": round(score, 2),
-                    "confidence": round(score, 2), "current_price": quote.get("last_price"),
-                    "change": quote.get("change"), "change_percent": quote.get("change_percent"),
-                    "factors": technical.factors, "evidence": technical.evidence,
-                    "pillar_scores": supporting.get("pillar_scores"), "supporting_model": supporting,
-                    "data_points": len(points), "source": "yahoo", "segment_id": segment_id,
-                    "interval": "15m", "window": "intraday",
-                }
+                return {"symbol": symbol.split(".")[0], "yahoo_symbol": symbol, "signal": technical.label, "direction": technical.direction, "score": round(score, 2), "technical_pillar_score": round(score, 2), "confidence": round(score, 2), "current_price": quote.get("last_price"), "change": quote.get("change"), "change_percent": quote.get("change_percent"), "factors": technical.factors, "evidence": technical.evidence, "pillar_scores": supporting.get("pillar_scores"), "supporting_model": supporting, "data_points": len(points), "source": "yahoo", "segment_id": segment_id, "interval": "15m", "window": "intraday"}
             except Exception:
                 return None
 
@@ -117,20 +91,8 @@ async def _persist_scan_results(session_factory: async_sessionmaker, results):
         await session.execute(update(Recommendation).where(Recommendation.status == "active", Recommendation.recommendation_type == "intraday", Recommendation.source == "yahoo").values(status="superseded"))
         service = RecommendationService(session)
         for item in results:
-            metadata = {
-                "yahoo_symbol": item.get("yahoo_symbol"), "segment_id": item.get("segment_id"),
-                "factors": item.get("factors"), "evidence": item.get("evidence"),
-                "data_points": item.get("data_points"), "technical_pillar_score": item.get("technical_pillar_score"),
-                "pillar_scores": item.get("pillar_scores"), "supporting_model": item.get("supporting_model"),
-                "interval": "15m", "window": "intraday",
-            }
-            await service.create_recommendation(
-                symbol=item["symbol"], direction=item["direction"], signal=item["signal"],
-                confidence=item["confidence"], current_price=item.get("current_price"),
-                timeframe="intraday", reasoning="; ".join(item.get("evidence") or []),
-                recommendation_type="intraday", score=item["score"], source="yahoo",
-                metadata_json=json.dumps(metadata, default=str),
-            )
+            metadata = {"yahoo_symbol": item.get("yahoo_symbol"), "segment_id": item.get("segment_id"), "factors": item.get("factors"), "evidence": item.get("evidence"), "data_points": item.get("data_points"), "technical_pillar_score": item.get("technical_pillar_score"), "pillar_scores": item.get("pillar_scores"), "supporting_model": item.get("supporting_model"), "interval": "15m", "window": "intraday"}
+            await service.create_recommendation(symbol=item["symbol"], direction=item["direction"], signal=item["signal"], confidence=item["confidence"], current_price=item.get("current_price"), timeframe="intraday", reasoning="; ".join(item.get("evidence") or []), recommendation_type="intraday", score=item["score"], source="yahoo", metadata_json=json.dumps(metadata, default=str))
         await session.commit()
 
 
@@ -145,26 +107,18 @@ async def _run_cached_scan(symbols, session_factory):
             async def run_segment(chunk, segment_id):
                 try:
                     out = await _intraday_segment(chunk, segment_id)
-                    _cache_state["scanned"] += len(chunk)
-                    _cache_state["successful"] += len(out)
-                    _cache_state["failed"] += len(chunk) - len(out)
-                    _cache_state["segment_progress"][str(segment_id)] = "completed"
+                    _cache_state["scanned"] += len(chunk); _cache_state["successful"] += len(out); _cache_state["failed"] += len(chunk) - len(out); _cache_state["segment_progress"][str(segment_id)] = "completed"
                     return out
                 except Exception as exc:
-                    _cache_state["scanned"] += len(chunk)
-                    _cache_state["failed"] += len(chunk)
-                    _cache_state["segment_progress"][str(segment_id)] = f"failed: {exc}"
-                    return []
+                    _cache_state["scanned"] += len(chunk); _cache_state["failed"] += len(chunk); _cache_state["segment_progress"][str(segment_id)] = f"failed: {exc}"; return []
             parts = await asyncio.gather(*(run_segment(chunk, i + 1) for i, chunk in enumerate(segments)))
             results = sorted([item for part in parts for item in part], key=lambda x: x["score"], reverse=True)
             await _persist_scan_results(session_factory, results)
-            if results:
-                _intraday_cache = results
+            if results: _intraday_cache = results
             _cache_state["finished_at"] = datetime.now(timezone.utc).isoformat()
             return {"started": True, "universe": len(symbols), "scanned": len(symbols), "successful": len(results), "failed": _cache_state["failed"], "cache_count": len(_intraday_cache), "provider": "yahoo", "technical_threshold": TECHNICAL_THRESHOLD, "persisted": bool(results), "interval": "15m"}
         except Exception as exc:
-            _cache_state["last_error"] = str(exc)
-            raise
+            _cache_state["last_error"] = str(exc); raise
         finally:
             _cache_state["running"] = False
 
@@ -172,105 +126,75 @@ async def _run_cached_scan(symbols, session_factory):
 async def _start_delivery_background(session_factory):
     global _delivery_task, _delivery_last_attempt
     async with _delivery_lock:
-        if _delivery_task is not None and not _delivery_task.done():
-            return False
+        if _delivery_task is not None and not _delivery_task.done(): return False
         _delivery_last_attempt = datetime.now(timezone.utc)
         async def runner():
             try:
-                await run_universe_load(session_factory)
-                await run_background_scan(session_factory, max_age_minutes=0, limit=None)
+                await run_universe_load(session_factory); await run_background_scan(session_factory, max_age_minutes=0, limit=None)
             except Exception as exc:
                 import structlog
                 structlog.get_logger("recommendation.strict").error("background_delivery_scan_failed", error=str(exc))
-        _delivery_task = asyncio.create_task(runner())
-        return True
+        _delivery_task = asyncio.create_task(runner()); return True
 
 
 async def _strict_delivery_cache(session, limit):
     rows = (await session.execute(select(Recommendation).where(Recommendation.status == "active", Recommendation.source == "yahoo", Recommendation.recommendation_type == "LIVE_SCAN").order_by(Recommendation.generated_at.desc(), Recommendation.score.desc()).limit(3000))).scalars().all()
     result = []
     for r in rows:
-        try:
-            metadata = json.loads(r.metadata_json or "{}")
-        except Exception:
-            metadata = {}
+        try: metadata = json.loads(r.metadata_json or "{}")
+        except Exception: metadata = {}
         gate = metadata.get("fast_technical_gate") or {}
         technical = float(gate.get("delivery_score") or gate.get("technical_pillar_score") or 0)
-        if technical < TECHNICAL_THRESHOLD:
-            continue
-        result.append({
-            "id": r.id, "symbol": r.symbol, "direction": r.direction, "signal": r.signal,
-            "score": technical, "technical_pillar_score": technical, "confidence": r.confidence,
-            "current_price": r.current_price, "price_target": r.price_target, "risk_level": r.risk_level,
-            "source": "yahoo", "generated_at": r.generated_at.isoformat() if r.generated_at else None,
-            "interval": gate.get("interval", "1d"), "window": gate.get("window", "24h"),
-            "pillar_scores": metadata.get("pillar_scores"), "factors": metadata.get("factors"),
-            "evidence": metadata.get("evidence"), "indicators": metadata.get("indicators"),
-        })
-        if len(result) >= limit:
-            break
+        if technical < TECHNICAL_THRESHOLD: continue
+        result.append({"id": r.id, "symbol": r.symbol, "direction": r.direction, "signal": r.signal, "score": technical, "technical_pillar_score": technical, "confidence": r.confidence, "current_price": r.current_price, "price_target": r.price_target, "risk_level": r.risk_level, "source": "yahoo", "generated_at": r.generated_at.isoformat() if r.generated_at else None, "interval": gate.get("interval", "1d"), "window": gate.get("window", "24h"), "pillar_scores": metadata.get("pillar_scores"), "factors": metadata.get("factors"), "evidence": metadata.get("evidence"), "indicators": metadata.get("indicators")})
+        if len(result) >= limit: break
     return result
 
 
 def _scan_status_payload(status):
-    last = status.get("last") or {}
-    universe = (status.get("last_universe") or {}).get("total_active", 0)
+    last = status.get("last") or {}; universe = (status.get("last_universe") or {}).get("total_active", 0)
     return {"scanned": last.get("scanned", 0), "universe_size": universe, "progress_pct": round(100 * last.get("scanned", 0) / universe, 1) if universe else 0, "error": status.get("last_error")}
 
 
 @router.get("/recommendations/intraday")
-async def intraday_recommendations(segment: str = Query("equity", pattern=r"^(equity|fno)$"), limit: int = Query(100, ge=1, le=100), session=Depends(deps.get_session), session_factory=Depends(get_app_session_factory), _: User = Depends(deps.get_current_active_user)):
-    if segment == "fno":
-        raise HTTPException(400, "F&O universe is not enabled yet; use equity")
+async def intraday_recommendations(segment: str = Query("equity", pattern=r"^(equity|fno)$"), limit: int = Query(100, ge=1, le=3000), session=Depends(deps.get_session), session_factory=Depends(get_app_session_factory), _: User = Depends(deps.get_current_active_user)):
+    if segment == "fno": raise HTTPException(400, "F&O universe is not enabled yet; use equity")
     symbols = await _symbols(session)
-    if not symbols:
-        raise HTTPException(503, "No active Indian equity symbols available")
-    if not _intraday_cache:
-        _intraday_cache.extend(await _load_persisted_cache(session, 100))
-    if not _intraday_cache and not _cache_state["running"]:
-        asyncio.create_task(_run_cached_scan(symbols, session_factory))
-    return {"recommendations": _intraday_cache[:limit], "count": min(limit, len(_intraday_cache)), "universe_scanned": len(symbols), "scan_segments": SCAN_SEGMENTS, "cache_ready": bool(_intraday_cache), "scan_running": _cache_state["running"], "persistent_cache": True, "provider": "yahoo", "live": True, "strict_technical_threshold": TECHNICAL_THRESHOLD, "strict_gate": "technical_pillar>=95", "interval": "15m"}
+    if not symbols: raise HTTPException(503, "No active Indian equity symbols available")
+    if not _intraday_cache: _intraday_cache.extend(await _load_persisted_cache(session, 100))
+    if not _intraday_cache and not _cache_state["running"]: asyncio.create_task(_run_cached_scan(symbols, session_factory))
+    return {"recommendations": _intraday_cache[:min(limit, 100)], "count": min(limit, len(_intraday_cache), 100), "universe_scanned": len(symbols), "scan_segments": SCAN_SEGMENTS, "cache_ready": bool(_intraday_cache), "scan_running": _cache_state["running"], "persistent_cache": True, "provider": "yahoo", "live": True, "strict_technical_threshold": TECHNICAL_THRESHOLD, "strict_gate": "technical_pillar>=95", "interval": "15m"}
 
 
 @router.post("/recommendations/intraday/refresh")
 async def refresh_intraday_recommendations(segment: str = Query("equity", pattern=r"^(equity|fno)$"), session=Depends(deps.get_session), session_factory=Depends(get_app_session_factory), _: User = Depends(deps.get_current_active_user)):
-    if segment == "fno":
-        raise HTTPException(400, "F&O universe is not enabled yet; use equity")
+    if segment == "fno": raise HTTPException(400, "F&O universe is not enabled yet; use equity")
     symbols = await _symbols(session)
-    if not symbols:
-        raise HTTPException(503, "No active Indian equity symbols available")
-    if _cache_state["running"]:
-        return {"started": False, "reason": "A full-market intraday scan is already running", **_cache_state}
+    if not symbols: raise HTTPException(503, "No active Indian equity symbols available")
+    if _cache_state["running"]: return {"started": False, "reason": "A full-market intraday scan is already running", **_cache_state}
     asyncio.create_task(_run_cached_scan(symbols, session_factory))
     return {"started": True, "universe": len(symbols), "scan_segments": SCAN_SEGMENTS, "technical_threshold": TECHNICAL_THRESHOLD, "provider": "yahoo", "persistent_cache": True, "interval": "15m", "message": "Full-market intraday scan started; only Technical Pillar >=95 results are persisted"}
 
 
 @router.get("/recommendations/intraday/status")
 async def intraday_scan_status(session=Depends(deps.get_session), _: User = Depends(deps.get_current_active_user)):
-    if not _intraday_cache:
-        _intraday_cache.extend(await _load_persisted_cache(session, 100))
+    if not _intraday_cache: _intraday_cache.extend(await _load_persisted_cache(session, 100))
     return {"provider": "yahoo", "scan_segments": SCAN_SEGMENTS, "cache_count": len(_intraday_cache), "persistent_cache": True, "technical_threshold": TECHNICAL_THRESHOLD, "interval": "15m", **_cache_state}
 
 
 @router.get("/recommendations/strict")
-async def strict_recommendations(mode: str = Query("delivery", pattern=r"^(delivery|intraday)$"), segment: str = Query("equity", pattern=r"^(equity|fno)$"), limit: int = Query(100, ge=1, le=100), session=Depends(deps.get_session), session_factory=Depends(get_app_session_factory), _: User = Depends(deps.get_current_active_user)):
-    if segment == "fno":
-        raise HTTPException(400, "F&O universe is not enabled yet; use equity")
+async def strict_recommendations(mode: str = Query("delivery", pattern=r"^(delivery|intraday)$"), segment: str = Query("equity", pattern=r"^(equity|fno)$"), limit: int = Query(100, ge=1, le=3000), session=Depends(deps.get_session), session_factory=Depends(get_app_session_factory), _: User = Depends(deps.get_current_active_user)):
+    if segment == "fno": raise HTTPException(400, "F&O universe is not enabled yet; use equity")
     if mode == "intraday":
         symbols = await _symbols(session)
-        if not _intraday_cache:
-            _intraday_cache.extend(await _load_persisted_cache(session, 100))
-        if not _intraday_cache and not _cache_state["running"]:
-            asyncio.create_task(_run_cached_scan(symbols, session_factory))
-        return {"recommendations": _intraday_cache[:limit], "count": min(limit, len(_intraday_cache)), "mode": mode, "segment": segment, "provider": "yahoo", "scanning": _cache_state["running"], "scan_running": _cache_state["running"], "cache_ready": bool(_intraday_cache), "universe_scanned": len(symbols), "scan_segments": SCAN_SEGMENTS, "scan_status": {"scanned": _cache_state["scanned"], "universe_size": _cache_state["universe"], "progress_pct": round(100 * _cache_state["scanned"] / _cache_state["universe"], 1) if _cache_state["universe"] else 0, "error": _cache_state["last_error"]}, "persistent_cache": True, "live": True, "strict_technical_threshold": TECHNICAL_THRESHOLD, "strict_gate": "technical_pillar>=95", "interval": "15m"}
-
+        if not _intraday_cache: _intraday_cache.extend(await _load_persisted_cache(session, 100))
+        if not _intraday_cache and not _cache_state["running"]: asyncio.create_task(_run_cached_scan(symbols, session_factory))
+        return {"recommendations": _intraday_cache[:min(limit, 100)], "count": min(limit, len(_intraday_cache), 100), "mode": mode, "segment": segment, "provider": "yahoo", "scanning": _cache_state["running"], "scan_running": _cache_state["running"], "cache_ready": bool(_intraday_cache), "universe_scanned": len(symbols), "scan_segments": SCAN_SEGMENTS, "scan_status": {"scanned": _cache_state["scanned"], "universe_size": _cache_state["universe"], "progress_pct": round(100 * _cache_state["scanned"] / _cache_state["universe"], 1) if _cache_state["universe"] else 0, "error": _cache_state["last_error"]}, "persistent_cache": True, "live": True, "strict_technical_threshold": TECHNICAL_THRESHOLD, "strict_gate": "technical_pillar>=95", "interval": "15m"}
     recommendations = await _strict_delivery_cache(session, limit)
     delivery_running = _delivery_task is not None and not _delivery_task.done()
     if not recommendations and not delivery_running:
         recently_attempted = _delivery_last_attempt is not None and (datetime.now(timezone.utc) - _delivery_last_attempt).total_seconds() < 60
-        if not recently_attempted:
-            await _start_delivery_background(session_factory)
-            delivery_running = True
+        if not recently_attempted: await _start_delivery_background(session_factory); delivery_running = True
     status = get_scan_status()
     return {"recommendations": recommendations, "count": len(recommendations), "mode": mode, "segment": segment, "provider": "yahoo", "scanning": bool(status.get("running") or delivery_running), "scan_status": _scan_status_payload(status), "strict_technical_threshold": TECHNICAL_THRESHOLD, "strict_gate": "delivery_technical_pillar>=95", "interval": "1d", "window": "24h"}
 
