@@ -5,7 +5,7 @@ from titan_x.core.config import Settings, get_settings
 
 
 @pytest.mark.asyncio
-async def test_health_live_requires_api_key() -> None:
+async def test_health_live_is_public_for_render_probe() -> None:
     from titan_x.main import app
 
     original_settings = get_settings()
@@ -21,7 +21,8 @@ async def test_health_live_requires_api_key() -> None:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.get("/api/v1/health/live")
-    assert resp.status_code in (400, 401, 403), f"Expected 4xx auth error, got {resp.status_code}"
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "alive"
 
     app.dependency_overrides.clear()
     app.dependency_overrides[get_settings] = lambda: original_settings
