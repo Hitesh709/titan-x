@@ -24,7 +24,7 @@ class HistoricalDataValidator:
             raise HistoricalDataValidationError("start_date must be on or before end_date")
         if not prices:
             raise HistoricalDataValidationError(
-                f"Insufficient price data for {symbol}: no historical price data available between {start} and {end}"
+                f"No historical price data for {symbol}: no data available between {start} and {end}"
             )
 
         previous_date: date | None = None
