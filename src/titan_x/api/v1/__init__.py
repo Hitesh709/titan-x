@@ -28,6 +28,7 @@ _ROUTER_SPECS: tuple[tuple[str, str | None], ...] = (
     ("prices", None),
     ("dashboard", "router"),
     ("top_picks", "router"),
+    ("strict_recommendation", "router"),
     ("recommendation", "router"),
     ("intraday_recommendation", "router"),
     ("intraday", "intraday_router"),
