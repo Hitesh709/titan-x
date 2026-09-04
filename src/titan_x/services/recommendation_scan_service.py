@@ -192,12 +192,26 @@ class RecommendationScanService:
                         "technical_pillar_score": selected,
                         "delivery_score": selected,
                         "selected_score": selected,
+                        "direction": delivery.direction,
+                        "label": delivery.label,
                         "interval": "1d",
                         "window": "24h",
                     },
                 })
-                if rec.get("insufficient_data") or rec.get("no_trade"):
+                # The 95+ technical gate is the primary delivery qualification.
+                # A deep model may say HOLD/no_trade because its independent
+                # expected-return model is conservative; that must not erase a
+                # qualified technical signal. Keep the deep model's fields when
+                # present, but fall back to the transparent technical result.
+                if rec.get("insufficient_data"):
                     continue
+                if rec.get("no_trade"):
+                    rec["no_trade"] = False
+                    rec["signal"] = "strong_buy" if delivery.direction == "BUY" else "strong_sell" if delivery.direction == "SELL" else "hold"
+                    rec["score"] = selected
+                    rec["confidence"] = max(float(rec.get("confidence") or 0), selected)
+                    if not rec.get("risk_level"):
+                        rec["risk_level"] = "medium"
                 recommendations.append(rec)
             except Exception as exc:
                 async with counter_lock:
