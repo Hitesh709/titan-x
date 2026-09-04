@@ -25,8 +25,8 @@ async def test_market_close_job() -> None:
 @pytest.mark.asyncio
 async def test_market_data_ingestion_job(monkeypatch) -> None:
     async def fake_ingestion(_factory, **kwargs):
-        symbols = kwargs["symbols"]
-        return {"symbols_requested": len(symbols), "symbols_ok": len(symbols), "symbols_failed": 0, "inserted_total": 0, "errors": []}
+        assert kwargs["symbol"] in {"AAPL", "GOOGL"}
+        return {"symbols_requested": 1, "symbols_ok": 1, "symbols_failed": 0, "inserted_total": 0, "errors": []}
 
     import titan_x.services.market_data_service as market_data_service
     monkeypatch.setattr(market_data_service, "run_market_data_ingestion", fake_ingestion)
@@ -40,8 +40,8 @@ async def test_market_data_ingestion_job(monkeypatch) -> None:
 @pytest.mark.asyncio
 async def test_market_data_ingestion_default_symbols(monkeypatch) -> None:
     async def fake_ingestion(_factory, **kwargs):
-        symbols = kwargs["symbols"]
-        return {"symbols_requested": len(symbols), "symbols_ok": len(symbols), "symbols_failed": 0, "inserted_total": 0, "errors": []}
+        assert kwargs["symbol"] in {"RELIANCE", "TCS", "HDFCBANK"}
+        return {"symbols_requested": 1, "symbols_ok": 1, "symbols_failed": 0, "inserted_total": 0, "errors": []}
 
     import titan_x.services.market_data_service as market_data_service
     monkeypatch.setattr(market_data_service, "run_market_data_ingestion", fake_ingestion)
