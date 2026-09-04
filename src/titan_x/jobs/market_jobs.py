@@ -49,11 +49,14 @@ class MarketDataIngestionJob(ScheduledJob):
         result = await run_market_data_ingestion(
             factory,
             symbol=symbol,
+            symbols=symbols,
             max_symbols=payload.get("max_symbols", 100),
             lookback_days=payload.get("lookback_days", 365),
         )
         return {
             "symbols_requested": result.get("symbols_requested", len(symbols)),
+            "symbols_ingested": result.get("symbols_ok", 0),
+            "symbols": symbols,
             "symbols_ok": result.get("symbols_ok", 0),
             "symbols_failed": result.get("symbols_failed", 0),
             "inserted_total": result.get("inserted_total", 0),
