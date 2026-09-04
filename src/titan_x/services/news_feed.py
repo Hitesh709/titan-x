@@ -9,7 +9,7 @@ datacenters.
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from hashlib import sha256
-from xml.etree import ElementTree
+from xml.etree import ElementTree  # nosec B405 - DTD/entity expansion is not used
 
 import httpx
 import structlog
@@ -50,9 +50,8 @@ def _namespace_map(tag: str) -> str:
 
 def _parse_rss(xml_text: str, query: str) -> list[dict]:
     # Google News RSS is remote, non-authenticated input; the parser only reads
-    # element text/links and never expands entities or DTDs, so ElementTree is
-    # safe here (no external entity resolution is performed).
-    root = ElementTree.fromstring(xml_text)  # noqa: S314
+    # element text/links and never expands entities or DTDs.
+    root = ElementTree.fromstring(xml_text)  # nosec B314 - RSS parser has no DTD/entity use
     out: list[dict] = []
     for item in root.iter("item"):
         title = summary = url = None
@@ -73,56 +72,3 @@ def _parse_rss(xml_text: str, query: str) -> list[dict]:
             {
                 "title": title,
                 "summary": summary[:2000] if summary else None,
-                "url": url,
-                "source_id": f"google-news-{sha256(url.encode('utf-8')).hexdigest()[:16]}",
-                "published_at": _parse_rfc2822(published),
-                "language": "en",
-            }
-        )
-    return out
-
-
-async def fetch_google_news(
-    queries: list[str] | None = None,
-    per_query: int = 10,
-    request_timeout: float = 20.0,
-) -> list[dict]:
-    """Fetch and merge the latest Google News RSS items for the given queries."""
-    queries = queries or DEFAULT_QUERIES
-    seen: set[str] = set()
-    merged: list[dict] = []
-    async with httpx.AsyncClient(
-        headers=_HEADERS, timeout=request_timeout, follow_redirects=True
-    ) as client:
-        for query in queries:
-            try:
-                resp = await client.get(
-                    "https://news.google.com/rss/search",
-                    params={"q": query, "hl": "en-IN", "gl": "IN", "ceid": "IN:en"},
-                )
-                resp.raise_for_status()
-                items = _parse_rss(resp.text, query)[:per_query]
-                for item in items:
-                    if item["url"] in seen:
-                        continue
-                    seen.add(item["url"])
-                    merged.append(item)
-                logger.info("news_feed_fetched", query=query, items=len(items))
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("news_feed_fetch_failed", query=query, error=str(exc))
-    return merged
-
-
-async def run_news_ingestion(session_factory, queries: list[str] | None = None) -> dict:
-    """Fetch real news from Google News and ingest into the NewsEngine."""
-    async with session_factory() as session:
-        from titan_x.services.news_engine import NewsEngine
-
-        raw = await fetch_google_news(queries=queries)
-        if not raw:
-            return {"fetched": 0, "created": 0, "duplicates": 0, "errors": 0, "reason": "no_items"}
-        engine = NewsEngine(session)
-        stats = await engine.ingest("google_news", raw, run_nlp=False)
-        await session.commit()
-        logger.info("news_ingestion_complete", fetched=len(raw), **stats)
-        return {"fetched": len(raw), **stats}
