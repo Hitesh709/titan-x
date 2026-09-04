@@ -2,10 +2,9 @@
 set -euo pipefail
 
 # Render keeps /var/lib/mysql on a persistent disk. The official MySQL image
-# only applies MYSQL_* credentials during first initialization, so a later
-# Render credential change can leave the application unable to authenticate.
-# Before normal startup, repair the application user's password from the
-# currently injected MYSQL_PASSWORD without deleting or reinitializing data.
+# only applies MYSQL_* credentials during first initialization. If the
+# persistent database was initialized with an older password, synchronize the
+# application account before normal startup without deleting any data.
 
 DATADIR="${MYSQL_DATADIR:-/var/lib/mysql}"
 SOCKET="/tmp/mysql-render-recovery.sock"
@@ -17,14 +16,15 @@ cleanup_recovery() {
     kill "${RECOVERY_PID}" >/dev/null 2>&1 || true
     wait "${RECOVERY_PID}" >/dev/null 2>&1 || true
   fi
-  rm -f "${SOCKET}" "${SOCKET}-lock"
+  rm -f "${SOCKET}" "${SOCKET}-lock" /tmp/mysql-render-recovery.pid
 }
 
 trap cleanup_recovery EXIT
 
-# Only repair an already-initialized data directory. On a brand-new disk the
-# official image must perform its normal initialization using MYSQL_*.
-if [[ -n "${MYSQL_PASSWORD:-}" && -d "${DATADIR}/mysql" && -f "${DATADIR}/mysql/user.ibd" ]]; then
+# MySQL 8 does not reliably expose the old mysql/user.ibd path. The presence
+# of mysql.ibd indicates an initialized MySQL 8 data dictionary on the
+# persistent Render disk.
+if [[ -n "${MYSQL_PASSWORD:-}" && -f "${DATADIR}/mysql.ibd" ]]; then
   echo "[Render MySQL] Existing data directory detected; synchronizing titan_x credentials."
 
   mysqld \
@@ -36,8 +36,10 @@ if [[ -n "${MYSQL_PASSWORD:-}" && -d "${DATADIR}/mysql" && -f "${DATADIR}/mysql/
     >/tmp/mysql-render-recovery.log 2>&1 &
   RECOVERY_PID=$!
 
+  ready=0
   for _ in $(seq 1 60); do
     if mysqladmin --no-defaults --socket="${SOCKET}" ping >/dev/null 2>&1; then
+      ready=1
       break
     fi
     if ! kill -0 "${RECOVERY_PID}" 2>/dev/null; then
@@ -48,11 +50,15 @@ if [[ -n "${MYSQL_PASSWORD:-}" && -d "${DATADIR}/mysql" && -f "${DATADIR}/mysql/
     sleep 1
   done
 
-  mysqladmin --no-defaults --socket="${SOCKET}" ping >/dev/null 2>&1
+  if [[ "${ready}" != "1" ]]; then
+    echo "[Render MySQL] Recovery server did not become ready." >&2
+    cat /tmp/mysql-render-recovery.log >&2 || true
+    exit 1
+  fi
 
   mysql --no-defaults --socket="${SOCKET}" -uroot <<SQL
 FLUSH PRIVILEGES;
-ALTER USER 'titan_x'@'%' IDENTIFIED BY '${MYSQL_PASSWORD//'/''}';
+ALTER USER IF EXISTS 'titan_x'@'%' IDENTIFIED BY '${MYSQL_PASSWORD//'/''}';
 FLUSH PRIVILEGES;
 SQL
 
