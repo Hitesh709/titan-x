@@ -27,6 +27,6 @@ jobs:
           REDIS_URL: redis://localhost:6379/0
           API_KEY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
           JWT_SECRET_KEY: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-          TRUSTED_HOSTS: "*"
+          TRUSTED_HOSTS: "localhost,127.0.0.1"
           DOCS_ENABLED: "false"
         run: python -c "from titan_x.main import app; assert len(app.routes) > 0; print(f'STARTUP OK: {len(app.routes)} routes registered')"
