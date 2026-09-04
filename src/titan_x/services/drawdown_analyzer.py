@@ -1,5 +1,4 @@
 from collections.abc import Sequence
-from datetime import date
 from typing import Any
 
 
@@ -22,16 +21,13 @@ class DrawdownAnalyzer:
         points = sorted(equity_curve, key=lambda p: p["date"])
         peak_equity = float(points[0]["equity"])
         peak_date = points[0]["date"]
-        trough_date = None
-        recovery_date = None
         max_dd = 0.0
         max_dd_pct = 0.0
+        max_peak_date = None
+        max_trough_date = None
+        max_recovery_date = None
         current_start = None
-        current_trough = None
-        current_trough_equity = peak_equity
         in_drawdown_days = 0
-        best_duration = 0
-        best_recovery = None
 
         for point in points:
             equity = float(point["equity"])
@@ -39,25 +35,13 @@ class DrawdownAnalyzer:
 
             if equity >= peak_equity:
                 if current_start is not None:
-                    recovery_days = (current_date - current_start).days
-                    if recovery_days > best_duration:
-                        best_duration = recovery_days
-                    if recovery_days == (points[-1]["date"] - points[0]["date"]).days and best_recovery is None:
-                        best_recovery = current_date
+                    current_start = None
                 peak_equity = equity
                 peak_date = current_date
-                current_start = None
-                current_trough = None
-                current_trough_equity = equity
                 continue
 
             if current_start is None:
                 current_start = peak_date
-                current_trough = current_date
-                current_trough_equity = equity
-            elif equity < current_trough_equity:
-                current_trough = current_date
-                current_trough_equity = equity
 
             in_drawdown_days += 1
             dd = peak_equity - equity
@@ -65,28 +49,40 @@ class DrawdownAnalyzer:
             if dd > max_dd:
                 max_dd = dd
                 max_dd_pct = dd_pct
-                trough_date = current_date
+                max_peak_date = peak_date
+                max_trough_date = current_date
+                max_recovery_date = None
+
+        if max_peak_date is not None and max_trough_date is not None:
+            for point in points:
+                current_date = point["date"]
+                if current_date <= max_trough_date:
+                    continue
+                if float(point["equity"]) >= next(
+                    float(p["equity"])
+                    for p in points
+                    if p["date"] == max_peak_date
+                ):
+                    max_recovery_date = current_date
+                    break
 
         if current_start is not None:
             duration_days = (points[-1]["date"] - current_start).days
-            recovery_date = None
+        elif max_peak_date is not None and max_recovery_date is not None:
+            duration_days = (max_recovery_date - max_peak_date).days
         else:
-            duration_days = best_duration
-            recovery_date = best_recovery
-
-        if trough_date is None and max_dd == 0:
-            peak_date = None
+            duration_days = 0
 
         recovery_days = None
-        if trough_date is not None and recovery_date is not None and recovery_date >= trough_date:
-            recovery_days = (recovery_date - trough_date).days
+        if max_trough_date is not None and max_recovery_date is not None:
+            recovery_days = (max_recovery_date - max_trough_date).days
 
         return {
             "max_drawdown": max_dd,
             "max_drawdown_pct": max_dd_pct,
-            "peak_date": peak_date,
-            "trough_date": trough_date,
-            "recovery_date": recovery_date,
+            "peak_date": max_peak_date if max_dd > 0 else None,
+            "trough_date": max_trough_date,
+            "recovery_date": max_recovery_date,
             "duration_days": duration_days,
             "recovery_days": recovery_days,
             "in_drawdown_days": in_drawdown_days,
