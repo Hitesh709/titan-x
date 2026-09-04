@@ -61,7 +61,7 @@ if [[ -n "${MYSQL_PASSWORD:-}" && -f "${DATADIR}/mysql.ibd" ]]; then
 FLUSH PRIVILEGES;
 CREATE USER IF NOT EXISTS 'titan_x'@'%' IDENTIFIED BY '${escaped_password}';
 ALTER USER 'titan_x'@'%' IDENTIFIED BY '${escaped_password}';
-GRANT ALL PRIVILEGES ON \\`titan_x\\`.\\`*\\` TO 'titan_x'@'%';
+GRANT ALL PRIVILEGES ON titan_x.* TO 'titan_x'@'%';
 FLUSH PRIVILEGES;
 SQL
 
