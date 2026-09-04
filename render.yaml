@@ -1,6 +1,6 @@
 # TITAN X — Render Blueprint
-# Production stack: Next.js frontend, FastAPI backend, private MySQL 8 and Redis.
-# A fresh MySQL service is used so its generated credentials are initialized together.
+# Production stack: Next.js frontend, FastAPI backend, SQLite and Redis.
+# SQLite is intentionally used for the current Render deployment.
 
 services:
   - type: web
@@ -17,7 +17,7 @@ services:
       - key: NEXT_PUBLIC_API_URL
         value: https://titan-x-api-oregon.onrender.com/api/v1
       - key: RENDER_BLUEPRINT_REVISION
-        value: "2026-09-04-mysql-3"
+        value: "2026-09-04-sqlite-1"
 
   - type: web
     name: titan-x-api-oregon
@@ -36,10 +36,8 @@ services:
         value: "false"
       - key: UVICORN_WORKERS
         value: "1"
-      - key: DB_POOL_SIZE
-        value: "5"
-      - key: DB_MAX_OVERFLOW
-        value: "10"
+      - key: DATABASE_URL
+        value: sqlite+aiosqlite:///./titan_x.db
       - key: CORS_ORIGINS
         value: https://titan-x.onrender.com
       - key: FRONTEND_URL
@@ -61,26 +59,7 @@ services:
       - key: ENABLE_TIMESCALEDB
         value: "false"
       - key: RENDER_BLUEPRINT_REVISION
-        value: "2026-09-04-mysql-3"
-      - key: MYSQL_HOST
-        fromService:
-          type: pserv
-          name: titan-x-mysql-fresh
-          property: host
-      - key: MYSQL_PORT
-        fromService:
-          type: pserv
-          name: titan-x-mysql-fresh
-          property: port
-      - key: MYSQL_DATABASE
-        value: titan_x
-      - key: MYSQL_USER
-        value: titan_x
-      - key: MYSQL_PASSWORD
-        fromService:
-          type: pserv
-          name: titan-x-mysql-fresh
-          envVarKey: MYSQL_PASSWORD
+        value: "2026-09-04-sqlite-1"
       - key: REDIS_URL
         fromService:
           type: keyvalue
@@ -108,26 +87,6 @@ services:
         sync: false
       - key: BACKUP_S3_SECRET_KEY
         sync: false
-
-  - type: pserv
-    name: titan-x-mysql-fresh
-    plan: starter
-    runtime: docker
-    region: oregon
-    dockerfilePath: ./docker/mysql/Dockerfile
-    disk:
-      name: mysql-fresh-data
-      mountPath: /var/lib/mysql
-      sizeGB: 10
-    envVars:
-      - key: MYSQL_DATABASE
-        value: titan_x
-      - key: MYSQL_USER
-        value: titan_x
-      - key: MYSQL_PASSWORD
-        generateValue: true
-      - key: MYSQL_ROOT_PASSWORD
-        generateValue: true
 
   - type: keyvalue
     name: titan-x-redis-oregon
