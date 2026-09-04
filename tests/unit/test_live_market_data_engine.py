@@ -70,7 +70,11 @@ async def test_background_run_can_be_stopped() -> None:
 
 
 def test_invalid_payloads_are_rejected() -> None:
+    async def fetch(_symbol: str) -> dict:
+        return {"price": 1}
+
+    engine = LiveMarketDataEngine(fetch)
     with pytest.raises(ValueError):
-        LiveMarketDataEngine.normalize("ABC", {}, 1)
+        engine.normalize("ABC", {}, 1)
     with pytest.raises(ValueError):
-        LiveMarketDataEngine.normalize("ABC", {"price": 0}, 1)
+        engine.normalize("ABC", {"price": 0}, 1)
