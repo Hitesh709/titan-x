@@ -1,4 +1,4 @@
-const DEFAULT_API_BASE = "https://titan-x-api.onrender.com/api/v1"
+const DEFAULT_API_BASE = "https://titan-x-api-oregon.onrender.com/api/v1"
 const configuredApiBase = process.env.NEXT_PUBLIC_API_URL?.trim()
 const API_BASE = (configuredApiBase || DEFAULT_API_BASE).replace(/\/+$/, "")
 
