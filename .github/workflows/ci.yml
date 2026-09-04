@@ -64,7 +64,18 @@ jobs:
         run: |
           python -c 'from titan_x.main import app; assert len(app.routes) > 0; print(f"STARTUP OK: {len(app.routes)} routes registered")'
       - name: Run unit tests
-        run: pytest tests/unit -v --tb=short -x
+        run: |
+          set +e
+          pytest tests/unit -v --tb=short -x 2>&1 | tee unit-test.log
+          status=${PIPESTATUS[0]}
+          exit $status
+      - name: Upload unit test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-log
+          path: unit-test.log
+          if-no-files-found: ignore
       - name: Run integration tests
         run: pytest tests/integration -v --tb=short -x
       - name: Run smoke tests
