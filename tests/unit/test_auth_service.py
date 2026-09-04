@@ -80,7 +80,7 @@ async def test_logout_revokes_token(service: AuthService) -> None:
     await service.register(email="lo@test.com", password="Str0ng!Pass")
     _, _, _, jti = await service.login(email="lo@test.com", password="Str0ng!Pass")
     await service.logout(jti, 1)
-    with pytest.raises(ValueError, match="Invalid or revoked refresh token"):
+    with pytest.raises(ValueError, match="Refresh token reuse detected"):
         await service.refresh(jti, 1)
 
 
