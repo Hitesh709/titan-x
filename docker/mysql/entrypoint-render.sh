@@ -11,8 +11,7 @@ SOCKET="/tmp/mysql-render-recovery.sock"
 RECOVERY_PID=""
 
 cleanup_recovery() {
-  if [[ -n "${RECOVERY_PID}" ]] && kill -0 "${RECOVERY_PID}" 2>/dev/null; then
-    mysqladmin --no-defaults --socket="${SOCKET}" -uroot shutdown >/dev/null 2>&1 || true
+  if [[ -n "${RECOVERY_PID}" ]]; then
     kill "${RECOVERY_PID}" >/dev/null 2>&1 || true
     wait "${RECOVERY_PID}" >/dev/null 2>&1 || true
   fi
@@ -21,9 +20,8 @@ cleanup_recovery() {
 
 trap cleanup_recovery EXIT
 
-# MySQL 8 does not reliably expose the old mysql/user.ibd path. The presence
-# of mysql.ibd indicates an initialized MySQL 8 data dictionary on the
-# persistent Render disk.
+# A persistent MySQL 8 datadir contains mysql.ibd. Do not delete or recreate
+# the datadir: it contains the application's existing database data.
 if [[ -n "${MYSQL_PASSWORD:-}" && -f "${DATADIR}/mysql.ibd" ]]; then
   echo "[Render MySQL] Existing data directory detected; synchronizing titan_x credentials."
 
@@ -38,12 +36,12 @@ if [[ -n "${MYSQL_PASSWORD:-}" && -f "${DATADIR}/mysql.ibd" ]]; then
 
   ready=0
   for _ in $(seq 1 60); do
-    if mysqladmin --no-defaults --socket="${SOCKET}" ping >/dev/null 2>&1; then
+    if [[ -S "${SOCKET}" ]] && mysqladmin --no-defaults --protocol=socket --socket="${SOCKET}" ping >/dev/null 2>&1; then
       ready=1
       break
     fi
     if ! kill -0 "${RECOVERY_PID}" 2>/dev/null; then
-      echo "[Render MySQL] Recovery server failed to start." >&2
+      echo "[Render MySQL] Recovery server exited before becoming ready." >&2
       cat /tmp/mysql-render-recovery.log >&2 || true
       exit 1
     fi
@@ -56,9 +54,14 @@ if [[ -n "${MYSQL_PASSWORD:-}" && -f "${DATADIR}/mysql.ibd" ]]; then
     exit 1
   fi
 
-  mysql --no-defaults --socket="${SOCKET}" -uroot <<SQL
+  escaped_password="${MYSQL_PASSWORD//\\/\\\\}"
+  escaped_password="${escaped_password//'/''}"
+
+  mysql --no-defaults --protocol=socket --socket="${SOCKET}" -uroot <<SQL
 FLUSH PRIVILEGES;
-ALTER USER IF EXISTS 'titan_x'@'%' IDENTIFIED BY '${MYSQL_PASSWORD//'/''}';
+CREATE USER IF NOT EXISTS 'titan_x'@'%' IDENTIFIED BY '${escaped_password}';
+ALTER USER 'titan_x'@'%' IDENTIFIED BY '${escaped_password}';
+GRANT ALL PRIVILEGES ON \\`titan_x\\`.\\`*\\` TO 'titan_x'@'%';
 FLUSH PRIVILEGES;
 SQL
 
