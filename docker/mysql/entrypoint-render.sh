@@ -36,14 +36,9 @@ if [[ -n "${MYSQL_PASSWORD:-}" && -f "${DATADIR}/mysql.ibd" ]]; then
 
   ready=0
   for _ in $(seq 1 60); do
-    if [[ -S "${SOCKET}" ]] && mysqladmin --no-defaults --protocol=socket --socket="${SOCKET}" ping >/dev/null 2>&1; then
+    if [[ -S "${SOCKET}" ]] && mysql --no-defaults --protocol=socket --socket="${SOCKET}" -uroot -e "SELECT 1" >/dev/null 2>&1; then
       ready=1
       break
-    fi
-    if ! kill -0 "${RECOVERY_PID}" 2>/dev/null; then
-      echo "[Render MySQL] Recovery server exited before becoming ready." >&2
-      cat /tmp/mysql-render-recovery.log >&2 || true
-      exit 1
     fi
     sleep 1
   done
