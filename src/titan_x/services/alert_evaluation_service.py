@@ -139,14 +139,17 @@ class AlertEvaluationService:
         return False
 
     async def _get_latest_price(self, symbol: str) -> float | None:
+        # Prefer persisted market data so alerts remain deterministic when a live provider is unavailable.
+        value = (await self._session.execute(select(DailyPrice.close).where(DailyPrice.symbol == symbol.upper()).order_by(desc(DailyPrice.trade_date)).limit(1))).scalar_one_or_none()
+        if value is not None and float(value) > 0:
+            return float(value)
         try:
             value = (await self._market_data.get_quote(symbol)).get("last_price")
             if value is not None and float(value) > 0:
                 return float(value)
         except Exception:
             logger.warning("live_alert_price_unavailable", symbol=symbol)
-        value = (await self._session.execute(select(DailyPrice.close).where(DailyPrice.symbol == symbol.upper()).order_by(desc(DailyPrice.trade_date)).limit(1))).scalar_one_or_none()
-        return float(value) if value is not None and float(value) > 0 else None
+        return None
 
     async def _get_prev_price(self, symbol: str) -> float | None:
         value = (await self._session.execute(select(DailyPrice.close).where(DailyPrice.symbol == symbol.upper()).order_by(desc(DailyPrice.trade_date)).offset(1).limit(1))).scalar_one_or_none()
