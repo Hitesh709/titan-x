@@ -84,7 +84,9 @@ export function IntradayRecommendations() {
   const load = useCallback(async (retryWhileScanning = true) => {
     setError(null)
     try {
-      const res = await api.get<StrictResponse>(`/recommendations/strict?mode=intraday&segment=${segment}&limit=3000`)
+      // Backend exposes at most 100 persisted strict recommendations; keep the
+      // frontend request aligned with that contract to prevent FastAPI 422s.
+      const res = await api.get<StrictResponse>(`/recommendations/strict?mode=intraday&segment=${segment}&limit=100`)
       const normalized: StrictResponse = { ...res, recommendations: Array.isArray(res.recommendations) ? res.recommendations : [] }
       setData(normalized)
       try { localStorage.setItem(cacheKey, JSON.stringify(normalized)) } catch { /* optional */ }
