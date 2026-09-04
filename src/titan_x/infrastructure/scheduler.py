@@ -1,11 +1,10 @@
 import asyncio
-import json
-import time
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import structlog
+from croniter import croniter
 from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -72,9 +71,13 @@ class Scheduler:
         await self._redis.expire(lock_key, 300)
 
         try:
+            next_run = self._calculate_next_run(job_def, now)
             job_def.last_run_at = now
             job_def.run_count += 1
             job_def.last_status = "running"
+            # Advance the schedule before enqueueing so a job cannot be
+            # dispatched repeatedly while the worker is processing it.
+            job_def.next_run_at = next_run
             async with self._session_factory() as session:
                 session.add(job_def)
                 await session.commit()
@@ -113,7 +116,10 @@ class Scheduler:
                 job_def.failure_count += 1
                 job_def.last_error = error
 
-            job_def.next_run_at = self._calculate_next_run(job_def)
+            # Recalculate from the completion time only when the previous
+            # dispatch did not already advance the schedule.
+            if job_def.next_run_at is None or job_def.next_run_at <= datetime.now(timezone.utc):
+                job_def.next_run_at = self._calculate_next_run(job_def)
             session.add(job_def)
 
             execution = JobExecution(
@@ -127,24 +133,28 @@ class Scheduler:
             await session.commit()
             logger.info("job_completion_recorded", job_id=job_id, status=status)
 
-    def _calculate_next_run(self, job_def: Job) -> datetime | None:
+    def _calculate_next_run(self, job_def: Job, now: datetime | None = None) -> datetime | None:
         if not job_def.enabled:
             return None
-        now = datetime.now(timezone.utc)
+        now = now or datetime.now(timezone.utc)
         if job_def.schedule_type == "daily" and job_def.schedule_time:
             parts = job_def.schedule_time.split(":")
             hour, minute = int(parts[0]), int(parts[1])
             next_run = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
             if next_run <= now:
-                next_run = next_run.replace(day=next_run.day + 1)
+                next_run += timedelta(days=1)
             return next_run
         if job_def.schedule_type == "cron" and job_def.cron_expr:
-            return now.replace(minute=now.minute + 1, second=0, microsecond=0)
+            try:
+                return croniter(job_def.cron_expr, now).get_next(datetime)
+            except (ValueError, KeyError) as exc:
+                logger.error("invalid_cron_expression", job_id=job_def.id, expression=job_def.cron_expr, error=str(exc))
+                return None
         if job_def.schedule_type == "market":
-            tomorrow = now.replace(hour=0, minute=0, second=0, microsecond=0)
-            if now.hour >= 21:
-                tomorrow = tomorrow.replace(day=tomorrow.day + 1)
-            return tomorrow.replace(hour=9, minute=30)
+            next_run = now.replace(hour=9, minute=30, second=0, microsecond=0)
+            if now >= next_run:
+                next_run += timedelta(days=1)
+            return next_run
         return None
 
     async def stop(self) -> None:
