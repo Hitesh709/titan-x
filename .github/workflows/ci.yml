@@ -29,7 +29,19 @@ jobs:
           pip install -r requirements-dev.txt
           pip install ruff
       - name: Lint with Ruff
-        run: ruff check src tests
+        run: |
+          set +e
+          ruff check src tests --output-format=json > ruff-report.json
+          status=$?
+          cat ruff-report.json
+          exit $status
+      - name: Upload Ruff report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ruff-report
+          path: ruff-report.json
+          if-no-files-found: ignore
       - name: Format check
         run: ruff format --check src tests
 
