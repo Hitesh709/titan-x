@@ -12,6 +12,7 @@ dependencies = [
   "alembic==1.16.5",
   "argon2-cffi==25.1.0",
   "bcrypt==4.3.0",
+  "croniter>=6.0.0",
   "cryptography>=46.0.0,<47.0.0",
   "email-validator==2.2.0",
   "fastapi==0.116.1",
@@ -28,8 +29,6 @@ dependencies = [
   "structlog==25.4.0",
   "uvicorn[standard]==0.35.0",
 ]
-
-[project.scripts]
 
 [project.optional-dependencies]
 agent = ["openai>=1.0.0", "anthropic>=0.30.0", "typer>=0.12.0", "rich>=13.0.0", "httpx>=0.28.0"]
