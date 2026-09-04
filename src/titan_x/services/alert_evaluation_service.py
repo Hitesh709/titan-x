@@ -141,10 +141,12 @@ class AlertEvaluationService:
     async def _get_latest_price(self, symbol: str) -> float | None:
         try:
             value = (await self._market_data.get_quote(symbol)).get("last_price")
-            return float(value) if value is not None and float(value) > 0 else None
+            if value is not None and float(value) > 0:
+                return float(value)
         except Exception:
             logger.warning("live_alert_price_unavailable", symbol=symbol)
-            return None
+        value = (await self._session.execute(select(DailyPrice.close).where(DailyPrice.symbol == symbol.upper()).order_by(desc(DailyPrice.trade_date)).limit(1))).scalar_one_or_none()
+        return float(value) if value is not None and float(value) > 0 else None
 
     async def _get_prev_price(self, symbol: str) -> float | None:
         value = (await self._session.execute(select(DailyPrice.close).where(DailyPrice.symbol == symbol.upper()).order_by(desc(DailyPrice.trade_date)).offset(1).limit(1))).scalar_one_or_none()
