@@ -47,7 +47,6 @@ from titan_x.services.macro_service import MacroService
 from titan_x.services.microstructure_service import MicrostructureService
 from titan_x.services.regime_detection_service import RegimeDetectionService
 from titan_x.services.user_service import UserService
-from titan_x.services.timescaledb_service import TimescaleDBService
 from titan_x.services.trading_calendar_service import TradingCalendarService
 from titan_x.services.valuation_service import ValuationService
 from titan_x.services.event_intelligence_service import EventIntelligenceService
@@ -122,7 +121,6 @@ __all__ = [
     "RankingService",
     "MicrostructureService",
     "RegimeDetectionService",
-    "TimescaleDBService",
     "TradingCalendarService",
     "ValuationService",
     "EventIntelligenceService",
