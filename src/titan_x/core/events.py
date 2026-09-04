@@ -77,13 +77,14 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
         except asyncio.CancelledError:
             raise
         except Exception:
-            # Never hold the web process in lifespan startup waiting for a
-            # managed database. Render must be able to bind and probe the
-            # public liveness endpoint while Postgres recovers or credentials
-            # are corrected.
             logger.exception("database_initialization_failed")
 
     app.state.database_init_task = asyncio.create_task(_initialize_database())
+
+    # Database-backed background services must not start before the SQLite
+    # schema exists. This prevents the scheduler/worker race where they query
+    # the jobs table while database initialization is still in progress.
+    await app.state.database_init_task
 
     try:
         from titan_x.services.recommendation_scan_service import run_universe_load
@@ -190,7 +191,7 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
     else:
         app.state.task_queue = None
 
-    if settings.scheduler_enabled and redis is not None:
+    if settings.scheduler_enabled and redis is not None and app.state.database_ready.is_set():
         scheduler = Scheduler(
             redis=redis,
             task_queue=app.state.task_queue,
