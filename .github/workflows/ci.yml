@@ -87,14 +87,21 @@ jobs:
       - name: Install dependencies
         run: pip install bandit safety
       - name: Bandit security scan
-        run: bandit -r src/titan_x -f json -o bandit-report.json
-      - name: Safety dependency scan
-        run: safety check -r requirements.txt
+        run: |
+          set +e
+          bandit -r src/titan_x -f json -o bandit-report.json
+          status=$?
+          cat bandit-report.json
+          exit $status
       - name: Upload Bandit report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: bandit-report
           path: bandit-report.json
+          if-no-files-found: ignore
+      - name: Safety dependency scan
+        run: safety check -r requirements.txt
 
   build:
     runs-on: ubuntu-latest
