@@ -20,8 +20,9 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = Field(default=8000, ge=1, le=65535)
 
-    # DATABASE_URL remains supported for local/dev deployments. Production can
-    # instead provide the individual MySQL_* variables supplied by Render.
+    # DATABASE_URL remains supported for local/dev deployments. When the
+    # individual MySQL_* variables are supplied (as on Render), they take
+    # precedence so a stale PostgreSQL DATABASE_URL cannot override MySQL.
     database_url: AnyUrl | None = None
     mysql_host: str | None = None
     mysql_port: int = Field(default=3306, ge=1, le=65535)
@@ -140,19 +141,26 @@ class Settings(BaseSettings):
 
     @property
     def resolved_database_url(self) -> str:
+        # Render production supplies MYSQL_* variables. Prefer them whenever
+        # complete, even if an obsolete DATABASE_URL is still present.
+        mysql_config = (self.mysql_host, self.mysql_database, self.mysql_user, self.mysql_password)
+        if all(mysql_config):
+            return str(
+                URL.create(
+                    "mysql+aiomysql",
+                    username=self.mysql_user,
+                    password=self.mysql_password.get_secret_value(),
+                    host=self.mysql_host,
+                    port=self.mysql_port,
+                    database=self.mysql_database,
+                )
+            )
+
         if self.database_url is not None:
             return str(self.database_url)
-        if not all((self.mysql_host, self.mysql_database, self.mysql_user, self.mysql_password)):
-            raise ValueError("Database configuration is incomplete: provide DATABASE_URL or all MYSQL_* variables")
-        return str(
-            URL.create(
-                "mysql+aiomysql",
-                username=self.mysql_user,
-                password=self.mysql_password.get_secret_value(),
-                host=self.mysql_host,
-                port=self.mysql_port,
-                database=self.mysql_database,
-            )
+
+        raise ValueError(
+            "Database configuration is incomplete: provide all MYSQL_* variables or DATABASE_URL"
         )
 
 
