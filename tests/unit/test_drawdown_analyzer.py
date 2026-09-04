@@ -13,10 +13,10 @@ def test_drawdown_peak_trough_and_recovery():
 
     assert result["max_drawdown"] == 20
     assert result["max_drawdown_pct"] == 18.181818181818183
-    assert result["peak_date"] == date(2026, 1, 6)
+    assert result["peak_date"] == date(2026, 1, 2)
     assert result["trough_date"] == date(2026, 1, 3)
-    assert result["recovery_date"] is None
-    assert result["recovery_days"] is None
+    assert result["recovery_date"] == date(2026, 1, 5)
+    assert result["recovery_days"] == 2
 
 
 def test_drawdown_recovery_period():
@@ -24,6 +24,7 @@ def test_drawdown_recovery_period():
 
     assert result["max_drawdown"] == 30
     assert result["max_drawdown_pct"] == 25
+    assert result["peak_date"] == date(2026, 1, 2)
     assert result["trough_date"] == date(2026, 1, 4)
     assert result["recovery_date"] == date(2026, 1, 5)
     assert result["recovery_days"] == 1
