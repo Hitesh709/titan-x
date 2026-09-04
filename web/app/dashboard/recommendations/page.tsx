@@ -14,6 +14,7 @@ type SortDir = "asc" | "desc"
 type StrictDeliveryResponse = { recommendations: StockRecommendation[]; strict_technical_threshold?: number; strict_gate?: string; scanning?: boolean; scan_status?: { scanned?: number; universe_size?: number; progress_pct?: number; error?: string | null } }
 
 const DELIVERY_CACHE_KEY = "titanx.strict.delivery.equity.v2"
+const DELIVERY_TECHNICAL_THRESHOLD = 80
 const riskRank = (risk?: string | null) => risk === "Low" ? 1 : risk === "Medium" ? 2 : risk === "High" ? 3 : 0
 
 export default function RecommendationsPage() {
@@ -46,7 +47,7 @@ export default function RecommendationsPage() {
       } else if (res.scan_status?.error) {
         setScanInfo(`Scan stopped: ${res.scan_status.error}`)
       } else if (res.recommendations?.length) {
-        setScanInfo(`Full-market delivery scan complete: ${res.recommendations.length} stock(s) with Delivery Technical Pillar ≥95.`)
+        setScanInfo(`Full-market delivery scan complete: ${res.recommendations.length} stock(s) with Delivery Technical Pillar ≥${res.strict_technical_threshold ?? DELIVERY_TECHNICAL_THRESHOLD}.`)
       } else {
         setScanInfo("No saved recommendations found. Starting the full-market delivery scan…")
       }
@@ -65,7 +66,7 @@ export default function RecommendationsPage() {
     setScanning(true)
     setLoading(true)
     setError(null)
-    setScanInfo("Starting full-market delivery scan across the active NSE/BSE universe…")
+    setScanInfo("Starting full-market delivery scan across the active NSE universe…")
     try {
       await api.post("/recommendations/scan?sync=false&limit=3000", {})
       await load(true)
@@ -146,7 +147,7 @@ export default function RecommendationsPage() {
   const buyCount = recommendations.filter((r) => r.direction === "BUY").length
   const sellCount = recommendations.filter((r) => r.direction === "SELL").length
   const neutralCount = recommendations.length - buyCount - sellCount
-  const avgConfidence = recommendations.length === 0 ? 0 : Math.round(recommendations.reduce((s, r) => s + (r.confidence ?? 0), 0) / recommendations.length)
+  const avgConfidence = recommendations.length === 0 ? 0 : Math.round((recommendations.reduce((s, r) => s + (r.confidence ?? 0), 0) / recommendations.length) * 100)
 
   const sortButton = (key: SortKey, label: string) => <button onClick={() => toggleSort(key)} className={`px-2 py-1 rounded border ${sortKey === key ? "border-titan-500 text-titan-300" : "border-white/10 text-gray-400"}`}>{label} {sortKey === key ? (sortDir === "asc" ? <ArrowUp size={11} className="inline" /> : <ArrowDown size={11} className="inline" />) : null}</button>
 
@@ -156,12 +157,12 @@ export default function RecommendationsPage() {
     {mode === "intraday" ? <IntradayRecommendations key={intradayRefreshKey} /> : <>
       {error && !scanning && <WidgetError message={error} onRetry={() => void load(false)} />}
       {scanInfo && <div className="glass-card p-3 text-sm text-titan-300 border border-titan-500/20">{scanInfo}</div>}
-      <div className="glass-card p-3 text-xs text-titan-300 border border-titan-500/20">Delivery strict gate: <b>Delivery Technical Pillar Score ≥95</b>. Intraday Technical Pillar is independent and is not required for Delivery. Recommendations are saved on the server and browser cache is only a display optimization.</div>
+      <div className="glass-card p-3 text-xs text-titan-300 border border-titan-500/20">Delivery gate: <b>Delivery Technical Pillar Score ≥{DELIVERY_TECHNICAL_THRESHOLD}</b>. Intraday Technical Pillar is independent and is not required for Delivery. Recommendations are saved on the server and browser cache is only a display optimization.</div>
       <SymbolAnalyzer />
       {loading && recommendations.length === 0 ? <div className="glass-card p-8 text-center text-gray-400">Starting the full-market delivery scan…</div> : <>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4"><StatCard label="Buy signals" value={buyCount} tone="text-emerald-400" icon={<TrendingUp size={16} />} /><StatCard label="Sell signals" value={sellCount} tone="text-red-400" icon={<TrendingDown size={16} />} /><StatCard label="Neutral" value={neutralCount} tone="text-gray-400" icon={<Minus size={16} />} /><StatCard label="Avg confidence" value={avgConfidence} tone="text-titan-400" icon={<Zap size={16} />} /></div>
         <div className="flex flex-wrap items-center gap-3"><div className="relative w-full sm:w-64"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter by symbol…" className="input-field w-full text-sm pl-9" /></div><div className="flex flex-wrap items-center gap-2 text-xs text-gray-500"><span>Sort:</span>{sortButton("technical", "Technical")}{sortButton("risk", "Risk")}{sortButton("confidence", "Confidence")}{sortButton("return", "Return")}{sortButton("symbol", "Symbol")}</div></div>
-        {filtered.length === 0 ? <div className="glass-card p-10 text-center"><Brain size={28} className="mx-auto text-titan-500/60 mb-3" /><p className="text-gray-400">No stock currently has a Delivery Technical Pillar Score ≥95.</p><p className="text-gray-600 text-xs mt-2">Titan X does not require the Intraday Technical Pillar for Delivery recommendations.</p><button onClick={handleScan} className="btn-primary mt-4 text-sm inline-flex items-center gap-2"><Play size={14} /> Run fresh delivery market scan</button></div> : <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">{filtered.map((rec) => <RecommendationCard key={rec.id} rec={rec} />)}</div>}
+        {filtered.length === 0 ? <div className="glass-card p-10 text-center"><Brain size={28} className="mx-auto text-titan-500/60 mb-3" /><p className="text-gray-400">No stock currently has a Delivery Technical Pillar Score ≥{DELIVERY_TECHNICAL_THRESHOLD}.</p><p className="text-gray-600 text-xs mt-2">Titan X does not require the Intraday Technical Pillar for Delivery recommendations.</p><button onClick={handleScan} className="btn-primary mt-4 text-sm inline-flex items-center gap-2"><Play size={14} /> Run fresh delivery market scan</button></div> : <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">{filtered.map((rec) => <RecommendationCard key={rec.id} rec={rec} />)}</div>}
       </>}
     </>}
   </div>
