@@ -1,6 +1,9 @@
 # TITAN X — Render Blueprint
 # Production stack: Next.js frontend, FastAPI backend, SQLite and Redis.
 # SQLite is intentionally used for the current Render deployment.
+# The API uses a paid instance because Render Free web services cannot attach
+# persistent disks. The disk keeps the SQLite database durable across deploys
+# and restarts.
 
 services:
   - type: web
@@ -17,16 +20,20 @@ services:
       - key: NEXT_PUBLIC_API_URL
         value: https://titan-x-api-oregon.onrender.com/api/v1
       - key: RENDER_BLUEPRINT_REVISION
-        value: "2026-09-04-sqlite-1"
+        value: "2026-09-04-sqlite-2"
 
   - type: web
     name: titan-x-api-oregon
-    plan: free
+    plan: starter
     runtime: python
     region: oregon
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn titan_x.main:app --host 0.0.0.0 --port ${PORT:-10000}
     healthCheckPath: /api/v1/health/live
+    disk:
+      name: titan-x-sqlite-data
+      mountPath: /var/data
+      sizeGB: 1
     envVars:
       - key: ENVIRONMENT
         value: production
@@ -37,7 +44,7 @@ services:
       - key: UVICORN_WORKERS
         value: "1"
       - key: DATABASE_URL
-        value: sqlite+aiosqlite:///./titan_x.db
+        value: sqlite+aiosqlite:////var/data/titan_x.db
       - key: CORS_ORIGINS
         value: https://titan-x.onrender.com
       - key: FRONTEND_URL
@@ -59,7 +66,7 @@ services:
       - key: ENABLE_TIMESCALEDB
         value: "false"
       - key: RENDER_BLUEPRINT_REVISION
-        value: "2026-09-04-sqlite-1"
+        value: "2026-09-04-sqlite-2"
       - key: REDIS_URL
         fromService:
           type: keyvalue
