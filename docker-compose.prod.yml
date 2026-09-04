@@ -1,6 +1,9 @@
 include:
   - docker-compose.yml
 
+# Production reverse proxy. Background jobs run inside the API process on the
+# current SQLite/Render architecture; no separate worker or scheduler service
+# is defined here.
 services:
   nginx:
     image: nginx:1.27-alpine
@@ -22,55 +25,8 @@ services:
     networks:
       - titan_net
 
-  worker:
-    build:
-      context: .
-      dockerfile: Dockerfile.worker
-    image: titan-x-worker:${APP_VERSION:-0.1.0}
-    env_file:
-      - .env
-    depends_on:
-      redis:
-        condition: service_healthy
-    restart: unless-stopped
-    deploy:
-      replicas: ${WORKER_REPLICAS:-2}
-      resources:
-        limits:
-          cpus: "1.0"
-          memory: 512M
-        reservations:
-          cpus: "0.5"
-          memory: 256M
-    networks:
-      - titan_net
-
-  scheduler:
-    build:
-      context: .
-      dockerfile: Dockerfile.worker
-    image: titan-x-worker:${APP_VERSION:-0.1.0}
-    env_file:
-      - .env
-    environment:
-      SERVICE_MODE: scheduler
-    depends_on:
-      redis:
-        condition: service_healthy
-    restart: unless-stopped
-    deploy:
-      replicas: 1
-      resources:
-        limits:
-          cpus: "0.5"
-          memory: 256M
-    networks:
-      - titan_net
-    command: ["python", "-m", "titan_x.infrastructure.scheduler"]
-
 volumes:
   nginx_logs:
-  redis_data:
 
 networks:
   titan_net:
