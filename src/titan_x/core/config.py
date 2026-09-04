@@ -3,7 +3,6 @@ from typing import Literal
 
 from pydantic import AnyUrl, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from sqlalchemy.engine import URL
 
 
 class Settings(BaseSettings):
@@ -20,15 +19,9 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = Field(default=8000, ge=1, le=65535)
 
-    # DATABASE_URL remains supported for local/dev deployments. When the
-    # individual MySQL_* variables are supplied (as on Render), they take
-    # precedence so a stale PostgreSQL DATABASE_URL cannot override MySQL.
-    database_url: AnyUrl | None = None
-    mysql_host: str | None = None
-    mysql_port: int = Field(default=3306, ge=1, le=65535)
-    mysql_database: str | None = None
-    mysql_user: str | None = None
-    mysql_password: SecretStr | None = None
+    # Titan X uses SQLite. DATABASE_URL may override the default for local/test
+    # environments, but production Render is explicitly configured below.
+    database_url: AnyUrl = "sqlite+aiosqlite:///./titan_x.db"
 
     redis_url: AnyUrl
     api_key: SecretStr
@@ -141,27 +134,7 @@ class Settings(BaseSettings):
 
     @property
     def resolved_database_url(self) -> str:
-        # Render production supplies MYSQL_* variables. Prefer them whenever
-        # complete, even if an obsolete DATABASE_URL is still present.
-        mysql_config = (self.mysql_host, self.mysql_database, self.mysql_user, self.mysql_password)
-        if all(mysql_config):
-            return str(
-                URL.create(
-                    "mysql+aiomysql",
-                    username=self.mysql_user,
-                    password=self.mysql_password.get_secret_value(),
-                    host=self.mysql_host,
-                    port=self.mysql_port,
-                    database=self.mysql_database,
-                )
-            )
-
-        if self.database_url is not None:
-            return str(self.database_url)
-
-        raise ValueError(
-            "Database configuration is incomplete: provide all MYSQL_* variables or DATABASE_URL"
-        )
+        return str(self.database_url)
 
 
 @lru_cache
