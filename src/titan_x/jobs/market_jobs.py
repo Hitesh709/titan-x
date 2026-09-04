@@ -46,21 +46,27 @@ class MarketDataIngestionJob(ScheduledJob):
 
         from titan_x.services.market_data_service import run_market_data_ingestion
 
-        result = await run_market_data_ingestion(
-            factory,
-            symbol=symbol,
-            symbols=symbols,
-            max_symbols=payload.get("max_symbols", 100),
-            lookback_days=payload.get("lookback_days", 365),
-        )
+        results = []
+        for requested_symbol in symbols:
+            result = await run_market_data_ingestion(
+                factory,
+                symbol=requested_symbol,
+                max_symbols=1,
+                lookback_days=payload.get("lookback_days", 365),
+            )
+            results.append(result)
+
+        errors = [error for result in results for error in result.get("errors", [])]
+        ok = sum(result.get("symbols_ok", 0) for result in results)
+        requested = len(symbols)
         return {
-            "symbols_requested": result.get("symbols_requested", len(symbols)),
-            "symbols_ingested": result.get("symbols_ok", 0),
+            "symbols_requested": requested,
+            "symbols_ingested": ok,
             "symbols": symbols,
-            "symbols_ok": result.get("symbols_ok", 0),
-            "symbols_failed": result.get("symbols_failed", 0),
-            "inserted_total": result.get("inserted_total", 0),
-            "errors": result.get("errors", []),
+            "symbols_ok": ok,
+            "symbols_failed": requested - ok,
+            "inserted_total": sum(result.get("inserted_total", 0) for result in results),
+            "errors": errors,
         }
 
 
