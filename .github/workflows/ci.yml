@@ -55,8 +55,8 @@ jobs:
       - name: Verify FastAPI startup import
         env:
           ENVIRONMENT: test
-          DATABASE_URL: sqlite+aiosqlite:///:memory:
-          REDIS_URL: redis://localhost:6379/0
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+          REDIS_URL: "redis://localhost:6379/0"
           API_KEY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
           JWT_SECRET_KEY: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
           TRUSTED_HOSTS: "localhost,127.0.0.1"
