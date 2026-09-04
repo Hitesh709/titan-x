@@ -21,7 +21,7 @@ from titan_x.services.recommendation_service import RecommendationService
 from titan_x.services.technical_strength_engine import score_technical_strength
 
 logger = structlog.get_logger(__name__)
-FAST_GATE_SCORE = 70.0
+FAST_GATE_SCORE = 95.0
 SOURCE = "yahoo"
 RECOMMENDATION_TYPE = "LIVE_SCAN"
 SCAN_SEGMENTS = 10
@@ -138,7 +138,7 @@ class RecommendationScanService:
                     if len(errors) < 20:
                         errors.append(f"{rec.get('symbol')}: database save failed ({exc})")
         await self.session.commit()
-        result = {"started": True, "universe": len(instruments), "scanned": counters["scanned"], "live_data_symbols": counters["live_data_symbols"], "fast_gate": FAST_GATE_SCORE, "fast_passed": counters["fast_passed"], "deep_scanned": counters["fast_passed"], "stored": counters["stored"], "insufficient_data": counters["insufficient_data"], "no_trade": counters["no_trade"], "failed": counters["failed"], "batch_failed": counters["batch_failed"], "skipped_fresh": len(instruments) - len(stale), "first_error": errors[0] if errors else None, "scan_segments": SCAN_SEGMENTS, "batch_per_segment": BATCH_PER_SEGMENT, "symbol_concurrency_per_segment": SYMBOL_CONCURRENCY_PER_SEGMENT, "data_quality": {"synthetic_data_used": False, "live_only_fast_gate": True, "provider": "Yahoo Finance"}}
+        result = {"started": True, "universe": len(instruments), "scanned": counters["scanned"], "live_data_symbols": counters["live_data_symbols"], "fast_gate": FAST_GATE_SCORE, "fast_passed": counters["fast_passed"], "deep_scanned": counters["fast_passed"], "stored": counters["stored"], "insufficient_data": counters["insufficient_data"], "no_trade": counters["no_trade"], "failed": counters["failed"], "batch_failed": counters["batch_failed"], "skipped_fresh": len(instruments) - len(stale), "first_error": errors[0] if errors else None, "scan_segments": SCAN_SEGMENTS, "batch_per_segment": BATCH_PER_SEGMENT, "symbol_concurrency_per_segment": SYMBOL_CONCURRENCY_PER_SEGMENT, "data_quality": {"synthetic_data_used": False, "live_only_fast_gate": True, "provider": "Yahoo Finance", "delivery_interval": "1d (24h)"}}
         _scan_state["last"] = {**result, "finished_at": datetime.now(timezone.utc).isoformat()}
         return result
 
@@ -174,8 +174,8 @@ class RecommendationScanService:
                 counters["live_data_symbols"] += 1
             try:
                 bars = bars_from_records(points)
-                intraday, delivery = await asyncio.gather(asyncio.to_thread(score_technical_strength, bars, mode="intraday"), asyncio.to_thread(score_technical_strength, bars, mode="delivery"))
-                selected = max(intraday.score, delivery.score)
+                delivery = await asyncio.to_thread(score_technical_strength, bars, mode="delivery")
+                selected = float(delivery.score)
                 if selected < FAST_GATE_SCORE:
                     async with counter_lock:
                         counters["no_trade"] += 1
@@ -183,7 +183,19 @@ class RecommendationScanService:
                 async with counter_lock:
                     counters["fast_passed"] += 1
                 rec = self.engine.build(symbol, bars, sector_ctx=sector.get(sector_name), breadth_ctx=breadth)
-                rec.update({"exchange": exchange, "yahoo_symbol": yahoo_symbol, "data_points": len(points), "fast_technical_gate": {"threshold": FAST_GATE_SCORE, "intraday_score": intraday.score, "delivery_score": delivery.score, "selected_score": selected}})
+                rec.update({
+                    "exchange": exchange,
+                    "yahoo_symbol": yahoo_symbol,
+                    "data_points": len(points),
+                    "fast_technical_gate": {
+                        "threshold": FAST_GATE_SCORE,
+                        "technical_pillar_score": selected,
+                        "delivery_score": selected,
+                        "selected_score": selected,
+                        "interval": "1d",
+                        "window": "24h",
+                    },
+                })
                 if rec.get("insufficient_data") or rec.get("no_trade"):
                     continue
                 recommendations.append(rec)
@@ -200,7 +212,7 @@ class RecommendationScanService:
         signal = rec["signal"]
         direction = "BUY" if signal in ("strong_buy", "buy") else "SELL" if signal in ("strong_sell", "sell") else "HOLD"
         now = datetime.now(timezone.utc).replace(tzinfo=None)
-        metadata = {"signal": signal, "exchange": "NSE", "yahoo_symbol": rec.get("yahoo_symbol"), "as_of_date": rec.get("as_of_date"), "data_points": rec.get("data_points", 0), "evidence": rec.get("evidence"), "caution": rec.get("caution"), "returns": rec.get("returns"), "indicators": rec.get("indicators"), "fast_technical_gate": rec.get("fast_technical_gate")}
+        metadata = {"signal": signal, "exchange": "NSE", "yahoo_symbol": rec.get("yahoo_symbol"), "as_of_date": rec.get("as_of_date"), "data_points": rec.get("data_points", 0), "evidence": rec.get("evidence"), "caution": rec.get("caution"), "returns": rec.get("returns"), "indicators": rec.get("indicators"), "factors": rec.get("factors"), "pillar_scores": rec.get("pillar_scores") or rec.get("pillars"), "fast_technical_gate": rec.get("fast_technical_gate"), "timeframe": "24h"}
         await svc.create_recommendation(symbol=symbol, direction=direction, signal=signal, confidence=rec["confidence"], price_target=rec["price_target"], current_price=rec["current_price"], timeframe=f"{rec['holding_period_days']} days", reasoning=f"{signal.upper()} recommendation for {symbol} (NSE)", recommendation_type=RECOMMENDATION_TYPE, score=rec["score"], risk_level=rec["risk_level"], predicted_return_pct=rec["expected_return_pct"], source=SOURCE, metadata_json=json.dumps(metadata), status="active", expires_at=now + timedelta(days=1), inputs_json=json.dumps(rec["factors"]), model_version_label="yahoo-live-v1")
 
 
