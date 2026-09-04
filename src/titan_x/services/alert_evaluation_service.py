@@ -139,7 +139,6 @@ class AlertEvaluationService:
         return False
 
     async def _get_latest_price(self, symbol: str) -> float | None:
-        # Prefer persisted market data so alerts remain deterministic when a live provider is unavailable.
         value = (await self._session.execute(select(DailyPrice.close).where(DailyPrice.symbol == symbol.upper()).order_by(desc(DailyPrice.trade_date)).limit(1))).scalar_one_or_none()
         if value is not None and float(value) > 0:
             return float(value)
@@ -173,6 +172,9 @@ class AlertEvaluationService:
         return sum(float(p) for p in prices) / period if len(prices) >= period else None
 
     async def _get_latest_volume(self, symbol: str) -> int | None:
+        value = (await self._session.execute(select(DailyPrice.volume).where(DailyPrice.symbol == symbol.upper()).order_by(desc(DailyPrice.trade_date)).limit(1))).scalar_one_or_none()
+        if value is not None and int(value) >= 0:
+            return int(value)
         try:
             value = (await self._market_data.get_quote(symbol)).get("volume")
             return int(float(value)) if value is not None and float(value) >= 0 else None
