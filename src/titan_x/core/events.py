@@ -80,14 +80,22 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
             logger.exception("database_initialization_failed")
 
     app.state.database_init_task = asyncio.create_task(_initialize_database())
-
-    # Database-backed background services must not start before the SQLite
-    # schema exists. This prevents the scheduler/worker race where they query
-    # the jobs table while database initialization is still in progress.
     await app.state.database_init_task
 
     try:
-        from titan_x.services.recommendation_scan_service import run_universe_load
+        from titan_x.services.recommendation_scan_service import run_universe_load, run_background_scan
+
+        async def _run_recommendation_scan(sf) -> None:
+            await app.state.database_ready.wait()
+            try:
+                universe = await run_universe_load(sf)
+                logger.info("recommendation_universe_ready", **universe)
+                result = await run_background_scan(sf, max_age_minutes=0, limit=None)
+                logger.info("recommendation_scan_startup_complete", **result)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("recommendation_scan_startup_failed")
 
         async def _ingest_market_data_later(sf) -> None:
             await app.state.database_ready.wait()
@@ -145,8 +153,10 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
                 logger.info("nse_universe_startup", **result)
             except Exception:
                 logger.exception("nse_universe_startup_failed")
+                return
             await _ingest_market_data_later(session_factory)
             await _ingest_news_later(session_factory)
+            await _run_recommendation_scan(session_factory)
 
         asyncio.create_task(_universe_load_later())
     except Exception:
