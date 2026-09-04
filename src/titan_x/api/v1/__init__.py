@@ -3,8 +3,8 @@
 Core routers are registered explicitly for deterministic startup. Every other
 API module/package is discovered automatically so a newly-created endpoint
 cannot silently become a 404 simply because it was omitted from a registry.
-Import failures are recorded and exposed through startup logging rather than
-preventing unrelated API routes from starting.
+Explicit production routers are mandatory: an import failure is a startup
+error instead of allowing a partially functioning API to appear healthy.
 """
 from __future__ import annotations
 
@@ -142,9 +142,11 @@ def _build_router() -> APIRouter:
     router = APIRouter(prefix="/api/v1")
     seen: set[int] = set()
     failures: list[str] = []
-    registered_modules: set[str] = set()
     specs = list(_ROUTER_SPECS)
     specs.extend(_discover_specs())
+    registered_modules: set[str] = set()
+    explicit_modules = {name for name, _ in _ROUTER_SPECS}
+
     for module_name, router_name in specs:
         if module_name in registered_modules:
             continue
@@ -161,12 +163,22 @@ def _build_router() -> APIRouter:
                     seen.add(marker)
         except Exception as exc:
             failures.append(f"{module_name}: {type(exc).__name__}: {exc}")
+
     if failures:
         logger.error(
             "API v1 router registration failures: %d; %s",
             len(failures),
             " | ".join(failures),
         )
+        mandatory_failures = [
+            failure for failure in failures
+            if failure.split(":", 1)[0] in explicit_modules
+        ]
+        if mandatory_failures:
+            raise RuntimeError(
+                "Mandatory API router registration failed: " + " | ".join(mandatory_failures)
+            )
+
     logger.info(
         "API v1 router audit: registered=%d modules=%d failures=%d discovered=%d",
         len(seen),
