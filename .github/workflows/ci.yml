@@ -98,15 +98,6 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - name: Build and push Worker image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile.worker
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-worker:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
   security:
     runs-on: ubuntu-latest
@@ -119,9 +110,9 @@ jobs:
       - name: Install dependencies
         run: pip install bandit safety
       - name: Bandit security scan
-        run: bandit -r src -f json --exit-zero -o bandit-report.json
+        run: bandit -r src -f json -o bandit-report.json
       - name: Safety dependency scan
-        run: safety check -r requirements.txt --continue-on-error
+        run: safety check -r requirements.txt
       - name: Upload Bandit report
         uses: actions/upload-artifact@v4
         with:
