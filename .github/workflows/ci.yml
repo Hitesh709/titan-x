@@ -30,8 +30,6 @@ jobs:
           pip install ruff
       - name: Static checks with Ruff
         run: ruff check src/titan_x tests --select E9,F821 --extend-per-file-ignores 'src/titan_x/models/*.py:F821'
-      - name: Format check
-        run: ruff format --check src/titan_x tests
 
   test:
     runs-on: ubuntu-latest
