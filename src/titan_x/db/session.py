@@ -1,6 +1,6 @@
 from collections.abc import AsyncIterator
 
-from sqlalchemy import event, make_url
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 from titan_x.core.config import Settings
@@ -18,28 +18,13 @@ def _set_sqlite_pragmas(dbapi_connection, _connection_record) -> None:
 
 
 def create_engine(settings: Settings) -> AsyncEngine:
-    connect_args: dict = {}
     url = settings.resolved_database_url
-    parsed = make_url(url)
-
-    # Keep SQLite support for local development/tests. Production Titan X uses
-    # MySQL with the asyncmy-compatible aiomysql SQLAlchemy driver.
-    if parsed.get_backend_name() == "sqlite":
-        connect_args["check_same_thread"] = False
-        connect_args["timeout"] = 30
-    elif parsed.get_backend_name() == "mysql" and not parsed.get_driver_name():
-        parsed = parsed.set(drivername="mysql+aiomysql")
-        url = str(parsed)
-
-    kwargs: dict = dict(echo=settings.sql_echo, connect_args=connect_args or {})
-    if parsed.get_backend_name() != "sqlite":
-        kwargs["pool_pre_ping"] = True
-        kwargs["pool_size"] = settings.db_pool_size
-        kwargs["max_overflow"] = settings.db_max_overflow
-
-    engine = create_async_engine(url, **kwargs)
-    if parsed.get_backend_name() == "sqlite":
-        event.listen(engine.sync_engine, "connect", _set_sqlite_pragmas)
+    engine = create_async_engine(
+        url,
+        echo=settings.sql_echo,
+        connect_args={"check_same_thread": False, "timeout": 30},
+    )
+    event.listen(engine.sync_engine, "connect", _set_sqlite_pragmas)
     return engine
 
 
