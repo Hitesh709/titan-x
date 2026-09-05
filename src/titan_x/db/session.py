@@ -19,14 +19,17 @@ def _set_sqlite_pragmas(dbapi_connection, _connection_record) -> None:
 
 def create_engine(settings: Settings) -> AsyncEngine:
     url = settings.resolved_database_url
+    connect_args: dict[str, object] = {}
+
     if url.startswith("postgresql://"):
         url = "postgresql+asyncpg://" + url[len("postgresql://"):]
+        connect_args = {"statement_cache_size": 0}
     elif url.startswith("postgres://"):
         url = "postgresql+asyncpg://" + url[len("postgres://"):]
-
-    connect_args: dict[str, object] = {}
-    if url.startswith("sqlite"):
+        connect_args = {"statement_cache_size": 0}
+    elif url.startswith("sqlite"):
         connect_args = {"check_same_thread": False, "timeout": 30}
+
     engine = create_async_engine(
         url,
         echo=settings.sql_echo,
