@@ -20,7 +20,7 @@ def _set_sqlite_pragmas(dbapi_connection, _connection_record) -> None:
 
 
 def _normalize_postgres_url(url: str) -> tuple[str, dict[str, object]]:
-    """Normalize PostgreSQL URLs for SQLAlchemy's asyncpg dialect."""
+    """Normalize PostgreSQL URLs and prefer Neon direct connections."""
     if url.startswith("postgresql://"):
         url = "postgresql+asyncpg://" + url[len("postgresql://"):]
     elif url.startswith("postgres://"):
@@ -29,6 +29,14 @@ def _normalize_postgres_url(url: str) -> tuple[str, dict[str, object]]:
     parts = urlsplit(url)
     if parts.scheme != "postgresql+asyncpg":
         return url, {}
+
+    # Neon may provide a pooled hostname in DATABASE_URL. Schema creation,
+    # reflection and migrations must use the direct endpoint instead of
+    # PgBouncer. Convert only the standard Neon pooled hostname; credentials
+    # and all other URL components remain untouched.
+    netloc = parts.netloc
+    if "-pooler." in netloc and ".neon.tech" in netloc:
+        netloc = netloc.replace("-pooler.", ".", 1)
 
     connect_args: dict[str, object] = {}
     query: list[tuple[str, str]] = []
@@ -44,11 +52,11 @@ def _normalize_postgres_url(url: str) -> tuple[str, dict[str, object]]:
             continue
         query.append((key, value))
 
-    # SQLAlchemy's asyncpg dialect has its own prepared-statement cache;
-    # disabling it is required when the Neon connection uses PgBouncer.
+    # Keep SQLAlchemy's asyncpg prepared-statement cache disabled for
+    # compatibility with either pooled or direct Neon URLs.
     query.append(("prepared_statement_cache_size", "0"))
     clean_url = urlunsplit(
-        (parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment)
+        (parts.scheme, netloc, parts.path, urlencode(query), parts.fragment)
     )
     return clean_url, connect_args
 
