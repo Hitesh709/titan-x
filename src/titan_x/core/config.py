@@ -74,6 +74,10 @@ class Settings(BaseSettings):
     smtp_from_email: str = "noreply@titanx.com"
     smtp_from_name: str = "Titan X"
 
+    resend_api_key: SecretStr | None = None
+    resend_from_email: str = "onboarding@resend.dev"
+    resend_from_name: str = "Titan X"
+
     push_enabled: bool = False
     push_config_json: str = "{}"
     sms_enabled: bool = False
