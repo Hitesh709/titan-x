@@ -78,6 +78,12 @@ services:
         generateValue: true
       - key: MFA_ENCRYPTION_KEY
         sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
+      - key: RESEND_FROM_NAME
+        value: Titan X
       - key: BACKUP_ENABLED
         value: "false"
       - key: BACKUP_INTERVAL_HOURS
