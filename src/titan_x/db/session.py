@@ -3,6 +3,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from titan_x.core.config import Settings
 
@@ -19,13 +20,7 @@ def _set_sqlite_pragmas(dbapi_connection, _connection_record) -> None:
 
 
 def _normalize_postgres_url(url: str) -> tuple[str, dict[str, object]]:
-    """Normalize PostgreSQL URLs for SQLAlchemy's asyncpg dialect.
-
-    libpq-style ``sslmode`` and ``channel_binding`` parameters from Neon
-    connection strings must not be passed as keyword arguments to asyncpg's
-    SQLAlchemy adapter. Convert sslmode to asyncpg's ``ssl`` connect argument
-    and remove channel_binding before SQLAlchemy creates the engine.
-    """
+    """Normalize PostgreSQL URLs for SQLAlchemy's asyncpg dialect."""
     if url.startswith("postgresql://"):
         url = "postgresql+asyncpg://" + url[len("postgresql://"):]
     elif url.startswith("postgres://"):
@@ -35,7 +30,7 @@ def _normalize_postgres_url(url: str) -> tuple[str, dict[str, object]]:
     if parts.scheme != "postgresql+asyncpg":
         return url, {}
 
-    connect_args: dict[str, object] = {"statement_cache_size": 0}
+    connect_args: dict[str, object] = {}
     query: list[tuple[str, str]] = []
     for key, value in parse_qsl(parts.query, keep_blank_values=True):
         normalized_key = key.lower()
@@ -45,8 +40,13 @@ def _normalize_postgres_url(url: str) -> tuple[str, dict[str, object]]:
             continue
         if normalized_key == "channel_binding":
             continue
+        if normalized_key == "prepared_statement_cache_size":
+            continue
         query.append((key, value))
 
+    # SQLAlchemy's asyncpg dialect has its own prepared-statement cache;
+    # disabling it is required when the Neon connection uses PgBouncer.
+    query.append(("prepared_statement_cache_size", "0"))
     clean_url = urlunsplit(
         (parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment)
     )
@@ -56,9 +56,11 @@ def _normalize_postgres_url(url: str) -> tuple[str, dict[str, object]]:
 def create_engine(settings: Settings) -> AsyncEngine:
     url = settings.resolved_database_url
     connect_args: dict[str, object] = {}
+    pool_kwargs: dict[str, object] = {}
 
     if url.startswith(("postgresql://", "postgres://", "postgresql+asyncpg://")):
         url, connect_args = _normalize_postgres_url(url)
+        pool_kwargs["poolclass"] = NullPool
     elif url.startswith("sqlite"):
         connect_args = {"check_same_thread": False, "timeout": 30}
 
@@ -66,6 +68,7 @@ def create_engine(settings: Settings) -> AsyncEngine:
         url,
         echo=settings.sql_echo,
         connect_args=connect_args,
+        **pool_kwargs,
     )
     if url.startswith("sqlite"):
         event.listen(engine.sync_engine, "connect", _set_sqlite_pragmas)
