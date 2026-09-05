@@ -55,8 +55,14 @@ async def _ensure_sqlite_parent(settings: Settings) -> None:
         return
     raw_path = url.split("///", 1)[-1].split("?", 1)[0]
     db_path = Path(raw_path) if raw_path.startswith("/") else Path.cwd() / raw_path
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    logger.info("sqlite_database_path_ready", path=str(db_path.parent))
+    parent = db_path.parent
+    if not parent.exists():
+        parent.mkdir(parents=True, exist_ok=True)
+        logger.info("sqlite_database_path_created", path=str(parent))
+    elif not parent.is_dir():
+        raise RuntimeError(f"SQLite database parent is not a directory: {parent}")
+    else:
+        logger.info("sqlite_database_path_ready", path=str(parent))
 
 
 async def on_startup(app: FastAPI, settings: Settings) -> None:
