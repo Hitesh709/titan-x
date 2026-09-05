@@ -18,8 +18,14 @@ def _set_sqlite_pragmas(dbapi_connection, _connection_record) -> None:
         cursor.close()
 
 
-def _normalize_postgres_url(url: str) -> str:
-    """Normalize Render/Neon PostgreSQL URLs for SQLAlchemy asyncpg."""
+def _normalize_postgres_url(url: str) -> tuple[str, dict[str, object]]:
+    """Normalize PostgreSQL URLs for SQLAlchemy's asyncpg dialect.
+
+    libpq-style ``sslmode`` and ``channel_binding`` parameters from Neon
+    connection strings must not be passed as keyword arguments to asyncpg's
+    SQLAlchemy adapter. Convert sslmode to asyncpg's ``ssl`` connect argument
+    and remove channel_binding before SQLAlchemy creates the engine.
+    """
     if url.startswith("postgresql://"):
         url = "postgresql+asyncpg://" + url[len("postgresql://"):]
     elif url.startswith("postgres://"):
@@ -27,10 +33,24 @@ def _normalize_postgres_url(url: str) -> str:
 
     parts = urlsplit(url)
     if parts.scheme != "postgresql+asyncpg":
-        return url
+        return url, {}
 
-    query = [(key, value) for key, value in parse_qsl(parts.query, keep_blank_values=True) if key != "channel_binding"]
-    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
+    connect_args: dict[str, object] = {"statement_cache_size": 0}
+    query: list[tuple[str, str]] = []
+    for key, value in parse_qsl(parts.query, keep_blank_values=True):
+        normalized_key = key.lower()
+        if normalized_key == "sslmode":
+            if value:
+                connect_args["ssl"] = value
+            continue
+        if normalized_key == "channel_binding":
+            continue
+        query.append((key, value))
+
+    clean_url = urlunsplit(
+        (parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment)
+    )
+    return clean_url, connect_args
 
 
 def create_engine(settings: Settings) -> AsyncEngine:
@@ -38,8 +58,7 @@ def create_engine(settings: Settings) -> AsyncEngine:
     connect_args: dict[str, object] = {}
 
     if url.startswith(("postgresql://", "postgres://", "postgresql+asyncpg://")):
-        url = _normalize_postgres_url(url)
-        connect_args = {"statement_cache_size": 0}
+        url, connect_args = _normalize_postgres_url(url)
     elif url.startswith("sqlite"):
         connect_args = {"check_same_thread": False, "timeout": 30}
 
