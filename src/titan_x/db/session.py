@@ -1,4 +1,5 @@
 from collections.abc import AsyncIterator
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
@@ -17,15 +18,27 @@ def _set_sqlite_pragmas(dbapi_connection, _connection_record) -> None:
         cursor.close()
 
 
+def _normalize_postgres_url(url: str) -> str:
+    """Normalize Render/Neon PostgreSQL URLs for SQLAlchemy asyncpg."""
+    if url.startswith("postgresql://"):
+        url = "postgresql+asyncpg://" + url[len("postgresql://"):]
+    elif url.startswith("postgres://"):
+        url = "postgresql+asyncpg://" + url[len("postgres://"):]
+
+    parts = urlsplit(url)
+    if parts.scheme != "postgresql+asyncpg":
+        return url
+
+    query = [(key, value) for key, value in parse_qsl(parts.query, keep_blank_values=True) if key != "channel_binding"]
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
+
+
 def create_engine(settings: Settings) -> AsyncEngine:
     url = settings.resolved_database_url
     connect_args: dict[str, object] = {}
 
-    if url.startswith("postgresql://"):
-        url = "postgresql+asyncpg://" + url[len("postgresql://"):]
-        connect_args = {"statement_cache_size": 0}
-    elif url.startswith("postgres://"):
-        url = "postgresql+asyncpg://" + url[len("postgres://"):]
+    if url.startswith(("postgresql://", "postgres://", "postgresql+asyncpg://")):
+        url = _normalize_postgres_url(url)
         connect_args = {"statement_cache_size": 0}
     elif url.startswith("sqlite"):
         connect_args = {"check_same_thread": False, "timeout": 30}
