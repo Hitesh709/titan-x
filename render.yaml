@@ -55,6 +55,8 @@ services:
         value: "false"
       - key: SEED_DEMO_ON_STARTUP
         value: "false"
+      - key: ENSURE_DEMO_USER_ON_STARTUP
+        value: "true"
       - key: PAPER_DEMO_PRICES
         value: "false"
       - key: MARKET_DATA_PROVIDER
