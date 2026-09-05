@@ -125,7 +125,14 @@ async def register(body: RegisterRequest, service: Annotated[AuthService, Depend
 
 
 @auth_router.post("/auth/login", response_model=TokenResponse)
-async def login(body: LoginRequest, service: Annotated[AuthService, Depends(get_auth_service)], rate_limiter: Annotated[RateLimiter | None, Depends(get_rate_limiter)], brute_force: Annotated[BruteForceProtector | None, Depends(get_brute_force_protector)], settings: Annotated[Settings, Depends(get_settings)]) -> TokenResponse:
+async def login(
+    body: LoginRequest,
+    request: Request,
+    service: Annotated[AuthService, Depends(get_auth_service)],
+    rate_limiter: Annotated[RateLimiter | None, Depends(get_rate_limiter)],
+    brute_force: Annotated[BruteForceProtector | None, Depends(get_brute_force_protector)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> TokenResponse:
     if rate_limiter is not None and settings.rate_limit_enabled:
         allowed, _, _ = await rate_limiter.check(f"login:{body.email}", settings.rate_limit_requests, settings.rate_limit_window_seconds)
         if not allowed:
@@ -134,6 +141,16 @@ async def login(body: LoginRequest, service: Annotated[AuthService, Depends(get_
         blocked = await brute_force.is_blocked(body.email, settings.brute_force_max_attempts, settings.brute_force_window_minutes, settings.brute_force_block_minutes)
         if blocked:
             raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Account temporarily blocked. Try again later.")
+
+    if settings.ensure_demo_user_on_startup and body.email.strip().lower() == "demo@titanx.app":
+        try:
+            from titan_x.core.demo_user import ensure_demo_user
+
+            await ensure_demo_user(request.app.state.session_factory)
+        except Exception:
+            logger = __import__("structlog").get_logger(__name__)
+            logger.exception("demo_user_login_bootstrap_failed")
+
     try:
         user = await service.authenticate(email=body.email, password=body.password)
     except ValueError as exc:
