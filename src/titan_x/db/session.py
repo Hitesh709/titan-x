@@ -7,7 +7,7 @@ from titan_x.core.config import Settings
 
 
 def _set_sqlite_pragmas(dbapi_connection, _connection_record) -> None:
-    """Enable WAL + busy timeout on every SQLite connection."""
+    """Enable WAL + busy timeout on SQLite connections only."""
     cursor = dbapi_connection.cursor()
     try:
         cursor.execute("PRAGMA journal_mode=WAL")
@@ -19,12 +19,16 @@ def _set_sqlite_pragmas(dbapi_connection, _connection_record) -> None:
 
 def create_engine(settings: Settings) -> AsyncEngine:
     url = settings.resolved_database_url
+    connect_args: dict[str, object] = {}
+    if url.startswith("sqlite"):
+        connect_args = {"check_same_thread": False, "timeout": 30}
     engine = create_async_engine(
         url,
         echo=settings.sql_echo,
-        connect_args={"check_same_thread": False, "timeout": 30},
+        connect_args=connect_args,
     )
-    event.listen(engine.sync_engine, "connect", _set_sqlite_pragmas)
+    if url.startswith("sqlite"):
+        event.listen(engine.sync_engine, "connect", _set_sqlite_pragmas)
     return engine
 
 
