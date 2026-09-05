@@ -38,7 +38,7 @@ class SyncOrchestrator:
         adapter = self._get_adapter(source)
 
         last = await self._get_last_sync_date(source_id, symbol)
-        since = last or (date.today() - timedelta(days=7))
+        since = self._incremental_start(last)
 
         sync_run = SyncRun(
             source_id=source_id,
@@ -97,6 +97,18 @@ class SyncOrchestrator:
         await self.session.flush()
 
         return sync_run
+
+    @staticmethod
+    def _incremental_start(last: date | None) -> date:
+        """Return a safe inclusive start date, including the prior business day on weekends."""
+        if last is None:
+            return date.today() - timedelta(days=7)
+        since = last
+        today = date.today()
+        if since >= today and today.weekday() >= 5:
+            while since.weekday() >= 5:
+                since -= timedelta(days=1)
+        return since
 
     async def historical_sync(
         self, source_id: int, symbol: str, start: date, end: date | None = None
