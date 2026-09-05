@@ -5,6 +5,7 @@ import { RefreshCw, TrendingDown, TrendingUp, Clock3, AlertTriangle, ArrowUp, Ar
 import api from "@/lib/api"
 import type { IntradayRecommendation, IntradayRecommendationsResponse } from "@/types"
 
+type PillarValue = { score?: number | string | null; direction?: number | string | null }
 type StrictIntradayRecommendation = IntradayRecommendation & {
   display_name?: string | null
   technical_pillar_score?: number | string | null
@@ -12,7 +13,8 @@ type StrictIntradayRecommendation = IntradayRecommendation & {
   score?: number | string | null
   technical_confidence?: number | string | null
   technical_timeframes?: Array<Record<string, unknown>> | null
-  factors?: Record<string, { score?: number | string | null; direction?: number | string | null }> | null
+  factors?: Record<string, PillarValue> | null
+  pillar_scores?: Record<string, number | string | PillarValue | null> | null
   evidence?: string[] | null
   caution?: string[] | null
   risk_level?: string | null
@@ -31,6 +33,8 @@ type SortDir = "asc" | "desc"
 const toNumber = (value: unknown, fallback = 0) => { const n = typeof value === "number" ? value : Number(value); return Number.isFinite(n) ? n : fallback }
 function money(value: unknown) { const n = toNumber(value, NaN); return Number.isFinite(n) ? `₹${n.toLocaleString("en-IN", { maximumFractionDigits: 2 })}` : "—" }
 function score(value: unknown) { return toNumber(value, 0) }
+function optionalScore(value: unknown): number | null { if (value === null || value === undefined || value === "") return null; const n = Number(value); return Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : null }
+function pillarValueScore(value: unknown): number | null { if (value && typeof value === "object" && "score" in value) return optionalScore((value as PillarValue).score); return optionalScore(value) }
 
 const FNO_INDEX_PRIORITY = ["NIFTY", "BANKNIFTY", "SENSEX", "FINNIFTY", "MIDCPNIFTY", "NIFTYNXT50"]
 const PILLARS = ["technical", "fundamental", "news", "regime", "similarity", "risk"]
@@ -40,8 +44,14 @@ function fnoPriority(symbol: unknown) { const normalized = String(symbol ?? "").
 
 function pillarsFor(rec: StrictIntradayRecommendation) {
   const factors = rec.factors ?? {}
-  const technical = score(rec.technical_pillar_score ?? rec.technical_score ?? rec.score)
-  return PILLARS.map((name) => ({ name, score: name === "technical" ? technical : score(factors[name]?.score, 50) }))
+  const modelPillars = rec.pillar_scores ?? {}
+  const technical = optionalScore(rec.technical_pillar_score ?? rec.technical_score ?? rec.score)
+  return PILLARS.map((name) => {
+    if (name === "technical") return { name, score: technical }
+    const modelScore = pillarValueScore(modelPillars[name])
+    const factorScore = pillarValueScore(factors[name])
+    return { name, score: modelScore ?? factorScore }
+  })
 }
 
 function RecommendationCard({ rec }: { rec: StrictIntradayRecommendation }) {
@@ -64,7 +74,7 @@ function RecommendationCard({ rec }: { rec: StrictIntradayRecommendation }) {
     </div>
     <div className="mt-4 flex items-center justify-between"><div><div className="text-[11px] text-gray-500">Current</div><div className="text-lg font-semibold text-white">{money(rec.current_price)}</div></div><div className="text-right"><div className="text-[11px] text-gray-500">Technical Pillar</div><div className="text-sm font-semibold text-emerald-300">{technicalScore.toFixed(0)} / 100</div></div></div>
     <div className="grid grid-cols-3 gap-2 mt-4"><div className="rounded-lg bg-white/[0.03] p-2"><div className="text-[10px] text-gray-500">Entry</div><div className="text-xs text-white mt-1">{money(rec.entry_price)}</div></div><div className="rounded-lg bg-emerald-500/[0.05] p-2"><div className="text-[10px] text-gray-500">Target</div><div className="text-xs text-emerald-300 mt-1">{money(rec.target_price)}</div></div><div className="rounded-lg bg-red-500/[0.05] p-2"><div className="text-[10px] text-gray-500">Stop</div><div className="text-xs text-red-300 mt-1">{money(rec.stop_price)}</div></div></div>
-    <div className="mt-4"><div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Pillar scores</div><div className="grid grid-cols-2 md:grid-cols-3 gap-2">{pillars.map((p) => <div key={p.name} className="bg-white/[0.03] rounded-lg p-2.5 border border-white/5"><div className="flex items-center justify-between"><span className="text-[11px] text-gray-400">{PILLAR_LABELS[p.name]}</span><span className={`text-[12px] font-semibold ${p.score >= 70 ? "text-emerald-400" : p.score <= 40 ? "text-red-400" : "text-amber-400"}`}>{Math.round(p.score)}</span></div><div className="mt-1 h-1 rounded-full bg-white/5 overflow-hidden"><div className={`h-full rounded-full ${p.score >= 70 ? "bg-emerald-500" : p.score <= 40 ? "bg-red-500" : "bg-amber-500"}`} style={{ width: `${Math.min(100, Math.max(0, p.score))}%` }} /></div></div>)}</div></div>
+    <div className="mt-4"><div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Pillar scores</div><div className="grid grid-cols-2 md:grid-cols-3 gap-2">{pillars.map((p) => { const available = p.score !== null; const display = available ? Math.round(p.score as number).toString() : "N/A"; const value = p.score ?? 0; return <div key={p.name} className="bg-white/[0.03] rounded-lg p-2.5 border border-white/5"><div className="flex items-center justify-between"><span className="text-[11px] text-gray-400">{PILLAR_LABELS[p.name]}</span><span className={`text-[12px] font-semibold ${!available ? "text-gray-500" : value >= 70 ? "text-emerald-400" : value <= 40 ? "text-red-400" : "text-amber-400"}`}>{display}</span></div><div className="mt-1 h-1 rounded-full bg-white/5 overflow-hidden"><div className={`h-full rounded-full ${!available ? "bg-gray-600" : value >= 70 ? "bg-emerald-500" : value <= 40 ? "bg-red-500" : "bg-amber-500"}`} style={{ width: `${Math.min(100, Math.max(0, value))}%` }} /></div></div> })}</div></div>
     <div className="grid grid-cols-4 gap-2 mt-3 text-[11px]"><div><span className="text-gray-500">RSI</span><div className="text-gray-200 mt-0.5">{Number.isFinite(toNumber(rec.rsi, NaN)) ? toNumber(rec.rsi).toFixed(1) : "—"}</div></div><div><span className="text-gray-500">EMA20</span><div className="text-gray-200 mt-0.5">{money(rec.ema20)}</div></div><div><span className="text-gray-500">EMA50</span><div className="text-gray-200 mt-0.5">{money(rec.ema50)}</div></div><div><span className="text-gray-500">Vol</span><div className="text-gray-200 mt-0.5">{Number.isFinite(volumeRatio) ? `${volumeRatio.toFixed(1)}x` : "—"}</div></div></div>
     {Array.isArray(rec.technical_timeframes) && rec.technical_timeframes.length > 0 && <div className="mt-3 rounded-lg border border-titan-500/15 bg-titan-500/[0.03] p-2.5"><div className="text-[10px] uppercase tracking-wider text-titan-300 mb-2">Technical timeframes</div><div className="flex flex-wrap gap-1.5">{rec.technical_timeframes.map((tf, i) => <span key={i} className="text-[10px] rounded border border-white/10 px-2 py-1 text-gray-300">{String(tf.timeframe ?? "window")} · {score(tf.score).toFixed(0)}</span>)}</div></div>}
     {rec.segment === "fno" && <div className="mt-4 rounded-lg border border-titan-500/20 bg-titan-500/[0.04] p-3"><div className="flex items-center justify-between"><span className="text-xs font-semibold text-titan-300">F&O Strategy</span><span className="text-xs text-white">{rec.option_bias === "CALL" ? "CALL bias" : rec.option_bias === "PUT" ? "PUT bias" : "No option bias"}</span></div><div className="mt-1 text-[11px] text-gray-400">Futures: {bullish ? "LONG" : bearish ? "SHORT" : "WAIT"}{rec.option_strike ? ` · ATM candidate ${rec.option_strike}` : ""}</div></div>}
@@ -79,13 +89,11 @@ export function IntradayRecommendations() {
   const [error, setError] = useState<string | null>(null)
   const [sortKey, setSortKey] = useState<SortKey>("technical")
   const [sortDir, setSortDir] = useState<SortDir>("desc")
-  const cacheKey = `titanx.strict.intraday.${segment}.v3`
+  const cacheKey = `titanx.strict.intraday.${segment}.v4`
 
   const load = useCallback(async (retryWhileScanning = true) => {
     setError(null)
     try {
-      // Backend exposes at most 100 persisted strict recommendations; keep the
-      // frontend request aligned with that contract to prevent FastAPI 422s.
       const res = await api.get<StrictResponse>(`/recommendations/strict?mode=intraday&segment=${segment}&limit=100`)
       const normalized: StrictResponse = { ...res, recommendations: Array.isArray(res.recommendations) ? res.recommendations : [] }
       setData(normalized)
