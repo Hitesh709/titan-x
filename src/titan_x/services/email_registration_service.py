@@ -8,6 +8,7 @@ import smtplib
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 
+import httpx
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,6 +24,7 @@ class EmailRegistrationService:
     OTP_MAX_ATTEMPTS = 5
     OTP_RESEND_SECONDS = 60
     CHALLENGE_TTL_SECONDS = 10 * 60
+    RESEND_API_URL = "https://api.resend.com/emails"
 
     def __init__(self, session: AsyncSession, settings: Settings) -> None:
         self._session = session
@@ -81,22 +83,58 @@ class EmailRegistrationService:
         await self._session.commit()
         return challenge.challenge_id, challenge.email_otp_expires_at or (now + timedelta(seconds=self.OTP_TTL_SECONDS))
 
-    async def _send_otp(self, challenge: AuthChallenge) -> None:
-        if not self._settings.smtp_host or not self._settings.smtp_user or not self._settings.smtp_password:
-            raise ValueError("Email OTP is not configured. Please configure SMTP settings.")
-        now = self._now()
-        if challenge.email_otp_sent_at and (now - challenge.email_otp_sent_at).total_seconds() < self.OTP_RESEND_SECONDS:
-            return
-        otp = f"{secrets.randbelow(1_000_000):06d}"
-        message = EmailMessage()
-        message["Subject"] = "Titan X email verification code"
-        message["From"] = f"{self._settings.smtp_from_name} <{self._settings.smtp_from_email}>"
-        message["To"] = challenge.registration_email or ""
-        message.set_content(
+    def _message_content(self, challenge: AuthChallenge, otp: str) -> tuple[str, str]:
+        text = (
             f"Your Titan X verification code is {otp}.\n\n"
             "This code expires in 10 minutes.\n"
             "Do not share this code with anyone."
         )
+        html = (
+            "<div style=\"font-family:Arial,sans-serif;line-height:1.6\">"
+            "<h2>Titan X email verification</h2>"
+            f"<p>Your verification code is <strong style=\"font-size:24px;letter-spacing:4px\">{otp}</strong>.</p>"
+            "<p>This code expires in 10 minutes.</p>"
+            "<p>Do not share this code with anyone.</p>"
+            "</div>"
+        )
+        return text, html
+
+    async def _send_via_resend(self, challenge: AuthChallenge, otp: str) -> bool:
+        if self._settings.resend_api_key is None:
+            return False
+        recipient = challenge.registration_email or ""
+        text, html = self._message_content(challenge, otp)
+        from_email = self._settings.resend_from_email
+        from_value = f"{self._settings.resend_from_name} <{from_email}>" if self._settings.resend_from_name else from_email
+        payload = {
+            "from": from_value,
+            "to": [recipient],
+            "subject": "Titan X email verification code",
+            "text": text,
+            "html": html,
+        }
+        headers = {
+            "Authorization": f"Bearer {self._settings.resend_api_key.get_secret_value()}",
+            "Content-Type": "application/json",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.post(self.RESEND_API_URL, headers=headers, json=payload)
+            if response.is_success:
+                return True
+            raise ValueError(f"Resend rejected email with HTTP {response.status_code}")
+        except (httpx.HTTPError, ValueError) as exc:
+            raise ValueError("Unable to send email verification code through Resend. Please check the Resend sender/domain configuration.") from exc
+
+    async def _send_via_smtp(self, challenge: AuthChallenge, otp: str) -> bool:
+        if not self._settings.smtp_host or not self._settings.smtp_user or not self._settings.smtp_password:
+            return False
+        text, _ = self._message_content(challenge, otp)
+        message = EmailMessage()
+        message["Subject"] = "Titan X email verification code"
+        message["From"] = f"{self._settings.smtp_from_name} <{self._settings.smtp_from_email}>"
+        message["To"] = challenge.registration_email or ""
+        message.set_content(text)
 
         def send() -> None:
             with smtplib.SMTP(self._settings.smtp_host, self._settings.smtp_port, timeout=15) as smtp:
@@ -106,9 +144,27 @@ class EmailRegistrationService:
 
         try:
             await asyncio.to_thread(send)
+            return True
         except (OSError, smtplib.SMTPException) as exc:
+            raise ValueError("Unable to send email verification code through SMTP. Please try again.") from exc
+
+    async def _send_otp(self, challenge: AuthChallenge) -> None:
+        now = self._now()
+        if challenge.email_otp_sent_at and (now - challenge.email_otp_sent_at).total_seconds() < self.OTP_RESEND_SECONDS:
+            return
+        otp = f"{secrets.randbelow(1_000_000):06d}"
+
+        try:
+            sent = await self._send_via_resend(challenge, otp)
+            if not sent:
+                sent = await self._send_via_smtp(challenge, otp)
+        except ValueError:
             await self._session.rollback()
-            raise ValueError("Unable to send email verification code. Please try again.") from exc
+            raise
+
+        if not sent:
+            await self._session.rollback()
+            raise ValueError("Email OTP is not configured. Configure Resend or SMTP email delivery.")
 
         challenge.email_otp_hash = self._hash(otp)
         challenge.email_otp_expires_at = now + timedelta(seconds=self.OTP_TTL_SECONDS)
