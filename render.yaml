@@ -54,7 +54,7 @@ services:
       - key: ENABLE_HTTPS_REDIRECT
         value: "false"
       - key: SEED_DEMO_ON_STARTUP
-        value: "true"
+        value: "false"
       - key: PAPER_DEMO_PRICES
         value: "false"
       - key: MARKET_DATA_PROVIDER
