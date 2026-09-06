@@ -12,7 +12,6 @@ from titan_x.services.technical_strength_engine import score_technical_strength
 
 router = APIRouter(tags=["fno-recommendations"])
 
-# Yahoo symbols for the liquid Indian index underlyings used for F&O strategy signals.
 FNO_UNDERLYINGS = (
     ("NIFTY", "^NSEI", 50),
     ("BANKNIFTY", "^NSEBANK", 100),
@@ -33,9 +32,7 @@ async def _one(name: str, yahoo_symbol: str, strike_step: int, provider: YahooFi
     try:
         start = date.today() - timedelta(days=7)
         end = date.today() + timedelta(days=1)
-        points = await provider.get_historical_prices(
-            yahoo_symbol, interval="15m", start=start, end=end, synthetic_ok=False
-        )
+        points = await provider.get_historical_prices(yahoo_symbol, interval="15m", start=start, end=end, synthetic_ok=False)
         if len(points) < 30:
             return None
         bars = bars_from_records(points)
@@ -54,67 +51,39 @@ async def _one(name: str, yahoo_symbol: str, strike_step: int, provider: YahooFi
             pass
         direction = str(technical.direction).upper()
         option_bias = "CALL" if direction == "BUY" else "PUT"
+        target = current_num * (1.01 if direction == "BUY" else 0.99) if current_num else None
+        stop = current_num * (0.995 if direction == "BUY" else 1.005) if current_num else None
         return {
-            "symbol": name,
-            "display_name": f"{name} F&O",
-            "yahoo_symbol": yahoo_symbol,
-            "segment": "fno",
-            "instrument": "FUTURES",
-            "direction": direction,
-            "signal": technical.label,
-            "score": round(score, 2),
-            "technical_pillar_score": round(score, 2),
-            "confidence": round(score, 2),
-            "current_price": current_num,
-            "entry_price": current_num,
-            "target_price": technical.target_price if hasattr(technical, "target_price") else current_num,
-            "stop_price": technical.stop_price if hasattr(technical, "stop_price") else current_num,
-            "risk_reward": 0,
-            "expected_return_pct": quote.get("change_percent"),
-            "volume_ratio": None,
-            "rsi": None,
-            "ema20": None,
-            "ema50": None,
-            "option_bias": option_bias,
-            "option_strike": _atm(current_num, strike_step),
-            "timeframe": "intraday",
-            "generated_at": date.today().isoformat(),
-            "evidence": technical.evidence or [],
+            "symbol": name, "display_name": f"{name} F&O", "yahoo_symbol": yahoo_symbol,
+            "segment": "fno", "instrument": "FUTURES", "direction": direction,
+            "signal": technical.label, "score": round(score, 2), "technical_pillar_score": round(score, 2),
+            "confidence": round(score, 2), "current_price": current_num, "entry_price": current_num,
+            "target_price": round(target, 2) if target else None, "stop_price": round(stop, 2) if stop else None,
+            "risk_reward": 2.0, "expected_return_pct": quote.get("change_percent"), "volume_ratio": None,
+            "rsi": None, "ema20": None, "ema50": None, "option_bias": option_bias,
+            "option_strike": _atm(current_num, strike_step), "timeframe": "intraday",
+            "generated_at": date.today().isoformat(), "evidence": technical.evidence or [],
             "caution": ["F&O signal is derived from the underlying index. Verify live contract expiry, liquidity, spread and margin before trading."],
             "factors": technical.factors,
             "pillar_scores": supporting.get("pillar_scores") or supporting.get("pillars") or supporting.get("factors"),
-            "technical_timeframes": [],
-            "data_points": len(points),
-            "interval": "15m",
-            "window": "7d",
+            "technical_timeframes": [], "data_points": len(points), "interval": "15m", "window": "7d",
         }
     except Exception:
         return None
 
 
 @router.get("/recommendations/fno")
-async def fno_recommendations(
-    limit: int = Query(100, ge=1, le=100),
-    _: object = Depends(deps.get_current_active_user),
-):
+async def fno_recommendations(limit: int = Query(100, ge=1, le=100), _: object = Depends(deps.get_current_active_user)):
     provider = YahooFinanceProvider()
     try:
         results = await asyncio.gather(*(_one(*item, provider) for item in FNO_UNDERLYINGS))
         recommendations = [r for r in results if r]
         recommendations.sort(key=lambda r: float(r.get("score") or 0), reverse=True)
         return {
-            "recommendations": recommendations[:limit],
-            "count": min(limit, len(recommendations)),
-            "segment": "fno",
-            "instrument": "FUTURES_OPTIONS",
-            "universe_size": len(FNO_UNDERLYINGS),
-            "scanned": len(FNO_UNDERLYINGS),
-            "technical_threshold": TECHNICAL_THRESHOLD,
-            "strict_gate": "technical_pillar>=95",
-            "interval": "15m",
-            "window": "7d",
-            "provider": "yahoo",
-            "live": True,
+            "recommendations": recommendations[:limit], "count": min(limit, len(recommendations)),
+            "segment": "fno", "instrument": "FUTURES_OPTIONS", "universe_size": len(FNO_UNDERLYINGS),
+            "scanned": len(FNO_UNDERLYINGS), "technical_threshold": TECHNICAL_THRESHOLD,
+            "strict_gate": "technical_pillar>=95", "interval": "15m", "window": "7d", "provider": "yahoo", "live": True,
         }
     finally:
         await provider.close()
