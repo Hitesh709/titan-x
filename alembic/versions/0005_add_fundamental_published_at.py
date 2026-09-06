@@ -1,13 +1,14 @@
-"""Add point-in-time publication timestamp to fundamental metrics.
+"""Bootstrap the current SQLAlchemy schema for PostgreSQL/Neon.
 
 Revision ID: 0005
 Revises: 0004
-Create Date: 2026-08-22
 """
 from collections.abc import Sequence
 
 from alembic import op
-import sqlalchemy as sa
+
+from titan_x.db.base import Base
+from titan_x.models import *  # noqa: F401,F403
 
 revision: str = "0005"
 down_revision: str | None = "0004"
@@ -16,25 +17,11 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "fundamental_metrics",
-        sa.Column("published_at", sa.DateTime(timezone=True), nullable=True),
-    )
-    op.create_index(
-        "ix_fund_metric_symbol_published",
-        "fundamental_metrics",
-        ["symbol", "published_at"],
-        unique=False,
-    )
-    op.create_index(
-        "ix_fund_metric_published",
-        "fundamental_metrics",
-        ["published_at"],
-        unique=False,
-    )
+    # The earlier migration chain was written for a schema that was normally
+    # created by SQLAlchemy metadata. Bootstrap the complete current schema
+    # here so a fresh Neon database does not depend on retired table assumptions.
+    Base.metadata.create_all(bind=op.get_bind())
 
 
 def downgrade() -> None:
-    op.drop_index("ix_fund_metric_published", table_name="fundamental_metrics")
-    op.drop_index("ix_fund_metric_symbol_published", table_name="fundamental_metrics")
-    op.drop_column("fundamental_metrics", "published_at")
+    pass
