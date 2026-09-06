@@ -130,6 +130,44 @@ export default function TradingPage() {
     catch (err) { setFormError(err instanceof Error ? err.message : "Failed to cancel order") }
   }
 
+  const handleSquareOff = async (positionSymbol: string) => {
+    const position = positions.find((p) => p.symbol.toUpperCase() === positionSymbol.toUpperCase())
+    if (!position) return
+    const confirmed = window.confirm(
+      `Square off the entire ${position.quantity} share ${position.symbol} position at market price?`,
+    )
+    if (!confirmed) return
+
+    setFormError(null)
+    setFormSuccess(null)
+    try {
+      const result = await api.post<{
+        id: number
+        symbol: string
+        quantity: number
+        filled_quantity: number
+        status: string
+        price: number | null
+        rejection_reason: string | null
+        message: string
+      }>(`/paper-trading/portfolio/${encodeURIComponent(position.symbol)}/square-off`, {})
+
+      if (result.status === "rejected") {
+        throw new Error(result.rejection_reason || "Square-off order was rejected")
+      }
+
+      setFormSuccess(
+        result.status === "filled"
+          ? `${result.symbol} position squared off: ${result.filled_quantity} shares sold${result.price ? ` @ ₹${result.price.toFixed(2)}` : ""}.`
+          : `${result.symbol} square-off order submitted (${result.status}).`,
+      )
+      await refreshPrices()
+      await load(true)
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Failed to square off position")
+    }
+  }
+
   const openOrders = orders.filter((o) => OPEN_STATUSES.includes(o.status))
   const orderHistory = orders.filter((o) => !OPEN_STATUSES.includes(o.status)).slice(0, 20)
 
@@ -151,7 +189,7 @@ export default function TradingPage() {
           <AutoBotPanel initialSymbol={symbol || "RELIANCE"} onSymbolChange={setSymbol} />
           <div className="grid lg:grid-cols-2 gap-6">
             <QuickTradeForm symbol={symbol} side={side} orderType={orderType} quantity={quantity} price={price} onSymbolChange={setSymbol} onSideChange={setSide} onOrderTypeChange={setOrderType} onQuantityChange={setQuantity} onPriceChange={setPrice} onSubmit={handlePlaceOrder} submitting={submitting} formError={formError} formSuccess={formSuccess} />
-            <div className="glass-card p-5"><h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">Current Holdings</h3><HoldingsList positions={positions} /></div>
+            <div className="glass-card p-5"><h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">Current Holdings</h3><HoldingsList positions={positions} onSquareOff={handleSquareOff} /></div>
           </div>
           <div className="grid lg:grid-cols-2 gap-6">
             <OrdersTable title="Open Orders" icon={<Clock size={16} className="text-titan-400" />} orders={openOrders} onCancel={handleCancel} emptyMessage="No open orders." />
