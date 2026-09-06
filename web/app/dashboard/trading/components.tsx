@@ -1,7 +1,7 @@
 "use client"
 
-import { memo, type FormEvent, type ReactNode } from "react"
-import { Trash2, Landmark, Clock, CheckCircle, Zap, ArrowRight, Loader2 } from "lucide-react"
+import { memo, type FormEvent, type ReactNode, useState } from "react"
+import { Trash2, Landmark, Clock, CheckCircle, Zap, ArrowRight, Loader2, LogOut } from "lucide-react"
 import type { PaperAccountSummary, PaperPosition } from "@/types"
 import { formatCurrency, getChangeColor } from "@/lib/utils"
 import { WidgetEmpty } from "@/components/dashboard/widget"
@@ -195,31 +195,70 @@ export function QuickTradeForm(props: QuickTradeFormProps) {
   )
 }
 
-const HoldingRow = memo(function HoldingRow({ p }: { p: PaperPosition }) {
+const HoldingRow = memo(function HoldingRow({
+  p,
+  onSquareOff,
+}: {
+  p: PaperPosition
+  onSquareOff?: (symbol: string) => Promise<void>
+}) {
+  const [squaringOff, setSquaringOff] = useState(false)
+
+  const handleSquareOff = async () => {
+    if (!onSquareOff) return
+    setSquaringOff(true)
+    try {
+      await onSquareOff(p.symbol)
+    } finally {
+      setSquaringOff(false)
+    }
+  }
+
   return (
-    <div className="flex items-center justify-between py-2 border-b border-titan-800/20 last:border-0">
-      <div>
+    <div className="flex items-center justify-between gap-3 py-2 border-b border-titan-800/20 last:border-0">
+      <div className="min-w-0">
         <div className="text-sm font-medium text-white">{p.symbol}</div>
         <div className="text-xs text-gray-500 mt-0.5">
           {p.quantity} shares @ {formatCurrency(p.average_price)}
         </div>
       </div>
-      <div className="text-right">
-        <div className={getChangeColor(p.unrealized_pnl)}>{formatCurrency(p.unrealized_pnl)}</div>
-        <div className="text-xs text-gray-500 mt-0.5">{p.market_value.toFixed(0)}</div>
+      <div className="flex items-center gap-3 shrink-0">
+        <div className="text-right">
+          <div className={getChangeColor(p.unrealized_pnl)}>{formatCurrency(p.unrealized_pnl)}</div>
+          <div className="text-xs text-gray-500 mt-0.5">{p.market_value.toFixed(0)}</div>
+        </div>
+        {onSquareOff && (
+          <button
+            type="button"
+            onClick={handleSquareOff}
+            disabled={squaringOff}
+            className="inline-flex items-center gap-1.5 rounded border border-red-500/30 bg-red-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-red-400 hover:bg-red-500/20 disabled:opacity-50"
+            title={`Square off entire ${p.symbol} position`}
+            aria-label={`Square off ${p.symbol} position`}
+          >
+            {squaringOff ? <Loader2 size={12} className="animate-spin" /> : <LogOut size={12} />}
+            Square Off
+          </button>
+        )}
       </div>
     </div>
   )
 })
 
-export function HoldingsList({ positions }: { positions: PaperPosition[] }) {
+export function HoldingsList({
+  positions,
+  onSquareOff,
+}: {
+  positions: PaperPosition[]
+  onSquareOff?: (symbol: string) => Promise<void>
+}) {
   if (positions.length === 0) {
     return <WidgetEmpty message="No positions yet. Place a trade to get started." />
   }
   return (
     <div className="space-y-2">
       {positions.map((p) => (
-        <HoldingRow key={p.symbol} p={p} />
+        <HoldingRow key={p.symbol} p={p} onSquareOff={onSquareOff} />
       ))}
     </div>
   )
