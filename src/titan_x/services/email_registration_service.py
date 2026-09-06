@@ -122,9 +122,9 @@ class EmailRegistrationService:
                 response = await client.post(self.RESEND_API_URL, headers=headers, json=payload)
             if response.is_success:
                 return True
-            raise ValueError(f"Resend rejected email with HTTP {response.status_code}")
-        except (httpx.HTTPError, ValueError) as exc:
-            raise ValueError("Unable to send email verification code through Resend. Please check the Resend sender/domain configuration.") from exc
+            return False
+        except httpx.HTTPError:
+            return False
 
     async def _send_via_smtp(self, challenge: AuthChallenge, otp: str) -> bool:
         if not self._settings.smtp_host or not self._settings.smtp_user or not self._settings.smtp_password:
@@ -145,8 +145,8 @@ class EmailRegistrationService:
         try:
             await asyncio.to_thread(send)
             return True
-        except (OSError, smtplib.SMTPException) as exc:
-            raise ValueError("Unable to send email verification code through SMTP. Please try again.") from exc
+        except (OSError, smtplib.SMTPException):
+            return False
 
     async def _send_otp(self, challenge: AuthChallenge) -> None:
         now = self._now()
@@ -154,17 +154,14 @@ class EmailRegistrationService:
             return
         otp = f"{secrets.randbelow(1_000_000):06d}"
 
-        try:
-            sent = await self._send_via_resend(challenge, otp)
-            if not sent:
-                sent = await self._send_via_smtp(challenge, otp)
-        except ValueError:
-            await self._session.rollback()
-            raise
-
+        # Resend is preferred, but a sender/domain rejection must not prevent
+        # a configured SMTP transport from being used as a fallback.
+        sent = await self._send_via_resend(challenge, otp)
+        if not sent:
+            sent = await self._send_via_smtp(challenge, otp)
         if not sent:
             await self._session.rollback()
-            raise ValueError("Email OTP is not configured. Configure Resend or SMTP email delivery.")
+            raise ValueError("Unable to send email verification code. Configure a verified Resend sender/domain or SMTP email delivery.")
 
         challenge.email_otp_hash = self._hash(otp)
         challenge.email_otp_expires_at = now + timedelta(seconds=self.OTP_TTL_SECONDS)
