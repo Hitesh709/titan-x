@@ -147,6 +147,49 @@ async def get_portfolio(
     return await svc.get_portfolio(current_user.id)
 
 
+@router.post("/portfolio/{symbol}/square-off")
+async def square_off_position(
+    symbol: str,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    session: Annotated[AsyncSession, Depends(request_session)],
+) -> dict:
+    """Close the entire open paper position for a symbol with a market sell order."""
+    normalized_symbol = symbol.strip().upper()
+    if not normalized_symbol:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Symbol is required")
+
+    svc = PaperTradingService(session)
+    portfolio = await svc.get_portfolio(current_user.id)
+    position = next((p for p in portfolio if str(p.get("symbol", "")).upper() == normalized_symbol), None)
+    if position is None or int(position.get("quantity", 0)) <= 0:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No open position for symbol")
+
+    quantity = int(position["quantity"])
+    try:
+        order = await svc.place_order(
+            current_user.id,
+            normalized_symbol,
+            "sell",
+            "market",
+            quantity,
+            time_in_force="day",
+        )
+        return {
+            "id": order.id,
+            "symbol": order.symbol,
+            "side": order.side,
+            "order_type": order.order_type,
+            "quantity": order.quantity,
+            "filled_quantity": order.filled_quantity,
+            "price": float(order.price) if order.price else None,
+            "status": order.status,
+            "rejection_reason": order.rejection_reason,
+            "message": f"Square-off order submitted for {quantity} shares of {normalized_symbol}",
+        }
+    except PaperTradingError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
 @router.get("/sector-exposure")
 async def get_sector_exposure(
     current_user: Annotated[User, Depends(get_current_active_user)],
@@ -187,7 +230,7 @@ async def get_pnl(
 @router.get("/trades")
 async def get_trade_history(
     current_user: Annotated[User, Depends(get_current_active_user)],
-    session: Annotated[AsyncSession, Depends(request_session)],
+    session: Annotated[AsyncSession, Depends(request_session),],
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
 ) -> PaginatedResponse[dict]:
