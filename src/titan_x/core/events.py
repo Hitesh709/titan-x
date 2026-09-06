@@ -1,4 +1,6 @@
 import asyncio
+import subprocess
+import sys
 from pathlib import Path
 
 import structlog
@@ -27,6 +29,8 @@ async def _sync_missing_columns(engine: AsyncEngine) -> None:
     changed = 0
     async with engine.begin() as conn:
         for table in Base.metadata.sorted_tables:
+            if not await conn.run_sync(lambda sync_conn, t=table: sa_inspect(sync_conn).has_table(t.name)):
+                continue
             existing = await conn.run_sync(
                 lambda sync_conn, t=table: {
                     c["name"] for c in sa_inspect(sync_conn).get_columns(t.name)
@@ -65,6 +69,36 @@ async def _ensure_sqlite_parent(settings: Settings) -> None:
         logger.info("sqlite_database_path_ready", path=str(parent))
 
 
+async def _run_postgres_migrations() -> None:
+    """Run versioned migrations outside the application event loop."""
+    try:
+        process = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-m",
+            "alembic",
+            "upgrade",
+            "head",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        stdout, _ = await asyncio.wait_for(process.communicate(), timeout=120)
+    except asyncio.TimeoutError as exc:
+        try:
+            process.kill()
+            await process.wait()
+        except Exception:
+            pass
+        raise RuntimeError("PostgreSQL migration timed out after 120 seconds") from exc
+
+    output = (stdout or b"").decode(errors="replace")
+    if output:
+        for line in output.splitlines()[-80:]:
+            logger.info("alembic", output=line)
+    if process.returncode != 0:
+        raise RuntimeError(f"Alembic migration failed with exit code {process.returncode}")
+    logger.info("postgres_migrations_complete")
+
+
 async def on_startup(app: FastAPI, settings: Settings) -> None:
     await _ensure_sqlite_parent(settings)
     engine = create_engine(settings)
@@ -72,6 +106,7 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
     app.state.engine = engine
     app.state.session_factory = session_factory
     app.state.database_ready = asyncio.Event()
+    is_postgres = engine.url.get_backend_name() == "postgresql"
     logger.info(
         "database_backend_ready",
         backend=engine.url.get_backend_name(),
@@ -83,8 +118,13 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
         last_error: Exception | None = None
         for attempt in range(1, 6):
             try:
-                async with engine.begin() as conn:
-                    await asyncio.wait_for(conn.run_sync(Base.metadata.create_all), timeout=30)
+                if is_postgres:
+                    # Production PostgreSQL uses versioned Alembic migrations.
+                    # Do not run metadata.create_all() through Neon/PgBouncer.
+                    await _run_postgres_migrations()
+                else:
+                    async with engine.begin() as conn:
+                        await asyncio.wait_for(conn.run_sync(Base.metadata.create_all), timeout=30)
                 await asyncio.wait_for(_sync_missing_columns(engine), timeout=30)
                 logger.info("database_tables_ready", attempt=attempt)
 
