@@ -39,6 +39,15 @@ class EmailRegistrationService:
         return datetime.now(timezone.utc)
 
     @staticmethod
+    def _utc(value: datetime | None) -> datetime | None:
+        """Normalize DB datetimes so SQLite naive values and PostgreSQL aware values compare safely."""
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    @staticmethod
     def normalize_phone(value: str) -> str:
         raw = value.strip()
         digits = "".join(ch for ch in raw if ch.isdigit())
@@ -150,7 +159,8 @@ class EmailRegistrationService:
 
     async def _send_otp(self, challenge: AuthChallenge) -> None:
         now = self._now()
-        if challenge.email_otp_sent_at and (now - challenge.email_otp_sent_at).total_seconds() < self.OTP_RESEND_SECONDS:
+        sent_at = self._utc(challenge.email_otp_sent_at)
+        if sent_at and (now - sent_at).total_seconds() < self.OTP_RESEND_SECONDS:
             return
         otp = f"{secrets.randbelow(1_000_000):06d}"
 
@@ -177,7 +187,9 @@ class EmailRegistrationService:
             raise ValueError("Invalid or expired registration request")
 
         now = self._now()
-        if challenge.expires_at <= now or challenge.email_otp_expires_at is None or challenge.email_otp_expires_at <= now:
+        expires_at = self._utc(challenge.expires_at)
+        otp_expires_at = self._utc(challenge.email_otp_expires_at)
+        if expires_at is None or expires_at <= now or otp_expires_at is None or otp_expires_at <= now:
             challenge.status = "EXPIRED"
             await self._session.commit()
             raise ValueError("Email OTP expired")
