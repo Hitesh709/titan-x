@@ -1,6 +1,8 @@
 export interface User {
   id: string
   email: string
+  username?: string | null
+  phone?: string | null
   full_name?: string
   role?: string
   is_active: boolean
