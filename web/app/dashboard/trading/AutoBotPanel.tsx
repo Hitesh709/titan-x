@@ -37,7 +37,7 @@ export default function AutoBotPanel({ initialSymbol = "RELIANCE", onSymbolChang
       setLast(result)
       setCycle(nextCycle)
       if (result.action === "BUY" || result.action === "SELL") setExecuted((v) => v + 1)
-      const source = result.price_source === "LIVE_REFERENCE" ? "LIVE LTP" : result.price_source === "DEMO_MARKET" ? "DEMO PRICE" : "REFERENCE"
+      const source = result.price_source?.startsWith("YAHOO_LIVE") ? "LIVE LTP" : result.price_source === "LIVE_REFERENCE" ? "LIVE LTP" : result.price_source === "DEMO_MARKET" ? "DEMO PRICE" : "REFERENCE"
       const p = result.price ? `₹${result.price.toLocaleString("en-IN", { maximumFractionDigits: 2 })}` : "—"
       setMessage(`${result.action} · ${p} · ${source}${result.quantity ? ` · ${result.quantity} qty` : ""}`)
     } catch (error) {
@@ -66,7 +66,7 @@ export default function AutoBotPanel({ initialSymbol = "RELIANCE", onSymbolChang
     setLast(null)
     setRunning(true)
     setRemainingSeconds(MAX_RUNTIME_SECONDS)
-    setMessage("Demo bot started · fetching market price and strategy")
+    setMessage("Demo bot started · fetching live intraday market price and strategy")
     void runCycle(1)
     timerRef.current = setInterval(() => {
       if (!runningRef.current) return
@@ -99,7 +99,7 @@ export default function AutoBotPanel({ initialSymbol = "RELIANCE", onSymbolChang
         <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
           <div>
             <h3 className="text-sm font-semibold text-white flex items-center gap-2"><Bot size={17} className="text-titan-400" /> Auto Bot Trading <span className="text-[9px] uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Demo Money</span></h3>
-            <p className="text-xs text-gray-500 mt-1">15-minute automatic BUY → SELL → BUY → SELL paper execution.</p>
+            <p className="text-xs text-gray-500 mt-1">15-minute automatic BUY → SELL → BUY → SELL paper execution using live intraday prices.</p>
           </div>
           <div className="flex items-center gap-2 text-[10px] text-gray-500"><ShieldCheck size={14} className="text-emerald-400" /> No real broker orders</div>
         </div>
@@ -120,7 +120,7 @@ export default function AutoBotPanel({ initialSymbol = "RELIANCE", onSymbolChang
           <div className="rounded-lg bg-white/[0.03] border border-white/5 p-3"><div className="text-[10px] text-gray-500">Status</div><div className="text-xs font-medium text-gray-300 flex items-center gap-1.5 mt-1"><Activity size={12} className={running ? "text-emerald-400" : "text-gray-500"} />{message}</div></div>
         </div>
 
-        <div className="mt-4 text-[10px] leading-4 text-gray-500">Reference price is the configured market-data LTP when available. If demo/mock data is configured or no live quote is available, the engine uses a clearly labelled synthetic demo price. The existing advanced SMA + RSI + ATR strategy supplies confidence and risk metadata; execution remains paper-only.</div>
+        <div className="mt-4 text-[10px] leading-4 text-gray-500">The bot now uses Yahoo Finance 1-minute intraday bars for the latest available LTP and never substitutes a synthetic price. If live data is unavailable, the bot holds instead of trading.</div>
       </div>
     </section>
   )
