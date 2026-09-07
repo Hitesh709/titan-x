@@ -19,8 +19,12 @@ export default function MarketBattle({ className = "" }: { className?: string })
   useEffect(() => {
     const host = document.querySelector<HTMLElement>(".map-panel .map-visual")
     if (!host) return
+    host.classList.add("nifty-heatmap-host")
     setHeatmapHost(host)
-    return () => setHeatmapHost(null)
+    return () => {
+      host.classList.remove("nifty-heatmap-host")
+      setHeatmapHost(null)
+    }
   }, [])
 
   return (
@@ -51,12 +55,12 @@ export default function MarketBattle({ className = "" }: { className?: string })
         `}</style>
       </div>
       {heatmapHost ? createPortal(<NiftyHeatmap />, heatmapHost) : null}
-      <style jsx global>{`
-        .map-panel .map-visual:has(.nifty-heatmap-wrap){position:relative;overflow:hidden;}
-        .map-panel .map-visual:has(.nifty-heatmap-wrap) > .map-dot,
-        .map-panel .map-visual:has(.nifty-heatmap-wrap) > .map-route,
-        .map-panel .map-visual:has(.nifty-heatmap-wrap) > .map-orb{display:none!important;}
-        .map-panel .map-visual:has(.nifty-heatmap-wrap) .nifty-heatmap-wrap{position:absolute;inset:0;padding:14px;box-sizing:border-box;overflow:hidden;}
+      <style>{`
+        .map-panel .nifty-heatmap-host{position:relative;overflow:hidden;}
+        .map-panel .nifty-heatmap-host > .map-dot,
+        .map-panel .nifty-heatmap-host > .map-route,
+        .map-panel .nifty-heatmap-host > .map-orb{display:none!important;}
+        .map-panel .nifty-heatmap-host .nifty-heatmap-wrap{position:absolute;inset:0;padding:14px;box-sizing:border-box;overflow:hidden;}
       `}</style>
     </>
   )
