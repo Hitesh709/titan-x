@@ -12,7 +12,7 @@ from titan_x.services.paper_trading_service import PaperTradingService
 
 
 class AutoDemoBotEngine:
-    """15-cycle paper-only demo engine using Yahoo Finance as its sole market source."""
+    """15-cycle paper-only demo engine using live Yahoo intraday market data."""
 
     MAX_CYCLES = 15
     DEFAULT_CAPITAL = Decimal("100000")
@@ -31,17 +31,37 @@ class AutoDemoBotEngine:
             except Exception:
                 quote = None
 
+            # Use today's 1-minute bars for the actual LTP instead of the
+            # daily chart metadata, which can be stale during an open session.
+            live_points = []
+            try:
+                live_points = await provider.get_historical_prices(
+                    symbol,
+                    interval="1m",
+                    start=date.today(),
+                    end=date.today() + timedelta(days=1),
+                    synthetic_ok=False,
+                )
+            except Exception:
+                live_points = []
+
             points = []
             try:
-                end = date.today()
-                start = end - timedelta(days=10)
+                start = date.today() - timedelta(days=10)
                 points = await provider.get_historical_prices(
-                    symbol, interval="5m", start=start, end=end, synthetic_ok=False
+                    symbol, interval="5m", start=start, end=date.today() + timedelta(days=1), synthetic_ok=False
                 )
             except Exception:
                 points = []
 
-            ltp = quote.get("last_price") if quote else None
+            valid_live = [p for p in live_points if p.close and float(p.close) > 0]
+            if valid_live:
+                ltp = float(valid_live[-1].close)
+                price_source = "YAHOO_LIVE_INTRADAY"
+            else:
+                ltp = quote.get("last_price") if quote else None
+                price_source = "YAHOO_QUOTE" if ltp is not None and float(ltp) > 0 else "UNAVAILABLE"
+
             if ltp is None or float(ltp) <= 0:
                 return None, [], "UNAVAILABLE"
 
@@ -55,8 +75,8 @@ class AutoDemoBotEngine:
                 for p in points[-120:]
             ]
             if len(candles) < 35:
-                return float(ltp), candles, "YAHOO_LIVE_INSUFFICIENT_HISTORY"
-            return float(ltp), candles, "YAHOO_LIVE"
+                return float(ltp), candles, f"{price_source}_INSUFFICIENT_HISTORY"
+            return float(ltp), candles, price_source
         finally:
             await provider.close()
 
@@ -107,7 +127,7 @@ class AutoDemoBotEngine:
             return {
                 "cycle": cycle,
                 "action": "HOLD",
-                "reason": "Yahoo Finance current market price unavailable or stale; no synthetic price used",
+                "reason": "Yahoo Finance current market price unavailable; no synthetic price used",
                 "price": None,
                 "price_source": price_source,
                 "strategy": {"action": "hold", "confidence": 0.0, "metadata": {}},
