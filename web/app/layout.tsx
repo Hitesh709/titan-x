@@ -8,21 +8,14 @@ import "./brand.css"
 import "./reference-polish.css"
 import "./titan-command.css"
 import "./brand-pair.css"
+import "./titan-neon.css"
 
 export const metadata: Metadata = {
   title: "TITAN X — AI Market Intelligence",
   description: "TITAN X is a high-performance financial intelligence platform for live index intelligence, AI analytics, trading and risk.",
   keywords: ["TITAN X", "AI trading", "market intelligence", "global indices", "financial analytics", "risk engine"],
-  icons: {
-    icon: "/titan-x-logo.svg",
-    shortcut: "/titan-x-logo.svg",
-    apple: "/titan-x-logo.svg",
-  },
-  openGraph: {
-    title: "TITAN X — AI Market Intelligence",
-    description: "Live index intelligence, AI analytics, trading and risk in one high-performance platform.",
-    type: "website",
-  },
+  icons: { icon: "/titan-x-logo.svg", shortcut: "/titan-x-logo.svg", apple: "/titan-x-logo.svg" },
+  openGraph: { title: "TITAN X — AI Market Intelligence", description: "Live index intelligence, AI analytics, trading and risk in one high-performance platform.", type: "website" },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
