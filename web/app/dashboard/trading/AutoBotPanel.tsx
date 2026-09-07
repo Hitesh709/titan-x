@@ -1,96 +1,74 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { Bot, Pause, Play, ShieldCheck, Activity, Clock3, TrendingUp } from "lucide-react"
+import { Activity, Bot, Pause, Play, ShieldCheck, Target, TrendingUp } from "lucide-react"
 import api from "@/lib/api"
-import { SymbolAutocomplete } from "@/components/dashboard/SymbolAutocomplete"
-
-const MAX_RUNTIME_SECONDS = 15 * 60
-const CYCLE_SECONDS = 60
 
 interface AutoBotPanelProps { initialSymbol?: string; onSymbolChange?: (symbol: string) => void }
-interface CycleResult { cycle: number; action: "BUY" | "SELL" | "HOLD"; price?: number; price_source?: string; quantity?: number; reason?: string; strategy?: { confidence?: number; action?: string; metadata?: Record<string, unknown> }; order?: { status?: string; price?: number; rejection_reason?: string } }
+interface TradeResult { symbol: string; action: string; quantity: number; price: number; allocated_amount?: number; stop_loss_price?: number; score?: number; technical_score?: number; predicted_return_pct?: number; price_source?: string }
+interface BotResult { action: "TRADE" | "WAIT"; reason?: string; strategy_window: string; continuous: boolean; universe_candidates?: number; eligible_candidates?: number; selected_candidates?: number; profile_ratio?: number; max_trades_per_burst?: number; stop_loss_max_pct?: number; protected_positions?: TradeResult[]; trades?: TradeResult[] }
 
-export default function AutoBotPanel({ initialSymbol = "RELIANCE", onSymbolChange }: AutoBotPanelProps) {
-  const [symbol, setSymbol] = useState(initialSymbol || "RELIANCE")
+const POLL_MS = 15000
+
+export default function AutoBotPanel({ initialSymbol = "RELIANCE" }: AutoBotPanelProps) {
   const [amount, setAmount] = useState(10000)
+  const [profileRatio, setProfileRatio] = useState(1)
   const [running, setRunning] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [cycle, setCycle] = useState(0)
   const [executed, setExecuted] = useState(0)
-  const [last, setLast] = useState<CycleResult | null>(null)
+  const [last, setLast] = useState<BotResult | null>(null)
   const [message, setMessage] = useState("Bot stopped")
-  const [remainingSeconds, setRemainingSeconds] = useState(0)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const cycleRef = useRef(0)
   const runningRef = useRef(false)
+  const busyRef = useRef(false)
 
-  useEffect(() => setSymbol(initialSymbol || "RELIANCE"), [initialSymbol])
-  useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current) }, [])
-
-  const runCycle = useCallback(async (nextCycle: number) => {
-    if (busy || !runningRef.current) return
+  const runBot = useCallback(async () => {
+    if (busyRef.current || !runningRef.current) return
+    busyRef.current = true
     setBusy(true)
     try {
-      const params = new URLSearchParams({ symbol: symbol.trim().toUpperCase(), cycle: String(nextCycle), trade_amount: String(amount) })
-      const result = await api.post<CycleResult>(`/auto-demo-bot/cycle?${params.toString()}`, {})
+      const params = new URLSearchParams({ trade_amount: String(amount), profile_ratio: String(profileRatio) })
+      const result = await api.post<BotResult>(`/auto-demo-bot/run?${params.toString()}`, {})
       setLast(result)
-      setCycle(nextCycle)
-      if (result.action === "BUY" || result.action === "SELL") setExecuted((v) => v + 1)
-      const source = result.price_source?.startsWith("YAHOO_LIVE") ? "LIVE LTP" : result.price_source === "LIVE_REFERENCE" ? "LIVE LTP" : result.price_source === "DEMO_MARKET" ? "DEMO PRICE" : "REFERENCE"
-      const p = result.price ? `₹${result.price.toLocaleString("en-IN", { maximumFractionDigits: 2 })}` : "—"
-      setMessage(`${result.action} · ${p} · ${source}${result.quantity ? ` · ${result.quantity} qty` : ""}`)
+      const trades = result.trades ?? []
+      if (trades.length) setExecuted((value) => value + trades.length)
+      setMessage(
+        result.action === "TRADE"
+          ? `${trades.length} trade${trades.length === 1 ? "" : "s"} · ${trades.slice(0, 4).map((t) => `${t.symbol} ${t.action}`).join(" · ")}`
+          : result.reason ?? "No qualified trade",
+      )
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Auto demo cycle failed")
-    } finally { setBusy(false) }
-  }, [amount, busy, symbol])
+      setMessage(error instanceof Error ? error.message : "Auto bot run failed")
+    } finally {
+      busyRef.current = false
+      setBusy(false)
+    }
+  }, [amount, profileRatio])
 
-  const stop = useCallback((reason = "Bot stopped") => {
+  const stop = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current)
     timerRef.current = null
     runningRef.current = false
     setRunning(false)
-    setRemainingSeconds(0)
-    setMessage(reason)
+    setMessage("Bot stopped")
   }, [])
 
   const start = () => {
-    const sym = symbol.trim().toUpperCase()
-    if (!sym) { setMessage("Select a stock symbol first"); return }
-    if (!Number.isFinite(amount) || amount <= 0) { setMessage("Enter a valid demo trade amount"); return }
+    if (!Number.isFinite(amount) || amount <= 0) { setMessage("Enter a valid trading amount"); return }
     if (runningRef.current) return
-    cycleRef.current = 1
     runningRef.current = true
-    setCycle(0)
+    setRunning(true)
     setExecuted(0)
     setLast(null)
-    setRunning(true)
-    setRemainingSeconds(MAX_RUNTIME_SECONDS)
-    setMessage("Demo bot started · fetching live intraday market price and strategy")
-    void runCycle(1)
-    timerRef.current = setInterval(() => {
-      if (!runningRef.current) return
-      cycleRef.current += 1
-      if (cycleRef.current > 15) { stop("15-minute demo completed"); return }
-      void runCycle(cycleRef.current)
-    }, CYCLE_SECONDS * 1000)
+    setMessage("Bot started · scanning the market for the best qualified stocks")
+    void runBot()
+    timerRef.current = setInterval(() => { void runBot() }, POLL_MS)
   }
 
-  useEffect(() => {
-    if (!running) return
-    const countdown = window.setInterval(() => {
-      setRemainingSeconds((current) => {
-        const next = Math.max(0, current - 1)
-        if (next === 0) stop("15-minute demo completed")
-        return next
-      })
-    }, 1000)
-    return () => clearInterval(countdown)
-  }, [running, stop])
+  useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current) }, [])
 
-  const updateSymbol = (value: string) => { const next = value.toUpperCase(); setSymbol(next); onSymbolChange?.(next) }
-  const mins = Math.floor(remainingSeconds / 60), secs = remainingSeconds % 60
-  const confidence = Number(last?.strategy?.confidence ?? 0)
+  const trades = last?.trades ?? []
+  const protectedPositions = last?.protected_positions ?? []
 
   return (
     <section className="glass-card p-5 border border-titan-500/20 relative overflow-hidden">
@@ -99,28 +77,31 @@ export default function AutoBotPanel({ initialSymbol = "RELIANCE", onSymbolChang
         <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
           <div>
             <h3 className="text-sm font-semibold text-white flex items-center gap-2"><Bot size={17} className="text-titan-400" /> Auto Bot Trading <span className="text-[9px] uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Demo Money</span></h3>
-            <p className="text-xs text-gray-500 mt-1">15-minute automatic BUY → SELL → BUY → SELL paper execution using live intraday prices.</p>
+            <p className="text-xs text-gray-500 mt-1">Continuous multi-stock algorithm · 3-hour strategy window · best-value ranking · paper execution.</p>
           </div>
           <div className="flex items-center gap-2 text-[10px] text-gray-500"><ShieldCheck size={14} className="text-emerald-400" /> No real broker orders</div>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-end">
-          <div className="col-span-2 md:col-span-1"><label className="block text-[10px] text-gray-500 mb-1">Stock</label><SymbolAutocomplete value={symbol} onChange={updateSymbol} placeholder="Search symbol" className="w-full" /></div>
-          <div><label className="block text-[10px] text-gray-500 mb-1">Demo trade amount (₹)</label><input type="number" min={1} step={1000} value={amount} onChange={(e) => setAmount(Math.max(1, Number(e.target.value) || 1))} className="input-field w-full text-sm" disabled={running} /></div>
-          <div><label className="block text-[10px] text-gray-500 mb-1">Cycle</label><div className="input-field w-full text-sm text-white">{cycle || 0}/15</div></div>
-          <div>{running ? <button onClick={() => stop()} className="w-full px-4 py-2 rounded-lg text-sm font-semibold border border-red-500/30 bg-red-500/10 text-red-400 inline-flex items-center justify-center gap-2"><Pause size={14} /> Stop</button> : <button onClick={start} disabled={busy} className="w-full px-4 py-2 rounded-lg text-sm font-semibold bg-titan-500 text-white inline-flex items-center justify-center gap-2 disabled:opacity-50"><Play size={14} /> Start 15-Min Bot</button>}</div>
+          <div><label className="block text-[10px] text-gray-500 mb-1">Trading capital (₹)</label><input type="number" min={1} step={1000} value={amount} onChange={(e) => setAmount(Math.max(1, Number(e.target.value) || 1))} className="input-field w-full text-sm" disabled={running} /></div>
+          <div><label className="block text-[10px] text-gray-500 mb-1">Profile ratio</label><input type="number" min={0.2} max={20} step={0.1} value={profileRatio} onChange={(e) => setProfileRatio(Math.max(0.2, Math.min(20, Number(e.target.value) || 1)))} className="input-field w-full text-sm" disabled={running} /></div>
+          <div><label className="block text-[10px] text-gray-500 mb-1">Strategy window</label><div className="input-field w-full text-sm text-white flex items-center gap-2"><Target size={14} /> 3 hours</div></div>
+          <div>{running ? <button onClick={stop} className="w-full px-4 py-2 rounded-lg text-sm font-semibold border border-red-500/30 bg-red-500/10 text-red-400 inline-flex items-center justify-center gap-2"><Pause size={14} /> Stop</button> : <button onClick={start} disabled={busy} className="w-full px-4 py-2 rounded-lg text-sm font-semibold bg-titan-500 text-white inline-flex items-center justify-center gap-2 disabled:opacity-50"><Play size={14} /> Start Auto Bot</button>}</div>
         </div>
 
         <div className="mt-4 grid grid-cols-2 md:grid-cols-6 gap-3">
-          <div className="rounded-lg bg-white/[0.03] border border-white/5 p-3"><div className="text-[10px] text-gray-500">Last price</div><div className="text-lg font-bold text-white">{last?.price ? `₹${last.price.toLocaleString("en-IN", { maximumFractionDigits: 2 })}` : "—"}</div></div>
-          <div className="rounded-lg bg-white/[0.03] border border-white/5 p-3"><div className="text-[10px] text-gray-500">Action</div><div className="text-lg font-bold text-titan-300">{last?.action ?? "WAIT"}</div></div>
-          <div className="rounded-lg bg-white/[0.03] border border-white/5 p-3"><div className="text-[10px] text-gray-500">Trades</div><div className="text-lg font-bold text-white">{executed}</div></div>
-          <div className="rounded-lg bg-white/[0.03] border border-white/5 p-3"><div className="text-[10px] text-gray-500">Strategy</div><div className="text-lg font-bold text-white flex items-center gap-1"><TrendingUp size={14} />{confidence ? `${Math.round(confidence * 100)}%` : "—"}</div></div>
-          <div className="rounded-lg bg-white/[0.03] border border-white/5 p-3"><div className="text-[10px] text-gray-500">Window</div><div className="text-lg font-bold text-white flex items-center gap-1"><Clock3 size={14} />{running ? `${mins}:${String(secs).padStart(2, "0")}` : "15:00"}</div></div>
-          <div className="rounded-lg bg-white/[0.03] border border-white/5 p-3"><div className="text-[10px] text-gray-500">Status</div><div className="text-xs font-medium text-gray-300 flex items-center gap-1.5 mt-1"><Activity size={12} className={running ? "text-emerald-400" : "text-gray-500"} />{message}</div></div>
+          <div className="rounded-lg bg-white/[0.03] border border-white/5 p-3"><div className="text-[10px] text-gray-500">Candidates</div><div className="text-lg font-bold text-white">{last?.universe_candidates ?? "—"}</div></div>
+          <div className="rounded-lg bg-white/[0.03] border border-white/5 p-3"><div className="text-[10px] text-gray-500">Qualified</div><div className="text-lg font-bold text-white">{last?.eligible_candidates ?? "—"}</div></div>
+          <div className="rounded-lg bg-white/[0.03] border border-white/5 p-3"><div className="text-[10px] text-gray-500">Trades this run</div><div className="text-lg font-bold text-titan-300">{trades.length}</div></div>
+          <div className="rounded-lg bg-white/[0.03] border border-white/5 p-3"><div className="text-[10px] text-gray-500">Total executions</div><div className="text-lg font-bold text-white flex items-center gap-1"><TrendingUp size={14} />{executed}</div></div>
+          <div className="rounded-lg bg-white/[0.03] border border-white/5 p-3"><div className="text-[10px] text-gray-500">Stop loss</div><div className="text-lg font-bold text-amber-300">Max 40%</div></div>
+          <div className="rounded-lg bg-white/[0.03] border border-white/5 p-3"><div className="text-[10px] text-gray-500">Status</div><div className="text-xs font-medium text-gray-300 flex items-center gap-1.5 mt-1"><Activity size={12} className={running ? "text-emerald-400" : "text-gray-500"} />{busy ? "Analysing…" : message}</div></div>
         </div>
 
-        <div className="mt-4 text-[10px] leading-4 text-gray-500">The bot now uses Yahoo Finance 1-minute intraday bars for the latest available LTP and never substitutes a synthetic price. If live data is unavailable, the bot holds instead of trading.</div>
+        {trades.length > 0 && <div className="mt-4 rounded-lg border border-white/5 bg-white/[0.02] p-3"><div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">Selected trades</div><div className="grid md:grid-cols-2 gap-2">{trades.slice(0, 12).map((trade) => <div key={`${trade.symbol}-${trade.action}`} className="flex items-center justify-between rounded-md bg-white/[0.03] px-3 py-2 text-xs"><span className="font-semibold text-white">{trade.symbol}</span><span className="text-emerald-400">{trade.action} {trade.quantity}</span><span className="text-gray-400">₹{trade.price.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span><span className="text-amber-300">SL ₹{trade.stop_loss_price?.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span></div>)}</div></div>}
+        {protectedPositions.length > 0 && <div className="mt-3 text-[10px] text-amber-300">{protectedPositions.length} position(s) exited by the 40% maximum-loss protection.</div>}
+
+        <div className="mt-4 text-[10px] leading-4 text-gray-500">The bot does not trade a manually selected stock. It continuously ranks qualified market candidates, checks the 3-hour intraday context, allocates capital by score/profile ratio, and trades only when the algorithm finds a qualified opportunity. The 40% maximum loss protection is enforced before/while managing open bot positions.</div>
       </div>
     </section>
   )
