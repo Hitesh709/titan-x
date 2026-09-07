@@ -85,9 +85,7 @@ class EmailRegistrationService:
         if duplicate.scalar_one_or_none() is not None:
             raise ValueError("Username, email, or mobile number is already registered")
 
-        # IMPORTANT: send the email before adding the challenge to the SQLite session.
-        # The old flow flushed the challenge, then waited up to 15s on Resend/SMTP while
-        # holding SQLite's write transaction, which caused database-locked auth requests.
+        # Send before writing the challenge so SQLite is never held during network I/O.
         challenge = self._build_challenge(username, email, phone, password)
         await self._send_otp(challenge)
 
@@ -151,11 +149,24 @@ class EmailRegistrationService:
     async def _send_otp(self, challenge: AuthChallenge) -> None:
         now = self._now()
         otp = f"{secrets.randbelow(1_000_000):06d}"
-        sent = await self._send_via_resend(challenge, otp)
-        if not sent:
+
+        # Prefer explicitly configured SMTP (Gmail) for Titan X production OTPs.
+        # This avoids waiting for an unverified Resend sender before using Gmail.
+        smtp_configured = bool(
+            self._settings.smtp_host
+            and self._settings.smtp_user
+            and (self._settings.smtp_password or self._settings.smtp_app_password)
+        )
+        if smtp_configured:
             sent = await self._send_via_smtp(challenge, otp)
+            if not sent:
+                sent = await self._send_via_resend(challenge, otp)
+        else:
+            sent = await self._send_via_resend(challenge, otp)
+            if not sent:
+                sent = await self._send_via_smtp(challenge, otp)
         if not sent:
-            raise ValueError("Unable to send email verification code. Configure a verified Resend sender/domain or SMTP email delivery.")
+            raise ValueError("Unable to send email verification code. Configure Gmail SMTP with a Google App Password or a verified Resend sender/domain.")
         challenge.email_otp_hash = self._hash(otp)
         challenge.email_otp_expires_at = now + timedelta(seconds=self.OTP_TTL_SECONDS)
         challenge.email_otp_attempts = 0
