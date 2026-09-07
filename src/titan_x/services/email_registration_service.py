@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 
 import httpx
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from titan_x.core.config import Settings
@@ -40,7 +40,6 @@ class EmailRegistrationService:
 
     @staticmethod
     def _utc(value: datetime | None) -> datetime | None:
-        """Normalize DB datetimes so SQLite naive values and PostgreSQL aware values compare safely."""
         if value is None:
             return None
         if value.tzinfo is None:
@@ -73,10 +72,9 @@ class EmailRegistrationService:
             raise ValueError("Username, email, or mobile number is already registered")
 
         now = self._now()
-        raw = secrets.token_urlsafe(32)
         challenge = AuthChallenge(
             challenge_id=secrets.token_urlsafe(24),
-            challenge_hash=self._hash(raw),
+            challenge_hash=self._hash(secrets.token_urlsafe(32)),
             browser_session_id=self._hash(secrets.token_urlsafe(32)),
             status="EMAIL_OTP_REQUIRED",
             operation="REGISTRATION_EMAIL",
@@ -93,18 +91,12 @@ class EmailRegistrationService:
         return challenge.challenge_id, challenge.email_otp_expires_at or (now + timedelta(seconds=self.OTP_TTL_SECONDS))
 
     def _message_content(self, challenge: AuthChallenge, otp: str) -> tuple[str, str]:
-        text = (
-            f"Your Titan X verification code is {otp}.\n\n"
-            "This code expires in 10 minutes.\n"
-            "Do not share this code with anyone."
-        )
+        text = f"Your Titan X verification code is {otp}.\n\nThis code expires in 10 minutes.\nDo not share this code with anyone."
         html = (
             "<div style=\"font-family:Arial,sans-serif;line-height:1.6\">"
             "<h2>Titan X email verification</h2>"
             f"<p>Your verification code is <strong style=\"font-size:24px;letter-spacing:4px\">{otp}</strong>.</p>"
-            "<p>This code expires in 10 minutes.</p>"
-            "<p>Do not share this code with anyone.</p>"
-            "</div>"
+            "<p>This code expires in 10 minutes.</p><p>Do not share this code with anyone.</p></div>"
         )
         return text, html
 
@@ -115,29 +107,21 @@ class EmailRegistrationService:
         text, html = self._message_content(challenge, otp)
         from_email = self._settings.resend_from_email
         from_value = f"{self._settings.resend_from_name} <{from_email}>" if self._settings.resend_from_name else from_email
-        payload = {
-            "from": from_value,
-            "to": [recipient],
-            "subject": "Titan X email verification code",
-            "text": text,
-            "html": html,
-        }
-        headers = {
-            "Authorization": f"Bearer {self._settings.resend_api_key.get_secret_value()}",
-            "Content-Type": "application/json",
-        }
+        payload = {"from": from_value, "to": [recipient], "subject": "Titan X email verification code", "text": text, "html": html}
+        headers = {"Authorization": f"Bearer {self._settings.resend_api_key.get_secret_value()}", "Content-Type": "application/json"}
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
                 response = await client.post(self.RESEND_API_URL, headers=headers, json=payload)
-            if response.is_success:
-                return True
-            return False
+            return response.is_success
         except httpx.HTTPError:
             return False
 
     async def _send_via_smtp(self, challenge: AuthChallenge, otp: str) -> bool:
-        if not self._settings.smtp_host or not self._settings.smtp_user or not self._settings.smtp_password:
+        password = self._settings.smtp_password or self._settings.smtp_app_password
+        if not self._settings.smtp_host or not self._settings.smtp_user or not password:
             return False
+        # Google displays App Passwords with spaces; SMTP authentication expects the raw 16 characters.
+        password = "".join(password.split())
         text, _ = self._message_content(challenge, otp)
         message = EmailMessage()
         message["Subject"] = "Titan X email verification code"
@@ -147,8 +131,10 @@ class EmailRegistrationService:
 
         def send() -> None:
             with smtplib.SMTP(self._settings.smtp_host, self._settings.smtp_port, timeout=15) as smtp:
+                smtp.ehlo()
                 smtp.starttls()
-                smtp.login(self._settings.smtp_user, self._settings.smtp_password)
+                smtp.ehlo()
+                smtp.login(self._settings.smtp_user or "", password)
                 smtp.send_message(message)
 
         try:
@@ -164,8 +150,6 @@ class EmailRegistrationService:
             return
         otp = f"{secrets.randbelow(1_000_000):06d}"
 
-        # Resend is preferred, but a sender/domain rejection must not prevent
-        # a configured SMTP transport from being used as a fallback.
         sent = await self._send_via_resend(challenge, otp)
         if not sent:
             sent = await self._send_via_smtp(challenge, otp)
@@ -179,9 +163,7 @@ class EmailRegistrationService:
         challenge.email_otp_sent_at = now
 
     async def verify(self, challenge_id: str, otp: str) -> tuple[User, str, str]:
-        result = await self._session.execute(
-            select(AuthChallenge).where(AuthChallenge.challenge_id == challenge_id).with_for_update()
-        )
+        result = await self._session.execute(select(AuthChallenge).where(AuthChallenge.challenge_id == challenge_id).with_for_update())
         challenge = result.scalar_one_or_none()
         if challenge is None or challenge.operation != "REGISTRATION_EMAIL" or challenge.status != "EMAIL_OTP_REQUIRED":
             raise ValueError("Invalid or expired registration request")
@@ -202,11 +184,7 @@ class EmailRegistrationService:
             raise ValueError("Invalid email OTP")
 
         duplicate = await self._session.execute(
-            select(User).where(
-                (User.username == challenge.registration_username)
-                | (User.email == challenge.registration_email)
-                | (User.phone == challenge.registration_phone)
-            ).with_for_update()
+            select(User).where((User.username == challenge.registration_username) | (User.email == challenge.registration_email) | (User.phone == challenge.registration_phone)).with_for_update()
         )
         if duplicate.scalar_one_or_none() is not None:
             challenge.status = "CANCELLED"
