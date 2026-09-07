@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
+import logging
 import secrets
 import smtplib
 from datetime import datetime, timedelta, timezone
@@ -17,6 +18,9 @@ from titan_x.core.security import create_access_token, create_refresh_token, has
 from titan_x.models.auth_challenge import AuthChallenge
 from titan_x.models.refresh_token import RefreshToken
 from titan_x.models.user import User
+
+
+logger = logging.getLogger(__name__)
 
 
 class EmailRegistrationService:
@@ -106,6 +110,7 @@ class EmailRegistrationService:
 
     async def _send_via_resend(self, challenge: AuthChallenge, otp: str) -> bool:
         if self._settings.resend_api_key is None:
+            logger.warning("otp_provider=resend configured=false")
             return False
         recipient = challenge.registration_email or ""
         text, html = self._message_content(challenge, otp)
@@ -116,13 +121,20 @@ class EmailRegistrationService:
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
                 response = await client.post(self.RESEND_API_URL, headers=headers, json=payload)
-            return response.is_success
-        except httpx.HTTPError:
+            if response.is_success:
+                logger.info("otp_provider=resend result=success")
+                return True
+            body = response.text.replace("\n", " ")[:500]
+            logger.warning("otp_provider=resend result=failed status=%s body=%s", response.status_code, body)
+            return False
+        except httpx.HTTPError as exc:
+            logger.warning("otp_provider=resend result=exception type=%s message=%s", type(exc).__name__, str(exc)[:300])
             return False
 
     async def _send_via_smtp(self, challenge: AuthChallenge, otp: str) -> bool:
         password = self._settings.smtp_password or self._settings.smtp_app_password
         if not self._settings.smtp_host or not self._settings.smtp_user or not password:
+            logger.info("otp_provider=smtp configured=false")
             return False
         password = "".join(password.split())
         text, _ = self._message_content(challenge, otp)
@@ -142,8 +154,10 @@ class EmailRegistrationService:
 
         try:
             await asyncio.to_thread(send)
+            logger.info("otp_provider=smtp result=success")
             return True
-        except (OSError, smtplib.SMTPException):
+        except (OSError, smtplib.SMTPException) as exc:
+            logger.warning("otp_provider=smtp result=failed type=%s message=%s", type(exc).__name__, str(exc)[:300])
             return False
 
     async def _send_otp(self, challenge: AuthChallenge) -> None:
