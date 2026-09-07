@@ -2,6 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy import select
 
 from titan_x.api.dependencies import (
     get_auth_service,
@@ -52,6 +53,36 @@ class EmailRegistrationCreateResponse(BaseModel):
     message: str
 
 
+class ProfileResponse(BaseModel):
+    id: int
+    username: str | None = None
+    email: str
+    phone: str | None = None
+    role: str
+    is_active: bool
+    is_verified: bool
+    created_at: str | None = None
+
+
+class ProfileUpdateRequest(BaseModel):
+    username: str | None = Field(default=None, min_length=3, max_length=80, pattern=r"^[A-Za-z0-9_.-]+$")
+    phone: str | None = Field(default=None, min_length=7, max_length=32)
+
+
+def _profile_payload(user: User) -> ProfileResponse:
+    created = getattr(user, "created_at", None)
+    return ProfileResponse(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        phone=user.phone,
+        role=user.role,
+        is_active=user.is_active,
+        is_verified=user.is_verified,
+        created_at=created.isoformat() if created else None,
+    )
+
+
 @auth_router.post("/auth/register/email-otp/create", response_model=EmailRegistrationCreateResponse)
 async def create_email_otp_registration(
     body: EmailRegistrationRequest,
@@ -60,12 +91,9 @@ async def create_email_otp_registration(
     rate_limiter: Annotated[RateLimiter | None, Depends(get_rate_limiter)],
 ) -> EmailRegistrationCreateResponse:
     if rate_limiter is not None and settings.rate_limit_enabled:
-        allowed, _, _ = await rate_limiter.check(
-            f"signup-email-otp:{body.email.lower()}", 5, 300
-        )
+        allowed, _, _ = await rate_limiter.check(f"signup-email-otp:{body.email.lower()}", 5, 300)
         if not allowed:
             raise HTTPException(status_code=429, detail="Too many signup attempts. Try again later.")
-
     async with request.app.state.session_factory() as session:
         service = EmailRegistrationService(session, settings)
         try:
@@ -78,7 +106,6 @@ async def create_email_otp_registration(
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-
     return EmailRegistrationCreateResponse(
         challenge_id=challenge_id,
         expires_in_seconds=EmailRegistrationService.OTP_TTL_SECONDS,
@@ -97,21 +124,16 @@ async def verify_email_otp_registration(
     otp = str(body.get("otp", "")).strip()
     if len(challenge_id) < 16 or not otp.isdigit() or len(otp) != 6:
         raise HTTPException(status_code=400, detail="Invalid verification request")
-
     if rate_limiter is not None and settings.rate_limit_enabled:
-        allowed, _, _ = await rate_limiter.check(
-            f"signup-email-otp-verify:{challenge_id}", 10, 300
-        )
+        allowed, _, _ = await rate_limiter.check(f"signup-email-otp-verify:{challenge_id}", 10, 300)
         if not allowed:
             raise HTTPException(status_code=429, detail="Too many OTP attempts. Try again later.")
-
     async with request.app.state.session_factory() as session:
         service = EmailRegistrationService(session, settings)
         try:
             _, access, refresh = await service.verify(challenge_id, otp)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-
     return TokenResponse(access_token=access, refresh_token=refresh)
 
 
@@ -141,16 +163,13 @@ async def login(
         blocked = await brute_force.is_blocked(body.email, settings.brute_force_max_attempts, settings.brute_force_window_minutes, settings.brute_force_block_minutes)
         if blocked:
             raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Account temporarily blocked. Try again later.")
-
     if settings.ensure_demo_user_on_startup and body.email.strip().lower() == "demo@titanx.app":
         try:
             from titan_x.core.demo_user import ensure_demo_user
-
             await ensure_demo_user(request.app.state.session_factory)
         except Exception:
             logger = __import__("structlog").get_logger(__name__)
             logger.exception("demo_user_login_bootstrap_failed")
-
     try:
         user = await service.authenticate(email=body.email, password=body.password)
     except ValueError as exc:
@@ -204,10 +223,7 @@ async def logout(body: LogoutRequest, service: Annotated[AuthService, Depends(ge
 
 
 @auth_router.post("/auth/logout-all", response_model=MessageResponse)
-async def logout_all(
-    current_user: Annotated[User, Depends(get_current_active_user)],
-    service: Annotated[AuthService, Depends(get_auth_service)],
-) -> MessageResponse:
+async def logout_all(current_user: Annotated[User, Depends(get_current_active_user)], service: Annotated[AuthService, Depends(get_auth_service)]) -> MessageResponse:
     count = await service.revoke_all_sessions(current_user.id)
     return MessageResponse(message=f"Revoked {count} active sessions")
 
@@ -215,9 +231,7 @@ async def logout_all(
 @auth_router.post("/auth/forgot-password", response_model=ForgotPasswordResponse)
 async def forgot_password(body: ForgotPasswordRequest, service: Annotated[AuthService, Depends(get_auth_service)], settings: Annotated[Settings, Depends(get_settings)]) -> ForgotPasswordResponse:
     token = await service.forgot_password(email=body.email)
-    reset_url = None
-    if token is not None:
-        reset_url = f"{settings.frontend_url.rstrip('/')}/reset-password?token={token}"
+    reset_url = f"{settings.frontend_url.rstrip('/')}/reset-password?token={token}" if token is not None else None
     return ForgotPasswordResponse(message="If the email exists, a password reset link has been sent", reset_url=reset_url)
 
 
@@ -249,6 +263,35 @@ async def verify_email(body: VerifyEmailRequest, service: Annotated[AuthService,
     return MessageResponse(message="Email verified successfully")
 
 
-@auth_router.get("/auth/me", response_model=RegisterResponse)
-async def get_me(current_user: Annotated[User, Depends(get_current_active_user)]) -> RegisterResponse:
-    return RegisterResponse(id=current_user.id, email=current_user.email, role=current_user.role, is_active=current_user.is_active, is_verified=current_user.is_verified)
+@auth_router.get("/auth/me", response_model=ProfileResponse)
+async def get_me(current_user: Annotated[User, Depends(get_current_active_user)]) -> ProfileResponse:
+    return _profile_payload(current_user)
+
+
+@auth_router.patch("/auth/me", response_model=ProfileResponse)
+async def update_me(
+    body: ProfileUpdateRequest,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    request: Request,
+) -> ProfileResponse:
+    username = body.username.strip() if body.username is not None else None
+    phone = body.phone.strip() if body.phone is not None else None
+    if username and username != current_user.username:
+        result = await request.app.state.session_factory().__aenter__()
+        try:
+            duplicate = await result.execute(select(User).where(User.username == username, User.id != current_user.id))
+            if duplicate.scalar_one_or_none() is not None:
+                raise HTTPException(status_code=409, detail="Username is already registered")
+            current_user.username = username
+            await result.commit()
+        finally:
+            await result.__aexit__(None, None, None)
+    if phone is not None and phone != current_user.phone:
+        session = request.app.state.session_factory()
+        async with session:
+            duplicate = await session.execute(select(User).where(User.phone == phone, User.id != current_user.id))
+            if duplicate.scalar_one_or_none() is not None:
+                raise HTTPException(status_code=409, detail="Mobile number is already registered")
+            current_user.phone = phone
+            await session.commit()
+    return _profile_payload(current_user)
