@@ -58,19 +58,27 @@ def _plan_payload(code: str, plan: dict) -> dict:
     return {"code": code, **plan}
 
 
+def _utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 async def _current_subscription(session, user_id: int) -> Subscription | None:
     now = datetime.now(timezone.utc)
     result = await session.execute(
         select(Subscription)
-        .where(
-            Subscription.user_id == user_id,
-            Subscription.status == "active",
-            Subscription.expires_at >= now,
-        )
+        .where(Subscription.user_id == user_id, Subscription.status == "active")
         .order_by(Subscription.expires_at.desc())
-        .limit(1)
+        .limit(10)
     )
-    return result.scalar_one_or_none()
+    for subscription in result.scalars().all():
+        expires_at = _utc(subscription.expires_at)
+        if expires_at is not None and expires_at >= now:
+            return subscription
+    return None
 
 
 @router.get("/plans")
@@ -89,8 +97,8 @@ async def my_subscription(
     return {
         "plan_code": subscription.plan_code,
         "status": subscription.status,
-        "starts_at": subscription.starts_at.isoformat(),
-        "expires_at": subscription.expires_at.isoformat(),
+        "starts_at": _utc(subscription.starts_at).isoformat() if subscription.starts_at else None,
+        "expires_at": _utc(subscription.expires_at).isoformat() if subscription.expires_at else None,
         "plan": _plan_payload(subscription.plan_code, PLANS[subscription.plan_code]),
     }
 
@@ -104,12 +112,9 @@ async def assign_subscription(
     if body.plan_code not in PLANS:
         raise HTTPException(status_code=400, detail="Unknown subscription plan")
     now = datetime.now(timezone.utc)
-    result = await session.execute(
-        select(User).where(User.id == body.user_id)
-    )
+    result = await session.execute(select(User).where(User.id == body.user_id))
     if result.scalar_one_or_none() is None:
         raise HTTPException(status_code=404, detail="User not found")
-
     await session.execute(
         Subscription.__table__.update()
         .where(Subscription.user_id == body.user_id, Subscription.status == "active")
@@ -140,7 +145,6 @@ async def subscription_recommendations(
     subscription = await _current_subscription(session, user.id)
     if subscription is None or subscription.plan_code not in PLANS:
         raise HTTPException(status_code=403, detail="An active Titan subscription is required for premium recommendations")
-
     plan = PLANS[subscription.plan_code]
     result = await session.execute(
         select(Recommendation)
@@ -152,7 +156,6 @@ async def subscription_recommendations(
         .order_by(Recommendation.score.desc(), Recommendation.generated_at.desc())
         .limit(3000)
     )
-
     recommendations = []
     for rec in result.scalars().all():
         try:
@@ -195,7 +198,6 @@ async def subscription_recommendations(
         })
         if len(recommendations) >= limit:
             break
-
     return {
         "plan": _plan_payload(subscription.plan_code, plan),
         "recommendations": recommendations,
