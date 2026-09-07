@@ -47,7 +47,7 @@ from titan_x.models.global_market import GlobalAnalysis, GlobalCondition, Global
 from titan_x.models.master_decision import MasterDecision
 from titan_x.models.ranking import StockRanking
 from titan_x.models.macro import MacroAnalysis, MacroFeature, MacroIndicator
-from titan_x.models.data_lake import DataLakeArchive, DataLakeCatalog, DataLakeDiff, DataLakeLineage, DataLakeMetadata, DataLakePipeline, DataLakeSchema, DataLakeSnapshot, DataLakeSource, DataLakeStorageRecord, DataLakeVersion
+from titan_x.models.data_lake import DataLakeArchive, DataLakeCatalog, DataLakeDiff, DataLakeIngestionRun, DataLakeLineage, DataLakeMetadata, DataLakePipeline, DataLakeSchema, DataLakeSnapshot, DataLakeSource, DataLakeStorageRecord, DataLakeVersion
 from titan_x.models.feature_engineering import FeatureDefinition, FeatureValue
 from titan_x.models.fundamental_scanner import FundamentalScanResult
 from titan_x.models.market_scanner import MarketScanResult
