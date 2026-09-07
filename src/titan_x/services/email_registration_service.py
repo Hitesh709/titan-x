@@ -150,23 +150,13 @@ class EmailRegistrationService:
         now = self._now()
         otp = f"{secrets.randbelow(1_000_000):06d}"
 
-        # Prefer explicitly configured SMTP (Gmail) for Titan X production OTPs.
-        # This avoids waiting for an unverified Resend sender before using Gmail.
-        smtp_configured = bool(
-            self._settings.smtp_host
-            and self._settings.smtp_user
-            and (self._settings.smtp_password or self._settings.smtp_app_password)
-        )
-        if smtp_configured:
-            sent = await self._send_via_smtp(challenge, otp)
-            if not sent:
-                sent = await self._send_via_resend(challenge, otp)
-        else:
-            sent = await self._send_via_resend(challenge, otp)
-            if not sent:
-                sent = await self._send_via_smtp(challenge, otp)
+        # Render Free blocks outbound SMTP ports 25/465/587, so use the HTTPS
+        # Resend API first. SMTP remains a fallback for paid/local environments.
+        sent = await self._send_via_resend(challenge, otp)
         if not sent:
-            raise ValueError("Unable to send email verification code. Configure Gmail SMTP with a Google App Password or a verified Resend sender/domain.")
+            sent = await self._send_via_smtp(challenge, otp)
+        if not sent:
+            raise ValueError("Unable to send email verification code. Configure a working Resend API key with a verified sender/domain.")
         challenge.email_otp_hash = self._hash(otp)
         challenge.email_otp_expires_at = now + timedelta(seconds=self.OTP_TTL_SECONDS)
         challenge.email_otp_attempts = 0
