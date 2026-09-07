@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { RefreshCw, Search, Play, Zap, TrendingUp, TrendingDown, Minus, ArrowUp, ArrowDown, Brain } from "lucide-react"
+import { RefreshCw, Search, Play, Zap, TrendingUp, TrendingDown, Minus, ArrowUp, ArrowDown, Brain, Crown } from "lucide-react"
 import api from "@/lib/api"
 import type { StockRecommendation } from "@/types"
 import { WidgetError, RefreshButton } from "@/components/dashboard/widget"
@@ -11,7 +11,7 @@ import { IntradayRecommendations } from "./intraday"
 
 type SortKey = "technical" | "risk" | "confidence" | "return" | "symbol"
 type SortDir = "asc" | "desc"
-type StrictDeliveryResponse = { recommendations: StockRecommendation[]; strict_technical_threshold?: number; strict_gate?: string; scanning?: boolean; scan_status?: { scanned?: number; universe_size?: number; progress_pct?: number; error?: string | null } }
+type StrictDeliveryResponse = { recommendations: StockRecommendation[]; strict_technical_threshold?: number; strict_gate?: string; scanning?: boolean; subscription_plan?: string | null; scan_status?: { scanned?: number; universe_size?: number; progress_pct?: number; error?: string | null } }
 
 const DELIVERY_CACHE_KEY = "titanx.strict.delivery.equity.v2"
 const DELIVERY_TECHNICAL_THRESHOLD = 80
@@ -29,6 +29,7 @@ export default function RecommendationsPage() {
   const [scanInfo, setScanInfo] = useState<string | null>(null)
   const [mode, setMode] = useState<"delivery" | "intraday">("delivery")
   const [intradayRefreshKey, setIntradayRefreshKey] = useState(0)
+  const [premiumRequired, setPremiumRequired] = useState(false)
   const mounted = useRef(true)
 
   const load = useCallback(async (silent = false) => {
@@ -36,6 +37,7 @@ export default function RecommendationsPage() {
     try {
       const res = await api.get<StrictDeliveryResponse>("/recommendations/strict?mode=delivery&segment=equity&limit=100")
       if (!mounted.current) return res
+      setPremiumRequired(false)
       if ((res.recommendations ?? []).length > 0 || !res.scanning) {
         setRecommendations(res.recommendations ?? [])
         if ((res.recommendations ?? []).length > 0) localStorage.setItem(DELIVERY_CACHE_KEY, JSON.stringify(res.recommendations))
@@ -54,7 +56,11 @@ export default function RecommendationsPage() {
       return res
     } catch (e) {
       if (!mounted.current) return null
-      setError(e instanceof Error ? e.message : "Failed to load delivery recommendations")
+      const message = e instanceof Error ? e.message : "Failed to load delivery recommendations"
+      const isPremiumError = /active titan subscription|premium recommendations|subscription/i.test(message)
+      setPremiumRequired(isPremiumError)
+      setError(isPremiumError ? null : message)
+      if (isPremiumError) setScanInfo("Choose a Titan X Premium plan to unlock Delivery recommendations for this account.")
       return null
     } finally {
       if (mounted.current) { setLoading(false); setRefreshing(false) }
@@ -62,7 +68,7 @@ export default function RecommendationsPage() {
   }, [])
 
   const startDeliveryScan = useCallback(async () => {
-    if (!mounted.current) return
+    if (!mounted.current || premiumRequired) return
     setScanning(true)
     setLoading(true)
     setError(null)
@@ -75,7 +81,7 @@ export default function RecommendationsPage() {
     } finally {
       if (mounted.current) setScanning(false)
     }
-  }, [load])
+  }, [load, premiumRequired])
 
   useEffect(() => {
     mounted.current = true
@@ -152,17 +158,19 @@ export default function RecommendationsPage() {
   const sortButton = (key: SortKey, label: string) => <button onClick={() => toggleSort(key)} className={`px-2 py-1 rounded border ${sortKey === key ? "border-titan-500 text-titan-300" : "border-white/10 text-gray-400"}`}>{label} {sortKey === key ? (sortDir === "asc" ? <ArrowUp size={11} className="inline" /> : <ArrowDown size={11} className="inline" />) : null}</button>
 
   return <div className="space-y-6">
-    <div className="flex items-center justify-between"><div><h1 className="text-2xl font-bold text-white">Recommendations</h1><p className="text-gray-500 text-sm mt-1">Titan X recommendations — Delivery and Intraday use separate Technical Pillar gates.</p></div>{mode === "delivery" && <div className="flex items-center gap-2"><button onClick={handleScan} disabled={scanning} className="btn-secondary text-sm inline-flex items-center gap-2 disabled:opacity-50">{scanning ? <RefreshCw size={14} className="animate-spin" /> : <Play size={14} />}{scanning ? "Scanning…" : "Run Scan"}</button><RefreshButton onClick={handleRefresh} spinning={refreshing} /></div>}</div>
+    <div className="flex items-center justify-between"><div><h1 className="text-2xl font-bold text-white">Recommendations</h1><p className="text-gray-500 text-sm mt-1">Titan X recommendations — Delivery and Intraday use separate Technical Pillar gates.</p></div>{mode === "delivery" && !premiumRequired && <div className="flex items-center gap-2"><button onClick={handleScan} disabled={scanning} className="btn-secondary text-sm inline-flex items-center gap-2 disabled:opacity-50">{scanning ? <RefreshCw size={14} className="animate-spin" /> : <Play size={14} />}{scanning ? "Scanning…" : "Run Scan"}</button><RefreshButton onClick={handleRefresh} spinning={refreshing} /></div>}</div>
     <div className="glass-card p-2 flex gap-2 border border-titan-500/10"><button onClick={() => setMode("delivery")} className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition ${mode === "delivery" ? "bg-titan-600 text-white" : "text-gray-400 hover:text-white hover:bg-white/[0.03]"}`}>Delivery / Short Term</button><button onClick={() => setMode("intraday")} className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition ${mode === "intraday" ? "bg-titan-600 text-white" : "text-gray-400 hover:text-white hover:bg-white/[0.03]"}`}>Intraday</button></div>
     {mode === "intraday" ? <IntradayRecommendations key={intradayRefreshKey} /> : <>
+      {premiumRequired ? <div className="glass-card p-8 text-center border border-titan-500/25"><Crown size={32} className="mx-auto text-titan-400 mb-3" /><h2 className="text-lg font-semibold text-white">Titan X Premium recommendations</h2><p className="text-sm text-gray-400 mt-2 max-w-lg mx-auto">Your new account is ready. Select a weekly Titan plan to unlock the recommendation tier for this account.</p><button onClick={() => { window.location.href = "/dashboard/subscription" }} className="btn-primary mt-5 inline-flex items-center gap-2"><Crown size={15} /> View Premium Plans</button></div> : null}
       {error && !scanning && <WidgetError message={error} onRetry={() => void load(false)} />}
-      {scanInfo && <div className="glass-card p-3 text-sm text-titan-300 border border-titan-500/20">{scanInfo}</div>}
+      {scanInfo && !premiumRequired && <div className="glass-card p-3 text-sm text-titan-300 border border-titan-500/20">{scanInfo}</div>}
       <div className="glass-card p-3 text-xs text-titan-300 border border-titan-500/20">Delivery gate: <b>Delivery Technical Pillar Score ≥{DELIVERY_TECHNICAL_THRESHOLD}</b>. Intraday Technical Pillar is independent and is not required for Delivery. Recommendations are saved on the server and browser cache is only a display optimization.</div>
-      <SymbolAnalyzer />
+      {!premiumRequired && <><SymbolAnalyzer />
       {loading && recommendations.length === 0 ? <div className="glass-card p-8 text-center text-gray-400">Starting the full-market delivery scan…</div> : <>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4"><StatCard label="Buy signals" value={buyCount} tone="text-emerald-400" icon={<TrendingUp size={16} />} /><StatCard label="Sell signals" value={sellCount} tone="text-red-400" icon={<TrendingDown size={16} />} /><StatCard label="Neutral" value={neutralCount} tone="text-gray-400" icon={<Minus size={16} />} /><StatCard label="Avg confidence" value={avgConfidence} tone="text-titan-400" icon={<Zap size={16} />} /></div>
         <div className="flex flex-wrap items-center gap-3"><div className="relative w-full sm:w-64"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter by symbol…" className="input-field w-full text-sm pl-9" /></div><div className="flex flex-wrap items-center gap-2 text-xs text-gray-500"><span>Sort:</span>{sortButton("technical", "Technical")}{sortButton("risk", "Risk")}{sortButton("confidence", "Confidence")}{sortButton("return", "Return")}{sortButton("symbol", "Symbol")}</div></div>
         {filtered.length === 0 ? <div className="glass-card p-10 text-center"><Brain size={28} className="mx-auto text-titan-500/60 mb-3" /><p className="text-gray-400">No stock currently has a Delivery Technical Pillar Score ≥{DELIVERY_TECHNICAL_THRESHOLD}.</p><p className="text-gray-600 text-xs mt-2">Titan X does not require the Intraday Technical Pillar for Delivery recommendations.</p><button onClick={handleScan} className="btn-primary mt-4 text-sm inline-flex items-center gap-2"><Play size={14} /> Run fresh delivery market scan</button></div> : <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">{filtered.map((rec) => <RecommendationCard key={rec.id} rec={rec} />)}</div>}
+      </>}
       </>}
     </>}
   </div>
