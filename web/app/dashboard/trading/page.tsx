@@ -18,6 +18,8 @@ import AutoBotPanel from "./AutoBotPanel"
 
 const OPEN_STATUSES = ["pending", "open", "partially_filled"]
 
+type LiveQuote = { symbol: string; last_price: number | null; source?: string; live?: boolean }
+
 export default function TradingPage() {
   const [account, setAccount] = useState<PaperAccountSummary | null>(null)
   const [positions, setPositions] = useState<PaperPosition[]>([])
@@ -65,6 +67,27 @@ export default function TradingPage() {
     }
   }, [])
 
+  const refreshLivePrices = useCallback(async () => {
+    const symbols = positions.map((p) => p.symbol.trim().toUpperCase()).filter(Boolean)
+    if (!symbols.length) return
+    try {
+      const params = new URLSearchParams({ symbols: [...new Set(symbols)].join(",") })
+      const response = await api.get<{ quotes: LiveQuote[]; live?: boolean; errors?: { symbol: string; error: string }[] }>(`/live-market/quotes?${params.toString()}`)
+      const bySymbol = new Map(
+        (response.quotes ?? [])
+          .filter((q) => q.last_price != null && Number(q.last_price) > 0)
+          .map((q) => [q.symbol.replace(/\.NS$|\.BO$/i, "").toUpperCase(), Number(q.last_price)]),
+      )
+      if (!bySymbol.size) return
+      setPositions((current) => current.map((p) => {
+        const live = bySymbol.get(p.symbol.replace(/\.NS$|\.BO$/i, "").toUpperCase())
+        return live ? { ...p, current_price: live, market_value: live * p.quantity, unrealized_pnl: (live - p.average_price) * p.quantity, unrealized_pnl_pct: p.average_price ? Number(((live - p.average_price) / p.average_price * 100).toFixed(2)) : 0 } : p
+      }))
+    } catch {
+      // Keep the last known portfolio mark if live quote service is temporarily unavailable.
+    }
+  }, [positions])
+
   useEffect(() => {
     mounted.current = true
     const params = new URLSearchParams(window.location.search)
@@ -75,15 +98,18 @@ export default function TradingPage() {
     return () => { mounted.current = false }
   }, [])
 
-  useLiveRefresh(() => void load(true), [load])
+  useLiveRefresh(() => {
+    void load(true).then(() => refreshLivePrices())
+  }, [load, refreshLivePrices])
 
   const refreshPrices = async () => {
-    try { await api.post("/paper-trading/portfolio/refresh", {}) } catch { /* keep last persisted marks */ }
+    await refreshLivePrices()
+    try { await api.post("/paper-trading/portfolio/refresh", {}) } catch { /* keep live UI marks */ }
   }
 
   const handleRefresh = () => {
     setRefreshing(true)
-    refreshPrices().finally(() => load(true))
+    load(true).then(() => refreshPrices())
   }
 
   const ensureAccount = async () => {
@@ -120,13 +146,14 @@ export default function TradingPage() {
       }
       await refreshPrices()
       await load(true)
+      await refreshLivePrices()
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Failed to place order")
     } finally { setSubmitting(false) }
   }
 
   const handleCancel = async (id: number) => {
-    try { await api.delete(`/paper-trading/orders/${id}`); await load(true) }
+    try { await api.delete(`/paper-trading/orders/${id}`); await load(true); await refreshLivePrices() }
     catch (err) { setFormError(err instanceof Error ? err.message : "Failed to cancel order") }
   }
 
@@ -163,6 +190,7 @@ export default function TradingPage() {
       )
       await refreshPrices()
       await load(true)
+      await refreshLivePrices()
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Failed to square off position")
     }
