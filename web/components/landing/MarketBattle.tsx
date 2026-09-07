@@ -1,6 +1,9 @@
 "use client"
 
+import { useEffect } from "react"
+import { createRoot } from "react-dom/client"
 import { usePublicMarket } from "./MarketTicker"
+import NiftyHeatmap from "./NiftyHeatmap"
 
 /** Live homepage market visual. No synthetic fallback score is displayed. */
 export default function MarketBattle({ className = "" }: { className?: string }) {
@@ -11,6 +14,17 @@ export default function MarketBattle({ className = "" }: { className?: string })
   const negative = markets.filter((m: any) => typeof m.change_pct === "number" && m.change_pct < 0).length
   const liveLabel = ok && live > 0 ? "LIVE" : "CONNECTING"
   const updated = timestamp ? new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "—"
+
+  useEffect(() => {
+    const host = document.querySelector<HTMLElement>(".map-panel .map-visual")
+    if (!host) return
+    const legend = host.parentElement?.querySelector<HTMLElement>(".map-legend")
+    if (legend) legend.style.display = "none"
+    host.replaceChildren()
+    const root = createRoot(host)
+    root.render(<NiftyHeatmap />)
+    return () => { root.unmount() }
+  }, [])
 
   return (
     <div className={`titan-market-engine ${className}`} aria-label="TITAN X live market intelligence">
