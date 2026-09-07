@@ -9,7 +9,7 @@ import type { PaginatedResponse } from "@/types"
 import {
   LayoutDashboard, BarChart3, Briefcase, TrendingUp, Newspaper,
   Bell, Star, Settings, LogOut, ChevronLeft, ChevronRight,
-  Search, Target, Brain, Activity, Menu, X, BookOpen, TestTube, Loader2,
+  Search, Target, Brain, Activity, Menu, TestTube, Loader2, Crown,
 } from "lucide-react"
 
 interface CompanySearchResult { symbol: string; company_name: string; sector: string | null; exchange: string }
@@ -19,7 +19,7 @@ const sidebarItems = [
   { icon: TrendingUp, label: "Markets", href: "/dashboard/markets" },
   { icon: Briefcase, label: "Portfolio", href: "/dashboard/portfolio" },
   { icon: BarChart3, label: "Analysis", href: "/dashboard/analysis" },
-  { icon: BookOpen, label: "Research", href: "/dashboard/research" },
+  { icon: Target, label: "Research", href: "/dashboard/research" },
   { icon: Brain, label: "Recommendations", href: "/dashboard/recommendations" },
   { icon: Newspaper, label: "News & Insights", href: "/dashboard/news" },
   { icon: Activity, label: "Trading", href: "/dashboard/trading" },
@@ -27,6 +27,7 @@ const sidebarItems = [
   { icon: Target, label: "Screener", href: "/dashboard/screener" },
   { icon: Star, label: "Watchlists", href: "/dashboard/watchlists" },
   { icon: Bell, label: "Alerts", href: "/dashboard/alerts" },
+  { icon: Crown, label: "Premium", href: "/dashboard/subscription" },
   { icon: Settings, label: "Settings", href: "/dashboard/settings" },
 ]
 
@@ -44,22 +45,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter()
   const { user, logout, loading, sendVerification } = useAuth()
 
-  useEffect(() => {
-    if (!loading && !user) router.replace("/login")
-  }, [loading, user, router])
-
-  useEffect(() => {
-    const stop = startLiveTicker()
-    return stop
-  }, [])
-
+  useEffect(() => { if (!loading && !user) router.replace("/login") }, [loading, user, router])
+  useEffect(() => startLiveTicker(), [])
   useEffect(() => () => { if (searchTimer.current) clearTimeout(searchTimer.current) }, [])
-
   useEffect(() => {
     if (!searchOpen) return
-    const onDocMouseDown = (e: MouseEvent) => {
-      if (searchBoxRef.current && !searchBoxRef.current.contains(e.target as Node)) setSearchOpen(false)
-    }
+    const onDocMouseDown = (e: MouseEvent) => { if (searchBoxRef.current && !searchBoxRef.current.contains(e.target as Node)) setSearchOpen(false) }
     document.addEventListener("mousedown", onDocMouseDown)
     return () => document.removeEventListener("mousedown", onDocMouseDown)
   }, [searchOpen])
@@ -81,32 +72,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     if (searchTimer.current) clearTimeout(searchTimer.current)
     searchTimer.current = setTimeout(() => { void runSearch(value) }, 250)
   }
-
-  const goToSymbol = (symbol: string) => {
-    setSearch(""); setSearchResults([]); setSearchOpen(false); setMobileOpen(false)
-    router.push(`/dashboard/stocks/${symbol.toUpperCase()}`)
-  }
-
-  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key !== "Enter") return
-    if (searchResults.length > 0) goToSymbol(searchResults[0].symbol)
-    else if (search.trim()) goToSymbol(search.trim())
-  }
-
+  const goToSymbol = (symbol: string) => { setSearch(""); setSearchResults([]); setSearchOpen(false); setMobileOpen(false); router.push(`/dashboard/stocks/${symbol.toUpperCase()}`) }
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter") { if (searchResults.length > 0) goToSymbol(searchResults[0].symbol); else if (search.trim()) goToSymbol(search.trim()) } }
   const handleVerifyClick = async () => {
     if (!user || sendingVerification) return
     setSendingVerification(true)
-    try {
-      const res = await sendVerification(user.email)
-      if (res.verification_url) window.location.href = res.verification_url
-    } catch {
-      // ignore
-    } finally { setSendingVerification(false) }
+    try { const res = await sendVerification(user.email); if (res.verification_url) window.location.href = res.verification_url } catch { /* ignore */ } finally { setSendingVerification(false) }
   }
 
-  if (loading || !user) {
-    return <div className="min-h-screen bg-titan-950 flex items-center justify-center"><div className="w-8 h-8 rounded-lg bg-gradient-to-br from-titan-500 to-titan-700 flex items-center justify-center"><span className="text-white font-bold text-xs">TX</span></div></div>
-  }
+  if (loading || !user) return <div className="min-h-screen bg-titan-950 flex items-center justify-center"><div className="w-8 h-8 rounded-lg bg-gradient-to-br from-titan-500 to-titan-700 flex items-center justify-center"><span className="text-white font-bold text-xs">TX</span></div></div>
 
   return (
     <div className="min-h-screen bg-titan-950 flex">
@@ -114,7 +88,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <aside aria-label="Dashboard navigation" className={`fixed lg:static inset-y-0 left-0 z-50 bg-titan-900/50 backdrop-blur-xl border-r border-titan-800/30 flex flex-col transition-all duration-300 ${collapsed ? "w-[68px]" : "w-60"} ${mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}>
         <div className="h-16 flex items-center px-4 border-b border-titan-800/30"><Link href="/dashboard" className="flex items-center gap-3 min-w-0"><div className="w-8 h-8 rounded-lg bg-gradient-to-br from-titan-500 to-titan-700 flex items-center justify-center shrink-0"><span className="text-white font-bold text-xs">TX</span></div>{!collapsed && <span className="font-bold text-white truncate">TITAN <span className="text-titan-400">X</span></span>}</Link></div>
         <nav aria-label="Dashboard sections" className="flex-1 overflow-y-auto p-3 space-y-1">{sidebarItems.map((item) => { const isActive = pathname === item.href; return <Link key={item.href} href={item.href} className={isActive ? "sidebar-link-active group" : "sidebar-link group"} title={collapsed ? item.label : undefined} aria-current={isActive ? "page" : undefined} onClick={() => setMobileOpen(false)}><item.icon size={20} className="shrink-0" />{!collapsed && <span className="text-sm truncate">{item.label}</span>}</Link> })}</nav>
-        <div className="p-3 border-t border-titan-800/30">{!collapsed && user && <div className="px-3 py-2 mb-2"><div className="text-sm text-white font-medium truncate">{user.full_name || user.email}</div><div className="text-xs text-gray-500 truncate">{user.email}</div></div>}<button onClick={logout} className="sidebar-link w-full" title={collapsed ? "Sign Out" : undefined} aria-label="Sign out"><LogOut size={20} className="shrink-0" />{!collapsed && <span className="text-sm">Sign Out</span>}</button></div>
+        <div className="p-3 border-t border-titan-800/30">{!collapsed && user && <div className="px-3 py-2 mb-2"><div className="text-sm text-white font-medium truncate">{user.username || user.email}</div><div className="text-xs text-gray-500 truncate">{user.email}</div></div>}<button onClick={logout} className="sidebar-link w-full" title={collapsed ? "Sign Out" : undefined} aria-label="Sign out"><LogOut size={20} className="shrink-0" />{!collapsed && <span className="text-sm">Sign Out</span>}</button></div>
       </aside>
       <div className="flex-1 flex flex-col min-w-0">
         <header className="h-16 border-b border-titan-800/30 flex items-center justify-between px-4 lg:px-6 bg-titan-950/80 backdrop-blur-xl sticky top-0 z-30">
