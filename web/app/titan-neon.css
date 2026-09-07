@@ -1,0 +1,42 @@
+/* TITAN X — Neon Trading Command UI */
+:root { --tx-bg:#030817; --tx-panel:rgba(6,18,43,.78); --tx-line:rgba(58,129,255,.28); --tx-blue:#08b9ff; --tx-purple:#9b45ff; --tx-green:#00f0a0; --tx-text:#eef6ff; --tx-muted:#7e94b5; }
+html.dark body { background:radial-gradient(circle at 72% -10%,rgba(45,76,170,.22),transparent 34%),var(--tx-bg); color:var(--tx-text); }
+.tx-shell { background:radial-gradient(circle at 85% 8%,rgba(102,44,255,.11),transparent 25%),radial-gradient(circle at 25% 55%,rgba(0,183,255,.055),transparent 28%),linear-gradient(135deg,#020713 0%,#041024 55%,#020714 100%); }
+.tx-sidebar { background:linear-gradient(180deg,rgba(3,11,28,.97),rgba(2,8,22,.99)); border-right:1px solid rgba(37,107,255,.28)!important; box-shadow:8px 0 35px rgba(0,0,0,.24); }
+.tx-brand { height:72px!important; border-bottom-color:rgba(48,105,210,.22)!important; }
+.tx-brand-mark { width:38px;height:38px;border-radius:12px;background:linear-gradient(135deg,#0cbfff,#6b35ff);box-shadow:0 0 18px rgba(45,133,255,.45),inset 0 0 12px rgba(255,255,255,.14); }
+.tx-brand-word { letter-spacing:.16em;font-size:14px; }
+.tx-sidebar nav { padding:14px 10px!important; }
+.tx-sidebar .sidebar-link { position:relative;border:1px solid transparent;color:#8297b8;border-radius:11px;margin:4px 0;min-height:43px;transition:.2s ease; }
+.tx-sidebar .sidebar-link:hover { color:#eaf5ff;background:rgba(21,68,142,.22);border-color:rgba(40,132,255,.18);box-shadow:0 0 18px rgba(0,133,255,.08); }
+.tx-sidebar .sidebar-link-active { color:#fff!important;background:linear-gradient(90deg,rgba(20,111,255,.40),rgba(132,54,255,.30))!important;border:1px solid rgba(52,153,255,.48)!important;box-shadow:0 0 22px rgba(34,112,255,.22),inset 0 0 16px rgba(122,58,255,.10); }
+.tx-sidebar .sidebar-link-active:before { content:"";position:absolute;left:-11px;top:7px;bottom:7px;width:3px;border-radius:4px;background:linear-gradient(#00d7ff,#a84cff);box-shadow:0 0 12px #4c8dff; }
+.tx-sidebar .sidebar-link-active svg { color:#4fd5ff;filter:drop-shadow(0 0 7px rgba(20,191,255,.75)); }
+.tx-topbar { height:72px!important;background:rgba(2,9,24,.82)!important;border-bottom:1px solid rgba(41,103,220,.25)!important;box-shadow:0 8px 35px rgba(0,0,0,.2); }
+.tx-search { background:rgba(5,18,42,.76)!important;border:1px solid rgba(65,132,255,.34)!important;border-radius:11px!important;box-shadow:inset 0 0 20px rgba(24,96,200,.08),0 0 0 1px rgba(0,190,255,.03); }
+.tx-search:focus { border-color:rgba(40,181,255,.72)!important;box-shadow:0 0 0 2px rgba(26,155,255,.10),0 0 22px rgba(19,127,255,.13)!important; }
+.tx-api { color:#5dffbd!important;text-shadow:0 0 8px rgba(0,240,160,.5); }
+.tx-content { background-image:linear-gradient(rgba(26,89,175,.028) 1px,transparent 1px),linear-gradient(90deg,rgba(26,89,175,.028) 1px,transparent 1px);background-size:44px 44px; }
+.tx-content .glass-card { background:linear-gradient(145deg,rgba(8,24,54,.84),rgba(4,14,34,.82))!important;border:1px solid rgba(48,117,235,.28)!important;border-radius:13px!important;box-shadow:inset 0 0 24px rgba(30,91,176,.045),0 10px 32px rgba(0,0,0,.18)!important; }
+.tx-content .glass-card:hover { border-color:rgba(65,151,255,.42)!important; }
+.tx-content .badge-blue { background:rgba(25,112,255,.14)!important;border:1px solid rgba(45,139,255,.28);color:#66c8ff!important; }
+.tx-page-kicker { color:#4bcfff;font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;display:flex;align-items:center;gap:7px; }
+.tx-page-kicker:before { content:"";width:7px;height:7px;border-radius:50%;background:#00efaa;box-shadow:0 0 10px #00efaa; }
+.tx-live-pill { border:1px solid rgba(0,240,160,.32);color:#56ffc4;background:rgba(0,240,160,.07);border-radius:999px;padding:5px 10px;font-size:10px;font-weight:700;letter-spacing:.08em; }
+.tx-stat-card { min-height:112px;position:relative;overflow:hidden; }
+.tx-stat-card:after { content:"";position:absolute;width:90px;height:90px;right:-35px;bottom:-45px;border-radius:50%;background:rgba(22,145,255,.12);filter:blur(10px); }
+.tx-stat-value { font-variant-numeric:tabular-nums;color:#f4f8ff;text-shadow:0 0 16px rgba(69,153,255,.14); }
+.tx-stat-icon { filter:drop-shadow(0 0 8px rgba(0,183,255,.55)); }
+.tx-command-panel { background:linear-gradient(145deg,rgba(6,24,55,.92),rgba(3,13,33,.93));border:1px solid rgba(44,126,255,.34);border-radius:16px;box-shadow:0 0 28px rgba(28,93,190,.08),inset 0 0 30px rgba(42,99,190,.045); }
+.tx-command-head { display:flex;justify-content:space-between;align-items:center;padding:18px 20px 13px;border-bottom:1px solid rgba(48,110,210,.18); }
+.tx-command-title { font-weight:700;color:#f2f7ff; }
+.tx-command-sub { color:#6f87aa;font-size:11px; }
+.tx-ai-badge { color:#d9c6ff;background:rgba(129,64,255,.14);border:1px solid rgba(154,83,255,.34);border-radius:7px;padding:5px 8px;font-size:9px;font-weight:800;letter-spacing:.08em; }
+.tx-neon-button { border:1px solid rgba(62,182,255,.62)!important;background:linear-gradient(100deg,#079cff,#743cff)!important;color:#fff!important;box-shadow:0 0 18px rgba(32,140,255,.25),inset 0 0 12px rgba(255,255,255,.10)!important; }
+.tx-neon-button:hover { transform:translateY(-1px);box-shadow:0 0 28px rgba(54,146,255,.42)!important; }
+.tx-green-button { border:1px solid rgba(0,240,160,.38);background:rgba(0,240,160,.10);color:#54ffc3; }
+.tx-chart-grid { background-image:linear-gradient(rgba(49,117,211,.10) 1px,transparent 1px),linear-gradient(90deg,rgba(49,117,211,.10) 1px,transparent 1px);background-size:42px 32px;border:1px solid rgba(42,107,207,.18);border-radius:10px; }
+.tx-neon-line { filter:drop-shadow(0 0 5px rgba(0,198,255,.8)); }
+.tx-meter { background:rgba(255,255,255,.045);border-radius:999px;overflow:hidden;height:5px; }
+.tx-meter>span { display:block;height:100%;background:linear-gradient(90deg,#08caff,#743dff);border-radius:999px;box-shadow:0 0 8px rgba(43,145,255,.55); }
+@media(max-width:900px){.tx-topbar{height:64px!important}.tx-content{padding:14px!important}}
