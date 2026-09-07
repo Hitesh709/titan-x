@@ -48,11 +48,25 @@ class EmailRegistrationService:
 
     @staticmethod
     def normalize_phone(value: str) -> str:
-        raw = value.strip()
-        digits = "".join(ch for ch in raw if ch.isdigit())
+        digits = "".join(ch for ch in value.strip() if ch.isdigit())
         if 7 <= len(digits) <= 15:
             return "+" + digits
         raise ValueError("Invalid mobile number")
+
+    def _build_challenge(self, username: str, email: str, phone: str, password: str) -> AuthChallenge:
+        now = self._now()
+        return AuthChallenge(
+            challenge_id=secrets.token_urlsafe(24),
+            challenge_hash=self._hash(secrets.token_urlsafe(32)),
+            browser_session_id=self._hash(secrets.token_urlsafe(32)),
+            status="EMAIL_OTP_REQUIRED",
+            operation="REGISTRATION_EMAIL",
+            expires_at=now + timedelta(seconds=self.CHALLENGE_TTL_SECONDS),
+            registration_username=username,
+            registration_email=email,
+            registration_phone=phone,
+            registration_password_hash=hash_password(password),
+        )
 
     async def create(self, username: str, email: str, phone: str, password: str, confirm_password: str) -> tuple[str, datetime]:
         username = username.strip()
@@ -71,24 +85,16 @@ class EmailRegistrationService:
         if duplicate.scalar_one_or_none() is not None:
             raise ValueError("Username, email, or mobile number is already registered")
 
-        now = self._now()
-        challenge = AuthChallenge(
-            challenge_id=secrets.token_urlsafe(24),
-            challenge_hash=self._hash(secrets.token_urlsafe(32)),
-            browser_session_id=self._hash(secrets.token_urlsafe(32)),
-            status="EMAIL_OTP_REQUIRED",
-            operation="REGISTRATION_EMAIL",
-            expires_at=now + timedelta(seconds=self.CHALLENGE_TTL_SECONDS),
-            registration_username=username,
-            registration_email=email,
-            registration_phone=phone,
-            registration_password_hash=hash_password(password),
-        )
-        self._session.add(challenge)
-        await self._session.flush()
+        # IMPORTANT: send the email before adding the challenge to the SQLite session.
+        # The old flow flushed the challenge, then waited up to 15s on Resend/SMTP while
+        # holding SQLite's write transaction, which caused database-locked auth requests.
+        challenge = self._build_challenge(username, email, phone, password)
         await self._send_otp(challenge)
+
+        self._session.add(challenge)
         await self._session.commit()
-        return challenge.challenge_id, challenge.email_otp_expires_at or (now + timedelta(seconds=self.OTP_TTL_SECONDS))
+        expires = challenge.email_otp_expires_at or (self._now() + timedelta(seconds=self.OTP_TTL_SECONDS))
+        return challenge.challenge_id, expires
 
     def _message_content(self, challenge: AuthChallenge, otp: str) -> tuple[str, str]:
         text = f"Your Titan X verification code is {otp}.\n\nThis code expires in 10 minutes.\nDo not share this code with anyone."
@@ -120,7 +126,6 @@ class EmailRegistrationService:
         password = self._settings.smtp_password or self._settings.smtp_app_password
         if not self._settings.smtp_host or not self._settings.smtp_user or not password:
             return False
-        # Google displays App Passwords with spaces; SMTP authentication expects the raw 16 characters.
         password = "".join(password.split())
         text, _ = self._message_content(challenge, otp)
         message = EmailMessage()
@@ -145,18 +150,12 @@ class EmailRegistrationService:
 
     async def _send_otp(self, challenge: AuthChallenge) -> None:
         now = self._now()
-        sent_at = self._utc(challenge.email_otp_sent_at)
-        if sent_at and (now - sent_at).total_seconds() < self.OTP_RESEND_SECONDS:
-            return
         otp = f"{secrets.randbelow(1_000_000):06d}"
-
         sent = await self._send_via_resend(challenge, otp)
         if not sent:
             sent = await self._send_via_smtp(challenge, otp)
         if not sent:
-            await self._session.rollback()
             raise ValueError("Unable to send email verification code. Configure a verified Resend sender/domain or SMTP email delivery.")
-
         challenge.email_otp_hash = self._hash(otp)
         challenge.email_otp_expires_at = now + timedelta(seconds=self.OTP_TTL_SECONDS)
         challenge.email_otp_attempts = 0
@@ -167,7 +166,6 @@ class EmailRegistrationService:
         challenge = result.scalar_one_or_none()
         if challenge is None or challenge.operation != "REGISTRATION_EMAIL" or challenge.status != "EMAIL_OTP_REQUIRED":
             raise ValueError("Invalid or expired registration request")
-
         now = self._now()
         expires_at = self._utc(challenge.expires_at)
         otp_expires_at = self._utc(challenge.email_otp_expires_at)
@@ -177,12 +175,10 @@ class EmailRegistrationService:
             raise ValueError("Email OTP expired")
         if challenge.email_otp_attempts >= self.OTP_MAX_ATTEMPTS:
             raise ValueError("Too many email OTP attempts")
-
         challenge.email_otp_attempts += 1
         if not hmac.compare_digest(challenge.email_otp_hash or "", self._hash(otp.strip())):
             await self._session.commit()
             raise ValueError("Invalid email OTP")
-
         duplicate = await self._session.execute(
             select(User).where((User.username == challenge.registration_username) | (User.email == challenge.registration_email) | (User.phone == challenge.registration_phone)).with_for_update()
         )
@@ -190,7 +186,6 @@ class EmailRegistrationService:
             challenge.status = "CANCELLED"
             await self._session.commit()
             raise ValueError("Username, email, or mobile number is already registered")
-
         user = User(
             username=challenge.registration_username,
             email=challenge.registration_email or "",
@@ -202,14 +197,12 @@ class EmailRegistrationService:
         )
         self._session.add(user)
         await self._session.flush()
-
         challenge.email_verified_at = now
         challenge.email_otp_hash = None
         challenge.email_otp_expires_at = None
         challenge.approved_at = now
         challenge.used_at = now
         challenge.status = "USED"
-
         access = create_access_token(user.id, self._settings)
         refresh, jti, expires_at = create_refresh_token(user.id, self._settings)
         self._session.add(RefreshToken(token_jti=jti, user_id=user.id, expires_at=expires_at))
