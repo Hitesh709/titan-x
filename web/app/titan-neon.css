@@ -39,4 +39,32 @@ html.dark body { background:radial-gradient(circle at 72% -10%,rgba(45,76,170,.2
 .tx-neon-line { filter:drop-shadow(0 0 5px rgba(0,198,255,.8)); }
 .tx-meter { background:rgba(255,255,255,.045);border-radius:999px;overflow:hidden;height:5px; }
 .tx-meter>span { display:block;height:100%;background:linear-gradient(90deg,#08caff,#743dff);border-radius:999px;box-shadow:0 0 8px rgba(43,145,255,.55); }
-@media(max-width:900px){.tx-topbar{height:64px!important}.tx-content{padding:14px!important}}
+
+/* Trading workspace — tuned to the supplied neon reference */
+.tx-trading-page > .tx-trading-head { padding-bottom:2px; }
+.tx-trading-page > .tx-trading-head h1 { font-size:26px;letter-spacing:-.02em; }
+.tx-trading-page > .tx-trading-head p { color:#7188aa; }
+.tx-trading-page .glass-card { background:linear-gradient(145deg,rgba(6,24,55,.90),rgba(3,13,33,.94))!important; }
+.tx-trading-page .input-field, .tx-trading-page select { background:rgba(3,13,31,.82)!important;border:1px solid rgba(54,119,224,.30)!important;color:#dceaff!important;border-radius:9px!important; }
+.tx-trading-page .input-field:focus, .tx-trading-page select:focus { border-color:rgba(29,183,255,.62)!important;box-shadow:0 0 0 2px rgba(30,146,255,.09),0 0 16px rgba(30,146,255,.12);outline:none; }
+.tx-trading-page .glass-card > .relative h3 svg, .tx-trading-page .glass-card > h3 svg { color:#39caff;filter:drop-shadow(0 0 7px rgba(40,191,255,.6)); }
+.tx-trading-page .glass-card .bg-titan-500 { background:linear-gradient(90deg,#079cff,#7b3fff)!important;box-shadow:0 0 14px rgba(46,123,255,.28); }
+.tx-trading-page .glass-card button.bg-titan-500 { background:linear-gradient(100deg,#079cff,#743cff)!important;border:1px solid rgba(72,191,255,.45);box-shadow:0 0 20px rgba(35,132,255,.25); }
+.tx-trading-page .glass-card button.bg-titan-500:hover { box-shadow:0 0 28px rgba(35,132,255,.42);transform:translateY(-1px); }
+.tx-trading-page .glass-card .bg-emerald-500\/10 { box-shadow:inset 0 0 14px rgba(0,240,160,.025); }
+.tx-trading-page .glass-card .text-titan-300, .tx-trading-page .glass-card .text-titan-400 { color:#45d3ff!important; }
+.tx-trading-page .glass-card .border-titan-500\/20 { border-color:rgba(42,139,255,.34)!important; }
+.tx-trading-page .glass-card .border-white\/5 { border-color:rgba(56,111,204,.17)!important; }
+.tx-trading-page .glass-card .bg-white\/\[0\.03\] { background:rgba(8,30,66,.35)!important; }
+.tx-trading-page .glass-card .bg-white\/\[0\.02\] { background:rgba(5,22,50,.35)!important; }
+.tx-trading-page .glass-card .text-gray-500 { color:#7087a9; }
+.tx-trading-page .glass-card .text-gray-400 { color:#91a5c1; }
+.tx-trading-page > .grid:first-of-type > .glass-card { min-height:106px; }
+.tx-trading-page > .grid:first-of-type > .glass-card:nth-child(1) { border-color:rgba(0,203,255,.30)!important; }
+.tx-trading-page > .grid:first-of-type > .glass-card:nth-child(2) { border-color:rgba(28,125,255,.32)!important; }
+.tx-trading-page > .grid:first-of-type > .glass-card:nth-child(3) { border-color:rgba(0,218,255,.24)!important; }
+.tx-trading-page > .grid:first-of-type > .glass-card:nth-child(4) { border-color:rgba(164,71,255,.34)!important; }
+.tx-trading-page .glass-card:has(> .relative) { border-color:rgba(51,128,255,.38)!important;box-shadow:0 0 26px rgba(33,101,211,.09),inset 0 0 32px rgba(32,103,205,.05)!important; }
+.tx-trading-page .glass-card form, .tx-trading-page form { position:relative; }
+.tx-trading-page form:after { content:"";position:absolute;inset:0;border-radius:13px;pointer-events:none;box-shadow:inset 0 0 28px rgba(0,167,255,.035); }
+@media(max-width:900px){.tx-topbar{height:64px!important}.tx-content{padding:14px!important}.tx-trading-page{gap:16px}.tx-trading-page > .grid{gap:16px}}
