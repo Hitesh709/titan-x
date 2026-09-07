@@ -31,6 +31,13 @@ async def get_batch_quotes(symbols: str, _ : Annotated[User, Depends(get_current
     try: return await svc.get_quotes(syms)
     except Exception as e: raise HTTPException(502, f"Yahoo quote fetch failed: {e}") from e
 
+@router.get("/profile/{symbol}")
+async def get_market_profile(symbol: str, _ : Annotated[User, Depends(get_current_active_user)], svc: Annotated[MarketDataService, Depends(get_market_data_service)]):
+    try:
+        return await svc.get_company_profile(symbol)
+    except Exception as e:
+        raise HTTPException(502, f"Yahoo company profile fetch failed: {e}") from e
+
 @router.get("/market-caps")
 async def get_batch_market_caps(symbols: str, _ : Annotated[User, Depends(get_current_active_user)], session: Annotated[AsyncSession, Depends(request_session)]):
     syms = list(dict.fromkeys(s.strip().upper().replace(".NS", "") for s in symbols.split(",") if s.strip()))
