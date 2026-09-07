@@ -21,13 +21,13 @@ const sidebarItems = [
   { icon: BarChart3, label: "Analysis", href: "/dashboard/analysis" },
   { icon: Target, label: "Research", href: "/dashboard/research" },
   { icon: Brain, label: "Recommendations", href: "/dashboard/recommendations" },
+  { icon: Crown, label: "Premium", href: "/dashboard/subscription" },
   { icon: Newspaper, label: "News & Insights", href: "/dashboard/news" },
   { icon: Activity, label: "Trading", href: "/dashboard/trading" },
   { icon: TestTube, label: "Backtesting", href: "/dashboard/backtest" },
   { icon: Target, label: "Screener", href: "/dashboard/screener" },
   { icon: Star, label: "Watchlists", href: "/dashboard/watchlists" },
   { icon: Bell, label: "Alerts", href: "/dashboard/alerts" },
-  { icon: Crown, label: "Premium", href: "/dashboard/subscription" },
   { icon: Settings, label: "Settings", href: "/dashboard/settings" },
 ]
 
@@ -87,7 +87,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {mobileOpen && <div className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setMobileOpen(false)} />}
       <aside aria-label="Dashboard navigation" className={`fixed lg:static inset-y-0 left-0 z-50 bg-titan-900/50 backdrop-blur-xl border-r border-titan-800/30 flex flex-col transition-all duration-300 ${collapsed ? "w-[68px]" : "w-60"} ${mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}>
         <div className="h-16 flex items-center px-4 border-b border-titan-800/30"><Link href="/dashboard" className="flex items-center gap-3 min-w-0"><div className="w-8 h-8 rounded-lg bg-gradient-to-br from-titan-500 to-titan-700 flex items-center justify-center shrink-0"><span className="text-white font-bold text-xs">TX</span></div>{!collapsed && <span className="font-bold text-white truncate">TITAN <span className="text-titan-400">X</span></span>}</Link></div>
-        <nav aria-label="Dashboard sections" className="flex-1 overflow-y-auto p-3 space-y-1">{sidebarItems.map((item) => { const isActive = pathname === item.href; return <Link key={item.href} href={item.href} className={isActive ? "sidebar-link-active group" : "sidebar-link group"} title={collapsed ? item.label : undefined} aria-current={isActive ? "page" : undefined} onClick={() => setMobileOpen(false)}><item.icon size={20} className="shrink-0" />{!collapsed && <span className="text-sm truncate">{item.label}</span>}</Link> })}</nav>
+        <nav aria-label="Dashboard sections" className="flex-1 overflow-y-auto p-3 space-y-1">{sidebarItems.map((item) => { const isActive = pathname === item.href; const premium = item.label === "Premium"; return <Link key={item.href} href={item.href} className={isActive ? "sidebar-link-active group" : premium ? "sidebar-link group text-titan-300" : "sidebar-link group"} title={collapsed ? item.label : undefined} aria-current={isActive ? "page" : undefined} onClick={() => setMobileOpen(false)}><item.icon size={20} className="shrink-0" />{!collapsed && <span className="text-sm truncate">{item.label}</span>}{!collapsed && premium && <span className="ml-auto text-[9px] uppercase tracking-wider text-titan-400">Plans</span>}</Link> })}</nav>
         <div className="p-3 border-t border-titan-800/30">{!collapsed && user && <div className="px-3 py-2 mb-2"><div className="text-sm text-white font-medium truncate">{user.username || user.email}</div><div className="text-xs text-gray-500 truncate">{user.email}</div></div>}<button onClick={logout} className="sidebar-link w-full" title={collapsed ? "Sign Out" : undefined} aria-label="Sign out"><LogOut size={20} className="shrink-0" />{!collapsed && <span className="text-sm">Sign Out</span>}</button></div>
       </aside>
       <div className="flex-1 flex flex-col min-w-0">
