@@ -68,6 +68,7 @@ class Settings(BaseSettings):
     smtp_port: int = 587
     smtp_user: str | None = None
     smtp_password: str | None = None
+    smtp_app_password: str | None = None
     smtp_from_email: str = "noreply@titanx.com"
     smtp_from_name: str = "Titan X"
 
