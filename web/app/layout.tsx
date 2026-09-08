@@ -9,6 +9,7 @@ import "./reference-polish.css"
 import "./titan-command.css"
 import "./brand-pair.css"
 import "./titan-neon.css"
+import "./titan-score.css"
 
 export const metadata: Metadata = {
   title: "TITAN X — AI Market Intelligence",
