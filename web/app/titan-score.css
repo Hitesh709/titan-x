@@ -1,0 +1,73 @@
+/* TITAN X — Premium full-circle AI market sentiment gauge */
+.ref-side .ref-sentiment .gauge {
+  position:relative;
+  width:clamp(150px,15vw,190px);
+  height:clamp(150px,15vw,190px);
+  margin:14px auto 18px;
+  border-radius:50%;
+  display:grid;
+  place-items:center;
+  isolation:isolate;
+  background:conic-gradient(from -90deg,#ff3f5f 0deg,#ff5a4f 78deg,#ffb33f 155deg,#263f60 210deg,#102642 300deg,#ff3f5f 360deg);
+  box-shadow:0 0 35px rgba(255,62,92,.12),0 0 80px rgba(0,145,255,.10),inset 0 0 25px rgba(255,255,255,.06);
+}
+.ref-side .ref-sentiment .gauge::before {
+  content:"";
+  position:absolute;
+  inset:9px;
+  border-radius:50%;
+  background:radial-gradient(circle at 50% 35%,rgba(15,35,62,.98),rgba(2,8,19,.99) 68%);
+  border:1px solid rgba(93,166,239,.18);
+  box-shadow:inset 0 0 35px rgba(22,111,205,.14),0 0 0 1px rgba(0,0,0,.4);
+  z-index:-1;
+}
+.ref-side .ref-sentiment .gauge::after {
+  content:"";
+  position:absolute;
+  inset:-5px;
+  border-radius:50%;
+  border:1px solid rgba(70,164,255,.18);
+  box-shadow:0 0 22px rgba(35,145,255,.10);
+  pointer-events:none;
+}
+.ref-side .ref-sentiment .gauge-arc {
+  position:absolute;
+  inset:0;
+  border-radius:50%;
+  background:conic-gradient(from -90deg,rgba(255,66,91,.95),rgba(255,179,62,.92) 43%,rgba(46,226,166,.72) 72%,rgba(55,156,255,.82) 100%);
+  -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 9px),#000 calc(100% - 8px));
+  mask:radial-gradient(farthest-side,transparent calc(100% - 9px),#000 calc(100% - 8px));
+  filter:drop-shadow(0 0 7px rgba(255,75,95,.35));
+  z-index:0;
+}
+.ref-side .ref-sentiment .gauge strong {
+  position:relative;
+  z-index:2;
+  margin-top:-2px;
+  font:800 clamp(38px,4vw,54px)/1 "JetBrains Mono",monospace;
+  letter-spacing:-.06em;
+  color:#f4f9ff;
+  text-shadow:0 0 18px rgba(255,255,255,.22),0 0 35px rgba(48,155,255,.20);
+}
+.ref-side .ref-sentiment .gauge b {
+  position:absolute;
+  z-index:2;
+  bottom:35px;
+  padding:5px 10px;
+  border-radius:999px;
+  border:1px solid rgba(255,78,104,.38);
+  background:rgba(255,52,82,.08);
+  color:#ff647c;
+  font:800 7px/1 "JetBrains Mono",monospace;
+  letter-spacing:.14em;
+  box-shadow:0 0 16px rgba(255,57,88,.12);
+}
+.ref-side .ref-sentiment.bull .gauge b { color:#4dffc1; border-color:rgba(45,235,166,.38); background:rgba(45,235,166,.07); box-shadow:0 0 16px rgba(45,235,166,.12); }
+.ref-side .ref-sentiment.neutral .gauge b { color:#63cfff; border-color:rgba(69,190,255,.36); background:rgba(69,190,255,.07); }
+.ref-side .ref-sentiment .meter { height:7px; }
+.ref-side .ref-sentiment .meter i { height:6px; border-radius:999px; background:rgba(35,61,91,.65); box-shadow:inset 0 1px rgba(255,255,255,.03); overflow:hidden; }
+.ref-side .ref-sentiment .meter i b { display:block; height:100%; border-radius:999px; background:linear-gradient(90deg,#ff4162,#ff5b74); box-shadow:0 0 9px rgba(255,61,91,.45); }
+.ref-side .ref-sentiment.bull .meter i b { background:linear-gradient(90deg,#20d99a,#42f0b0); box-shadow:0 0 9px rgba(30,230,164,.42); }
+.ref-side .ref-sentiment.neutral .meter i b { background:linear-gradient(90deg,#29bfff,#6b8cff); box-shadow:0 0 9px rgba(41,191,255,.38); }
+@media(max-width:900px){.ref-side .ref-sentiment .gauge{width:170px;height:170px}.ref-side .ref-sentiment .gauge b{bottom:31px}}
+@media(max-width:600px){.ref-side .ref-sentiment .gauge{width:155px;height:155px;margin-top:10px}.ref-side .ref-sentiment .gauge strong{font-size:42px}.ref-side .ref-sentiment .gauge b{bottom:28px;font-size:6px}}
