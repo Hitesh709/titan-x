@@ -1,11 +1,17 @@
 import random
-from datetime import date, datetime, timedelta, timezone
+import time
+from datetime import date, timedelta
 
+import structlog
 from sqlalchemy import delete, select
-from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from titan_x.models.index_price import IndexDaily
+
+logger = structlog.get_logger(__name__)
+
+# Per-process throttle: true once every max_age_minutes at most.
+_last_refresh_attempt: float | None = None
 
 # (symbol, name, base, drift_pct, volatility_pct)
 INDICES = [
@@ -120,8 +126,13 @@ class IndexService:
         return out
 
     async def list_all(self) -> list[dict]:
-        # Try to refresh stale indices (< 5 min old is considered fresh)
-        await self._refresh_stale(max_age_minutes=5)
+        # Best-effort intraday refresh, throttled to once per 5 minutes so a
+        # blocked/slow upstream never stalls or hammers every request.
+        try:
+            await self._refresh_stale(max_age_minutes=5)
+        except Exception:  # noqa: BLE001
+            # Refresh is best-effort; serve whatever is stored.
+            logger.warning("index_refresh_failed", error="unexpected", exc_info=True)
         
         result = await self.session.execute(
             select(IndexDaily).order_by(IndexDaily.symbol, IndexDaily.trade_date.desc())
@@ -154,79 +165,69 @@ class IndexService:
         return items
 
     async def _refresh_stale(self, max_age_minutes: int = 5) -> None:
-        """Fetch fresh quotes for indices whose latest row is older than max_age_minutes."""
-        from titan_x.infrastructure.market_data_providers import YahooFinanceProvider
-        
-        # Find indices needing refresh
-        stmt = select(IndexDaily.symbol, IndexDaily.trade_date, IndexDaily.close).order_by(
-            IndexDaily.symbol, IndexDaily.trade_date.desc()
-        )
-        result = await self.session.execute(stmt)
-        rows = result.all()
-        latest: dict[str, tuple[date, float]] = {}
-        for symbol, trade_date, close in rows:
-            if symbol not in latest:
-                latest[symbol] = (trade_date, close)
-        
-        cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=max_age_minutes)
-        stale_symbols = [
-            symbol for symbol, (d, _) in latest.items()
-            if datetime.combine(d, datetime.min.time()) < cutoff
-        ]
-        
-        if not stale_symbols:
+        """Ensure the latest index rows are at most max_age_minutes old.
+
+        Uses a per-process throttle (not a DB timestamp) so the app never
+        hammers Yahoo — at most one refresh attempt per max_age_minutes. When
+        the market is open, ``get_quote`` returns the live regular-market
+        price; when closed it returns the latest EOD value.
+        """
+        global _last_refresh_attempt
+
+        now = time.monotonic()
+        if _last_refresh_attempt is not None and now - _last_refresh_attempt < max_age_minutes * 60:
             return
-        
+
+        from titan_x.infrastructure.market_data_providers import YahooFinanceProvider
+
         provider = YahooFinanceProvider()
+        updated = 0
+        errors: list[str] = []
         try:
-            for symbol in stale_symbols:
+            for symbol, name, *_ in INDICES:
                 yahoo_ticker = YAHOO_INDEX.get(symbol)
                 if not yahoo_ticker:
                     continue
                 try:
-                    # Fetch latest quote (range=5d gets recent days)
-                    data = await provider._get(
-                        f"{provider.BASE_URL}/{yahoo_ticker}",
-                        params={"range": "5d", "interval": "1d", "crumb": await provider._get_crumb()}
+                    quote = await provider.get_quote(yahoo_ticker)
+                    last_price = quote.get("last_price")
+                    if last_price is None:
+                        raise ValueError(f"no regularMarketPrice ({quote.get('symbol')})")
+                    trade_date = date.today()
+                    existing = await self.session.execute(
+                        select(IndexDaily).where(
+                            IndexDaily.symbol == symbol,
+                            IndexDaily.trade_date == trade_date,
+                        )
                     )
-                    result = (data.get("chart") or {}).get("result")
-                    if not result:
-                        continue
-                    chart = result[0]
-                    timestamps = chart.get("timestamp") or []
-                    quote = (chart.get("indicators") or {}).get("quote") or [{}]
-                    quote = quote[0]
-                    closes = quote.get("close") or []
-                    if not closes:
-                        continue
-                    # Use the latest close
-                    latest_close = closes[-1]
-                    latest_ts = timestamps[-1]
-                    from datetime import datetime as dt_datetime
-                    trade_date = dt_datetime.fromtimestamp(
-                        latest_ts, tz=datetime.now().astimezone().tzinfo
-                    ).date()
-                    
-                    # Upsert
-                    from sqlalchemy.dialects.postgresql import insert
-                    from titan_x.models.index_price import IndexDaily
-                    stmt = insert(IndexDaily).values(
-                        symbol=symbol,
-                        name=next(n for s, n, *_ in INDICES if s == symbol),
-                        trade_date=trade_date,
-                        open=0, high=0, low=0,
-                        close=round(latest_close, 2),
-                        volume=0,
-                    ).on_conflict_do_update(
-                        index_elements=["symbol", "trade_date"],
-                        set_={"close": round(latest_close, 2)}
-                    )
-                    await self.session.execute(stmt)
-                except Exception:
-                    continue  # skip this index on error
-            await self.session.flush()
+                    row = existing.scalar_one_or_none()
+                    if row is None:
+                        row = IndexDaily(
+                            symbol=symbol,
+                            name=name,
+                            trade_date=trade_date,
+                            open=0.0, high=0.0, low=0.0, close=0.0, volume=0,
+                        )
+                        self.session.add(row)
+                    row.close = round(float(last_price), 2)
+                    prev_close = quote.get("prev_close")
+                    if prev_close and not row.open:
+                        row.open = round(float(prev_close), 2)
+                    updated += 1
+                except Exception as exc:  # noqa: BLE001
+                    errors.append(f"{symbol}: {exc}")
+            if updated:
+                await self.session.flush()
         finally:
             await provider.close()
+
+        # Throttle regardless of outcome so a blocked upstream retries at most
+        # once per window instead of on every /indices request.
+        _last_refresh_attempt = time.monotonic()
+        if errors:
+            logger.warning("index_refresh_partial", updated=updated, errors=errors)
+        else:
+            logger.info("index_refresh_ok", updated=updated)
 
     @staticmethod
     def _prev_close(symbol: str, rows: list[IndexDaily], current: IndexDaily) -> float | None:
