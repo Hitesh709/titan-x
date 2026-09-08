@@ -5,7 +5,7 @@ import { useState } from "react"
 import { useAuth } from "@/contexts/AuthContext"
 import MarketTicker, { usePublicMarket } from "@/components/landing/MarketTicker"
 import MarketBattle from "@/components/landing/MarketBattle"
-import { Activity, ArrowRight, BarChart3, Brain, ChevronRight, Cpu, Globe, Lock, Menu, Play, Radar, Server, Shield, Sparkles, Target, TrendingUp, Users, X, Zap } from "lucide-react"
+import { Activity, ArrowRight, BarChart3, Brain, ChevronRight, Cpu, Globe, Lock, Menu, Play, Radar, Server, Shield, Sparkles, Target, TrendingUp, Users, X, Zap, type LucideIcon } from "lucide-react"
 
 const indices = [
   ["NIFTY 50", "India", "🇮🇳"], ["SENSEX", "India", "🇮🇳"], ["BANK NIFTY", "India", "🇮🇳"],
@@ -14,7 +14,7 @@ const indices = [
   ["DAX", "Germany", "🇩🇪"], ["CAC 40", "France", "🇫🇷"], ["NIKKEI 225", "Japan", "🇯🇵"]
 ]
 
-const features = [
+const features: [LucideIcon, string, string, string, string][] = [
   [Brain, "AI Intelligence", "Multi-model AI for pattern recognition, regime detection and explainable market signals.", "98.7%", "Prediction Layer"],
   [BarChart3, "Advanced Analytics", "Institutional technicals, breadth, volatility, correlation and market-structure analytics.", "150+", "Technical Indicators"],
   [Globe, "Global Indices", "Real-time index intelligence across India, US, Europe and Asia-Pacific markets.", "20+", "Major Indices"],
@@ -115,7 +115,7 @@ export default function LandingPage() {
       <div className="ref-panel news"><div className="panel-title">MARKET INTELLIGENCE AI <span><i/> LIVE</span></div>{[["01","Macro & policy","Regime Engine"],["02","Cross-market index flow","Global Index"],["03","Sector rotation","Sector Pulse"],["04","Explainable AI signals","AI Classified"]].map(([n,a,b])=><div className="news-row" key={n}><b>{n}</b><p>{a}<small>{b}</small></p></div>)}</div>
     </div></div></section>
 
-    <section id="trading" className="ref-stats"><div className="ref-wrap">{[["<1ms","Execution Target",Zap],["99.98%","Platform Availability",Activity],["20+","Global Indices",Globe],["150+","Technical Indicators",BarChart3],["24/7","Risk Monitoring",Shield],["100K+","Designed For Users",Users]].map(([v,l,I])=>{const C=I as any;return <div key={String(l)}><C size={21}/><strong>{v}</strong><small>{l}</small></div>})}</div></section>
+    <section id="trading" className="ref-stats"><div className="ref-wrap">{([["<1ms","Execution Target",Zap],["99.98%","Platform Availability",Activity],["20+","Global Indices",Globe],["150+","Technical Indicators",BarChart3],["24/7","Risk Monitoring",Shield],["100K+","Designed For Users",Users]] as [string, string, LucideIcon][]).map(([v,l,I])=>{const C=I as any;return <div key={String(l)}><C size={21}/><strong>{v}</strong><small>{l}</small></div>})}</div></section>
 
     <section id="risk" className="ref-section ref-lower"><div className="ref-wrap"><div className="ref-heading"><div className="ref-kicker"><Radar size={13}/> INSTITUTIONAL RISK ENGINE</div><h2>Protection Designed Into Every Decision</h2><p>Risk controls are built into the signal, portfolio and execution lifecycle.</p></div><div className="risk-grid">{[["Portfolio Exposure","62%"],["Drawdown Control","18%"],["Volatility Monitor","74%"],["Real-Time Alerts","24/7"]].map(([x,v],i)=><div className="risk-card" key={x}><span>0{i+1}</span><Shield size={23}/><strong>{x}</strong><small>LIVE CONTROL</small><div><i style={{width:i===3?"100%":`${62+i*9}%`}}/></div><b>{v}</b></div>)}</div></div></section>
 

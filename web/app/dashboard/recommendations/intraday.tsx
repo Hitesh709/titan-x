@@ -63,7 +63,7 @@ function RecommendationCard({ rec }: { rec: StrictIntradayRecommendation }) {
   const pillars = pillarsFor(rec)
   const evidence = Array.isArray(rec.evidence) ? rec.evidence.filter(Boolean) : []
   const caution = Array.isArray(rec.caution) ? rec.caution.filter(Boolean) : []
-  const volumeRatio = score(rec.volume_ratio, NaN)
+  const volumeRatio = score(rec.volume_ratio)
   return <div className="glass-card p-5">
     <div className="flex items-start justify-between gap-3">
       <div className="flex items-center gap-2">

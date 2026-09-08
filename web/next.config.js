@@ -5,9 +5,6 @@ const nextConfig = {
   // Render runs the normal Next.js production server. Do not use standalone
   // output here; `next start` is the correct runtime for this service.
   // This also prevents the standalone/next-start mismatch seen in Render logs.
-  typescript: {
-    ignoreBuildErrors: true,
-  },
   images: {
     domains: [],
   },
@@ -25,7 +22,7 @@ const nextConfig = {
     return [
       {
         source: '/api/v1/:path*',
-        destination: 'https://titan-x-api.onrender.com/api/v1/:path*',
+        destination: 'https://titan-x-api-oregon.onrender.com/api/v1/:path*',
       },
     ]
   },

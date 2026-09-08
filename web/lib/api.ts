@@ -137,6 +137,7 @@ class ApiClient {
   get<T = unknown>(endpoint: string) { return this.request<T>(endpoint) }
   post<T = unknown>(endpoint: string, body?: unknown) { return this.request<T>(endpoint, { method: "POST", body }) }
   put<T = unknown>(endpoint: string, body?: unknown) { return this.request<T>(endpoint, { method: "PUT", body }) }
+  patch<T = unknown>(endpoint: string, body?: unknown) { return this.request<T>(endpoint, { method: "PATCH", body }) }
   delete<T = unknown>(endpoint: string) { return this.request<T>(endpoint, { method: "DELETE" }) }
 }
 

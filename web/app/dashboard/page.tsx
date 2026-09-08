@@ -124,7 +124,7 @@ export default function DashboardPage() {
     }
     if (idx.status === "fulfilled") {
       const rawItems = Array.isArray((idx.value as any)?.items) ? (idx.value as any).items : []
-      setIndices(rawItems.map(normalizeIndex).filter((x): x is IndexItem => x !== null))
+      setIndices(rawItems.map(normalizeIndex).filter((x: unknown): x is IndexItem => x !== null))
     }
     setLoading(false)
     setRefreshing(false)
