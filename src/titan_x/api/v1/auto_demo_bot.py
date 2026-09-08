@@ -18,7 +18,9 @@ async def run_demo_bot(
     profile_ratio: float = Query(1.0, gt=0, le=20),
 ) -> dict:
     try:
-        result = await AutoDemoBotEngine(session).run_once(current_user.id, trade_amount, profile_ratio)
+        result = await AutoDemoBotEngine(session).run_once(
+            current_user.id, trade_amount, profile_ratio
+        )
         await session.commit()
         return result
     except ValueError as exc:
@@ -26,7 +28,9 @@ async def run_demo_bot(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         await session.rollback()
-        raise HTTPException(status_code=500, detail=f"Auto demo bot run failed: {type(exc).__name__}") from exc
+        raise HTTPException(
+            status_code=500, detail=f"Auto demo bot run failed: {type(exc).__name__}"
+        ) from exc
 
 
 # Compatibility endpoint for older clients. It no longer has a finite cycle limit.
@@ -47,7 +51,9 @@ async def run_demo_cycle_compat(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         await session.rollback()
-        raise HTTPException(status_code=500, detail=f"Auto demo bot run failed: {type(exc).__name__}") from exc
+        raise HTTPException(
+            status_code=500, detail=f"Auto demo bot run failed: {type(exc).__name__}"
+        ) from exc
 
 
 @router.get("/status")
@@ -61,7 +67,40 @@ async def demo_bot_status(
         "mode": "paper_demo",
         "continuous": True,
         "strategy_window": "3h",
-        "stop_loss_max_pct": 40,
-        "max_trades_per_burst": 50,
+        "stop_loss_pct": float(AutoDemoBotEngine.STOP_LOSS_PCT),
+        "take_profit_pct": float(AutoDemoBotEngine.TAKE_PROFIT_PCT),
+        "stop_loss_max_pct": float(AutoDemoBotEngine.MAX_ACCOUNT_LOSS_PCT),
+        "max_trades_per_burst": AutoDemoBotEngine.MAX_TRADES_PER_BURST,
         "paper_account": account is not None,
     }
+
+
+@router.get("/overview")
+async def demo_bot_overview(
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    session: Annotated[AsyncSession, Depends(request_session)],
+) -> dict:
+    try:
+        result = await AutoDemoBotEngine(session).get_overview(current_user.id)
+        return result
+    except Exception as exc:  # noqa: BLE001
+        await session.rollback()
+        raise HTTPException(
+            status_code=500, detail=f"Auto demo bot overview failed: {type(exc).__name__}"
+        ) from exc
+
+
+@router.post("/stop")
+async def demo_bot_stop(
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    session: Annotated[AsyncSession, Depends(request_session)],
+) -> dict:
+    try:
+        result = await AutoDemoBotEngine(session).square_off_all(current_user.id)
+        await session.commit()
+        return result
+    except Exception as exc:  # noqa: BLE001
+        await session.rollback()
+        raise HTTPException(
+            status_code=500, detail=f"Auto demo bot square-off failed: {type(exc).__name__}"
+        ) from exc

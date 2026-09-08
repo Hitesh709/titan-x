@@ -42,7 +42,7 @@ class PaperTradingService:
                 mv=p.current_price*p.quantity; current+=mv; unrealized+=mv-p.cost_basis
         total=realized+unrealized
         return {"account_id":account.id,"initial_capital":float(account.initial_capital),"cash_balance":float(account.cash_balance),"portfolio_value":float(account.cash_balance+current),"total_invested":float(invested),"total_realized_pnl":float(realized),"total_unrealized_pnl":float(unrealized),"total_pnl":float(total),"total_pnl_pct":round(float(total/account.initial_capital*100),2) if account.initial_capital else 0,"positions_count":len(positions),"is_active":account.is_active}
-    async def place_order(self,user_id:int,symbol:str,side:str,order_type:str,quantity:int,price:Decimal|None=None,stop_price:Decimal|None=None,time_in_force:str="day")->PaperOrder:
+    async def place_order(self,user_id:int,symbol:str,side:str,order_type:str,quantity:int,price:Decimal|None=None,stop_price:Decimal|None=None,time_in_force:str="day",market_price:Decimal|None=None,defer_evaluation:bool=False)->PaperOrder:
         account=await self.get_account(user_id)
         if account is None:raise PaperTradingError("No paper account")
         if not account.is_active:raise PaperTradingError("Account is inactive")
@@ -50,8 +50,15 @@ class PaperTradingService:
         if side not in ("buy","sell"):raise PaperTradingError("Side must be 'buy' or 'sell'")
         if order_type not in ("market","limit","stop","stop_limit"):raise PaperTradingError("Invalid order type")
         order=await self._order_repo.create(account_id=account.id,user_id=user_id,symbol=symbol.upper(),side=side,order_type=order_type,quantity=quantity,price=price,stop_price=stop_price,time_in_force=time_in_force,status="pending")
-        latest=await self._price_service.get_latest_price(symbol); current=Decimal(str(latest.close)) if latest else None
-        if current is None and order_type=="market":current=await self._try_fetch_market_price(symbol)
+        current:Decimal|None=None
+        if order_type=="market":
+            if market_price is not None and market_price>0:
+                current=market_price
+            else:
+                latest=await self._price_service.get_latest_price(symbol);current=Decimal(str(latest.close)) if latest else None
+                if current is None:current=await self._try_fetch_market_price(symbol)
+        elif not defer_evaluation:
+            latest=await self._price_service.get_latest_price(symbol);current=Decimal(str(latest.close)) if latest else None
         if order_type=="market" and current:await self._fill_order(order,account,current)
         elif order_type=="limit" and price and current:
             if (side=="buy" and current<=price) or (side=="sell" and current>=price):await self._fill_order(order,account,current)
@@ -82,10 +89,15 @@ class PaperTradingService:
         total=(await self._session.execute(count)).scalar() or 0; rows=(await self._session.execute(stmt.order_by(desc(PaperOrder.created_at)).offset(skip).limit(limit))).scalars().all();return list(rows),total
     async def get_order(self,order_id:int,user_id:int)->PaperOrder|None:
         o=await self._order_repo.get(order_id);return o if o and o.user_id==user_id else None
-    async def process_open_orders(self,symbol:str)->int:
-        latest=await self._price_service.get_latest_price(symbol)
-        if not latest:return 0
-        current=Decimal(str(latest.close));filled=0
+    async def process_open_orders(self,symbol:str,force_price:Decimal|None=None)->int:
+        if force_price is not None:
+            current=force_price
+        else:
+            latest=await self._price_service.get_latest_price(symbol)
+            if not latest:return 0
+            current=Decimal(str(latest.close))
+        if current<=0:return 0
+        filled=0
         orders=(await self._session.execute(select(PaperOrder).where(PaperOrder.symbol==symbol,PaperOrder.status=="open"))).scalars().all()
         for order in orders:
             account=await self._session.get(PaperAccount,order.account_id)
