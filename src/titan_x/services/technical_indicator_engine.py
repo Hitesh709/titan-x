@@ -521,6 +521,60 @@ def _params_hash(indicator: str, params: dict[str, Any]) -> str:
     return hashlib.md5(raw.encode("utf-8")).hexdigest()
 
 
+def supertrend(high: list[float], low: list[float], close: list[float], period: int = 10, multiplier: float = 3.0) -> tuple[list[str | None], list[float | None]]:
+    """SuperTrend (Seban algorithm).
+
+    Returns ``(direction, st_line)`` equal in length to ``close``. ``direction``
+    is ``"up"``/``"down"`` per bar (``None`` during warm-up) and ``st_line`` is
+    the trailing stop band value projected for the next bar.
+    """
+    n = len(close)
+    if n < 2:
+        return [None] * n, [None] * n
+    atr_val_list = IndicatorMath.atr(high, low, close, period)
+    final_upper: list[float | None] = [None] * n
+    final_lower: list[float | None] = [None] * n
+    st_line: list[float | None] = [None] * n
+    direction: list[str | None] = [None] * n
+
+    prev_st: float | None = None
+    prev_final_upper: float | None = None
+    prev_final_lower: float | None = None
+    prev_close: float | None = None
+
+    for i in range(n):
+        atr_val = atr_val_list[i]
+        if atr_val is None or atr_val <= 0:
+            continue
+        midpoint = (high[i] + low[i]) / 2
+        basic_upper = midpoint + multiplier * atr_val
+        basic_lower = midpoint - multiplier * atr_val
+
+        if prev_final_upper is None:
+            band_upper, band_lower = basic_upper, basic_lower
+        else:
+            band_upper = basic_upper if (basic_upper < prev_final_upper or prev_close > prev_final_upper) else prev_final_upper
+            band_lower = basic_lower if (basic_lower > prev_final_lower or prev_close < prev_final_lower) else prev_final_lower
+
+        final_upper[i], final_lower[i] = band_upper, band_lower
+
+        if prev_st is None:
+            bar_direction = "up" if close[i] > basic_lower else "down"
+        elif prev_st == prev_final_upper:
+            bar_direction = "up" if close[i] > band_upper else "down"
+        else:
+            bar_direction = "down" if close[i] < band_lower else "up"
+
+        st_line[i] = band_upper if bar_direction == "down" else band_lower
+        direction[i] = bar_direction
+
+        prev_final_upper, prev_final_lower = band_upper, band_lower
+        prev_close = close[i]
+        prev_st = st_line[i]
+
+    return direction, st_line
+
+
 class TechnicalIndicatorEngine:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -670,3 +724,28 @@ class TechnicalIndicatorEngine:
             if k not in ("high", "low", "close", "volume", "inputs"):
                 arg_map[k] = v
         return arg_map
+
+
+register_indicator("SMA", "moving_average", "Simple Moving Average", {"period": 20})
+register_indicator("EMA", "moving_average", "Exponential Moving Average", {"period": 20})
+register_indicator("WMA", "moving_average", "Weighted Moving Average", {"period": 20})
+register_indicator("HMA", "moving_average", "Hull Moving Average", {"period": 20})
+register_indicator("TRIMA", "moving_average", "Triangular Moving Average", {"period": 20})
+register_indicator("KAMA", "moving_average", "Kaufman Adaptive Moving Average", {"period": 10, "fast": 2, "slow": 30})
+register_indicator("MAMA", "moving_average", "MESA Adaptive Moving Average", {"fast_limit": 0.5, "slow_limit": 0.05})
+register_indicator("RSI", "oscillator", "Relative Strength Index", {"period": 14})
+register_indicator("MACD", "oscillator", "MACD", {"fast": 12, "slow": 26, "signal": 9})
+register_indicator("STOCH", "oscillator", "Stochastic Oscillator", {"k_period": 14, "d_period": 3})
+register_indicator("WILLIAMS_R", "oscillator", "Williams %R", {"period": 14})
+register_indicator("CCI", "oscillator", "Commodity Channel Index", {"period": 20})
+register_indicator("BBANDS", "volatility", "Bollinger Bands", {"period": 20, "std_dev": 2.0})
+register_indicator("ATR", "volatility", "Average True Range", {"period": 14})
+register_indicator("KC", "volatility", "Keltner Channels", {"period": 20, "multiplier": 2.0})
+register_indicator("ADX", "trend", "Average Directional Index", {"period": 14})
+register_indicator("PSAR", "trend", "Parabolic SAR", {"accel_start": 0.02, "accel_max": 0.2})
+register_indicator("VWAP", "volume", "Volume-Weighted Average Price", {})
+register_indicator("OBV", "volume", "On-Balance Volume", {})
+register_indicator("CMF", "volume", "Chaikin Money Flow", {"period": 20})
+register_indicator("ROC", "momentum", "Rate of Change", {"period": 12})
+register_indicator("VOLUME_PROFILE", "volume", "Volume Profile", {"num_bins": 10})
+register_indicator("SUPER_TREND", "trend", "SuperTrend", {"period": 10, "multiplier": 3.0})

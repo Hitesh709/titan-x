@@ -202,6 +202,8 @@ export default function StockDetailPage() {
         <CandlestickChart symbol={symbol} />
       </div>
 
+      <TitanXFusionPanel symbol={symbol} />
+
       <ResearchBlock symbol={symbol} research={research} loaded={researchLoaded} onRefresh={() => void loadResearch()} />
 
       <div className="flex flex-wrap justify-center gap-3">

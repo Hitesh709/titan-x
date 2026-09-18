@@ -36,6 +36,7 @@ _ROUTER_SPECS: tuple[tuple[str, str | None], ...] = (
     ("fundamentals", "fund_router"),
     ("financial_statements", "fin_stmt_router"),
     ("fundamental_scanner", "router"),
+    ("fusion", "router"),
     ("technical_indicators", "tech_ind_router"),
     ("technical_strength", "router"),
     ("sectors", "sector_router"),

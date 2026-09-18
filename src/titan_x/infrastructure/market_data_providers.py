@@ -22,6 +22,7 @@ class MarketDataPoint:
         low: float,
         close: float,
         volume: int,
+        timestamp: datetime | None = None,
     ):
         self.symbol = symbol
         self.trade_date = trade_date
@@ -30,6 +31,7 @@ class MarketDataPoint:
         self.low = low
         self.close = close
         self.volume = volume
+        self.timestamp = timestamp
 
 
 class MarketDataProvider(ABC):
@@ -81,6 +83,7 @@ class MockMarketDataProvider(MarketDataProvider):
                         low=close - 2.0,
                         close=close,
                         volume=100_000 + day * 1000,
+                        timestamp=datetime.combine(cursor, dt_time.min, tzinfo=timezone.utc),
                     )
                 )
                 day += 1
@@ -197,15 +200,17 @@ class YahooFinanceProvider(MarketDataProvider):
 
             volumes = quote.get("volume", [])
             volume = int(volumes[index] or 0) if index < len(volumes) else 0
+            bar_timestamp = datetime.fromtimestamp(timestamp, timezone.utc)
             output.append(
                 MarketDataPoint(
                     symbol.upper(),
-                    datetime.fromtimestamp(timestamp, timezone.utc).date(),
+                    bar_timestamp.date(),
                     value("open"),
                     value("high"),
                     value("low"),
                     float(close),
                     volume,
+                    bar_timestamp,
                 )
             )
         return output
