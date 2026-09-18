@@ -7,7 +7,6 @@ from titan_x.api.dependencies import get_current_active_user, request_session
 from titan_x.models.company import Company
 from titan_x.models.user import User
 from titan_x.services.market_data_service import MarketDataService
-from titan_x.services.titan_x_fusion import evaluate_fusion
 from titan_x.infrastructure.market_data_providers import YahooFinanceProvider
 
 router = APIRouter(prefix="/market-data", tags=["market-data"])
@@ -45,8 +44,10 @@ async def get_titan_x_fusion(symbol: str, _ : Annotated[User, Depends(get_curren
     provider = YahooFinanceProvider()
     try:
         points = await provider.get_historical_prices(symbol, interval=interval, synthetic_ok=False)
-        signal = evaluate_fusion(points, timeframe=interval)
-        return {"symbol": symbol.upper(), **signal.as_dict()}
+        from titan_x.services.titan_x_fusion import TitanXFusionEngine
+        engine = TitanXFusionEngine()
+        decision = engine.evaluate(points, dedupe=False)
+        return {"symbol": symbol.upper(), "decision": decision["decision"], "reason": decision["reason"], "entry": decision.get("entry"), "stop_loss": decision.get("stop_loss"), "target": decision.get("target"), "regime": decision.get("regime"), "price": decision.get("price")}
     except Exception as e:
         raise HTTPException(502, f"Titan X Fusion market data failed: {e}") from e
     finally:
