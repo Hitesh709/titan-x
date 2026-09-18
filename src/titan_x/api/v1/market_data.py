@@ -1,12 +1,13 @@
 from datetime import date
 from typing import Annotated
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from titan_x.api.dependencies import get_current_active_user, request_session
 from titan_x.models.company import Company
 from titan_x.models.user import User
 from titan_x.services.market_data_service import MarketDataService
+from titan_x.services.titan_x_fusion import evaluate_fusion
 from titan_x.infrastructure.market_data_providers import YahooFinanceProvider
 
 router = APIRouter(prefix="/market-data", tags=["market-data"])
@@ -38,6 +39,19 @@ async def get_market_profile(symbol: str, _ : Annotated[User, Depends(get_curren
     except Exception as e:
         raise HTTPException(502, f"Yahoo company profile fetch failed: {e}") from e
 
+@router.get("/fusion/{symbol}")
+async def get_titan_x_fusion(symbol: str, _ : Annotated[User, Depends(get_current_active_user)], interval: str = Query("5m", pattern=r"^(5m|15m)$")):
+    """Return the single Titan X Fusion intraday decision: BUY, SELL or HOLD."""
+    provider = YahooFinanceProvider()
+    try:
+        points = await provider.get_historical_prices(symbol, interval=interval, synthetic_ok=False)
+        signal = evaluate_fusion(points, timeframe=interval)
+        return {"symbol": symbol.upper(), **signal.as_dict()}
+    except Exception as e:
+        raise HTTPException(502, f"Titan X Fusion market data failed: {e}") from e
+    finally:
+        await provider.close()
+
 @router.get("/market-caps")
 async def get_batch_market_caps(symbols: str, _ : Annotated[User, Depends(get_current_active_user)], session: Annotated[AsyncSession, Depends(request_session)]):
     syms = list(dict.fromkeys(s.strip().upper().replace(".NS", "") for s in symbols.split(",") if s.strip()))
@@ -51,15 +65,14 @@ async def get_candles(symbol: str, _ : Annotated[User, Depends(get_current_activ
     provider = YahooFinanceProvider()
     try:
         points = await provider.get_historical_prices(symbol, interval=interval, synthetic_ok=False)
-        return {"symbol": symbol.upper(), "interval": interval, "provider": "yahoo", "live": True, "points": [{"trade_date": p.trade_date.isoformat(), "open": p.open, "high": p.high, "low": p.low, "close": p.close, "volume": p.volume} for p in points]}
+        candles = [{"time": p.trade_date.isoformat(), "open": p.open, "high": p.high, "low": p.low, "close": p.close, "volume": p.volume} for p in points]
+        return {"symbol": symbol.upper(), "interval": interval, "provider": "yahoo", "live": True, "points": candles, "candles": candles}
     except Exception as e: raise HTTPException(502, f"Yahoo candle fetch failed: {e}") from e
     finally: await provider.close()
 
 @router.get("/history/{symbol}")
-async def get_history(symbol: str, _ : Annotated[User, Depends(get_current_active_user)], interval: str = Query("1d", pattern=r"^(1d|1wk|1mo)$")):
-    provider = YahooFinanceProvider()
+async def get_history(symbol: str, _ : Annotated[User, Depends(get_current_active_user)], svc: Annotated[MarketDataService, Depends(get_market_data_service)]):
     try:
-        points = await provider.get_historical_prices(symbol, interval=interval, synthetic_ok=False)
-        return {"symbol": symbol.upper(), "interval": interval, "provider": "yahoo", "points": [{"trade_date": p.trade_date.isoformat(), "open": p.open, "high": p.high, "low": p.low, "close": p.close, "volume": p.volume} for p in points]}
-    except Exception as e: raise HTTPException(502, f"Yahoo history fetch failed: {e}") from e
-    finally: await provider.close()
+        return await svc.get_history(symbol)
+    except Exception as e:
+        raise HTTPException(502, f"Market history failed: {e}") from e

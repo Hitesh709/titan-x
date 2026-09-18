@@ -18,6 +18,7 @@ import {
 import api from "@/lib/api"
 import { useLiveRefresh } from "@/lib/live"
 import CandlestickChart from "@/components/dashboard/candlestick-chart"
+import TitanXFusion from "@/components/dashboard/titan-x-fusion"
 import { formatCompactNumber, formatCurrency, formatPercent, getChangeColor } from "@/lib/utils"
 import { WidgetLoading, WidgetError } from "@/components/dashboard/widget"
 
@@ -131,18 +132,13 @@ export default function StockDetailPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <button
-          onClick={() => router.back()}
-          className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-white border border-white/10 rounded-lg px-3 py-2 transition-colors"
-        >
+        <button onClick={() => router.back()} className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-white border border-white/10 rounded-lg px-3 py-2 transition-colors">
           <ArrowLeft size={13} /> Back
         </button>
         <span className="text-[11px] text-gray-500">Live stock market data · {symbol}</span>
       </div>
 
-      {error && (
-        <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 text-xs text-amber-300">{error}</div>
-      )}
+      {error && <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 text-xs text-amber-300">{error}</div>}
 
       <div className="glass-card p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -154,13 +150,9 @@ export default function StockDetailPage() {
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-bold text-white">{name}</h1>
                 <span className="badge-blue">{symbol}</span>
-                <span className="text-[10px] text-emerald-500/80 font-medium uppercase tracking-wider">
-                  {quote?.exchange ?? profile?.exchange ?? "NSE"}
-                </span>
+                <span className="text-[10px] text-emerald-500/80 font-medium uppercase tracking-wider">{quote?.exchange ?? profile?.exchange ?? "NSE"}</span>
               </div>
-              <p className="text-sm text-gray-500 mt-0.5">
-                {[profile?.sector, profile?.industry].filter(Boolean).join(" · ") || "Equity"}
-              </p>
+              <p className="text-sm text-gray-500 mt-0.5">{[profile?.sector, profile?.industry].filter(Boolean).join(" · ") || "Equity"}</p>
             </div>
           </div>
           <div className="text-right">
@@ -170,9 +162,7 @@ export default function StockDetailPage() {
             {quote?.change != null && quote.change_percent != null && (
               <div className="flex items-center gap-1 justify-end text-sm mt-1">
                 {up ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-                <span className={`font-medium ${getChangeColor(quote.change)}`}>
-                  {up ? "+" : ""}{quote.change.toFixed(2)} ({up ? "+" : ""}{quote.change_percent.toFixed(2)}%)
-                </span>
+                <span className={`font-medium ${getChangeColor(quote.change)}`}>{up ? "+" : ""}{quote.change.toFixed(2)} ({up ? "+" : ""}{quote.change_percent.toFixed(2)}%)</span>
               </div>
             )}
           </div>
@@ -192,11 +182,11 @@ export default function StockDetailPage() {
         </div>
       </div>
 
+      <TitanXFusion symbol={symbol} />
+
       <div className="glass-card p-5">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-            <Activity size={16} className="text-titan-400" /> Price Chart
-          </h3>
+          <h3 className="text-sm font-semibold text-white flex items-center gap-2"><Activity size={16} className="text-titan-400" /> Price Chart</h3>
           <span className="text-[10px] text-gray-500">Candles · OHLCV · Up/Down</span>
         </div>
         <CandlestickChart symbol={symbol} />
@@ -207,173 +197,46 @@ export default function StockDetailPage() {
       <ResearchBlock symbol={symbol} research={research} loaded={researchLoaded} onRefresh={() => void loadResearch()} />
 
       <div className="flex flex-wrap justify-center gap-3">
-        <Link href={`/dashboard/trading?symbol=${encodeURIComponent(symbol)}&side=buy`} className="btn-primary text-sm px-6">
-          BUY {symbol}
-        </Link>
-        <Link href={`/dashboard/trading?symbol=${encodeURIComponent(symbol)}&side=sell`} className="btn-secondary text-sm px-6">
-          SELL {symbol}
-        </Link>
-        <Link href={tradeHref} className="text-xs text-gray-400 hover:text-titan-300 px-3 py-2">
-          Trade Signal → {research?.direction ?? "BUY"}
-        </Link>
+        <Link href={`/dashboard/trading?symbol=${encodeURIComponent(symbol)}&side=buy`} className="btn-primary text-sm px-6">BUY {symbol}</Link>
+        <Link href={`/dashboard/trading?symbol=${encodeURIComponent(symbol)}&side=sell`} className="btn-secondary text-sm px-6">SELL {symbol}</Link>
+        <Link href={tradeHref} className="text-xs text-gray-400 hover:text-titan-300 px-3 py-2">Trade Signal → {research?.direction ?? "BUY"}</Link>
       </div>
     </div>
   )
 }
 
-function Stat({
-  label,
-  value,
-  text,
-  compact,
-}: {
-  label: string
-  value?: number | null
-  text?: string
-  compact?: boolean
-}) {
+function Stat({ label, value, text, compact }: { label: string; value?: number | null; text?: string; compact?: boolean }) {
   let displayValue = "—"
-  if (text != null) {
-    displayValue = text
-  } else if (value != null) {
-    displayValue = compact
-      ? formatCompactNumber(Number(value))
-      : formatCurrency(Number(value), "INR").replace("₹", "")
-  }
-
-  return (
-    <div className="bg-white/5 rounded-lg p-3">
-      <p className="text-xs text-gray-500">{label}</p>
-      <p className="mt-1 text-sm font-semibold text-white">{displayValue}</p>
-    </div>
-  )
+  if (text != null) displayValue = text
+  else if (value != null) displayValue = compact ? formatCompactNumber(Number(value)) : formatCurrency(Number(value), "INR").replace("₹", "")
+  return <div className="bg-white/5 rounded-lg p-3"><p className="text-xs text-gray-500">{label}</p><p className="mt-1 text-sm font-semibold text-white">{displayValue}</p></div>
 }
 
-function ResearchBlock({
-  symbol,
-  research,
-  loaded,
-  onRefresh,
-}: {
-  symbol: string
-  research: Research | null
-  loaded: boolean
-  onRefresh: () => void
-}) {
+function ResearchBlock({ symbol, research, loaded, onRefresh }: { symbol: string; research: Research | null; loaded: boolean; onRefresh: () => void }) {
   let content: ReactNode
-
-  if (!loaded) {
-    content = <div className="h-16 animate-pulse bg-white/5 rounded-lg" />
-  } else if (!research) {
-    content = (
-      <p className="text-sm text-gray-500 py-4 text-center">
-        No research yet for {symbol}. Run a market scan to generate an AI recommendation.
-      </p>
-    )
-  } else if (!research.has_research) {
-    content = (
-      <p className="text-sm text-gray-500 py-4 text-center">
-        {research.company_name ?? symbol} does not have a live recommendation yet.
-      </p>
-    )
-  } else {
-    const directionClass =
-      research.direction === "BUY"
-        ? "badge-green"
-        : research.direction === "SELL"
-          ? "badge-red"
-          : "badge-blue"
-
-    content = (
-      <>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className={directionClass}>
-            {research.direction ?? "HOLD"}
-            {research.signal ? ` · ${research.signal.replaceAll("_", " ")}` : ""}
-          </span>
-          {research.risk_level && <span className="text-xs text-gray-500">{research.risk_level} risk</span>}
-          {research.timeframe && <span className="text-xs text-gray-500">{research.timeframe}</span>}
-          {research.generated_at && (
-            <span className="ml-auto text-[11px] text-gray-500">
-              Generated {new Date(research.generated_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
-            </span>
-          )}
-        </div>
-
-        <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Stat label="Score" text={research.score != null ? research.score.toFixed(1) : "—"} />
-          <Stat label="Confidence" text={research.confidence != null ? `${Math.round(research.confidence)}%` : "—"} />
-          <Stat label="Expected Return" text={research.predicted_return_pct != null ? formatPercent(research.predicted_return_pct) : "—"} />
-          <Stat
-            label="Current · Target"
-            text={
-              `${research.current_price != null ? formatCurrency(research.current_price, "INR") : "—"}` +
-              `${research.price_target ? ` → ${formatCurrency(research.price_target, "INR")}` : ""}`
-            }
-          />
-        </div>
-
-        {research.reasoning && (
-          <div className="mt-4 flex items-start gap-2 text-sm text-gray-300 bg-white/5 rounded-lg p-4">
-            <Sparkles size={15} className="text-titan-400 shrink-0 mt-0.5" />
-            <p>{research.reasoning}</p>
-          </div>
-        )}
-
-        {(research.evidence?.length ?? 0) > 0 && (
-          <div className="mt-3">
-            <p className="text-xs text-gray-500 mb-2">Evidence</p>
-            <ul className="space-y-1.5">
-              {research.evidence!.slice(0, 8).map((e, i) => (
-                <li key={i} className="text-xs text-gray-400 flex items-start gap-2">
-                  <CheckCircle2 size={13} className="text-emerald-500 shrink-0 mt-0.5" />
-                  {e}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {(research.caution?.length ?? 0) > 0 && (
-          <div className="mt-3">
-            <p className="text-xs text-gray-500 mb-2">Caution</p>
-            <ul className="space-y-1.5">
-              {research.caution!.slice(0, 5).map((c, i) => (
-                <li key={i} className="text-xs text-amber-400/90 flex items-start gap-2">
-                  <AlertTriangle size={13} className="shrink-0 mt-0.5" />
-                  {c}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        <div className="mt-4 flex justify-end">
-          <button
-            onClick={onRefresh}
-            className="text-xs text-titan-400 hover:text-titan-300 inline-flex items-center gap-1"
-          >
-            <Activity size={12} /> Refresh research
-          </button>
-        </div>
-      </>
-    )
-  }
-
-  return (
-    <div className="glass-card p-5">
-      <div className="flex items-center justify-between gap-3 mb-4">
-        <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-          <BookOpen size={16} className="text-titan-400" /> Titan Research
-        </h3>
-        {research && (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-titan-600/10 border border-titan-600/25 text-titan-300 text-xs font-medium">
-            <CalendarRange size={12} />
-            {research.days ? `${research.days.toLocaleString("en-IN")} data days` : "research"}
-          </span>
-        )}
+  if (!loaded) content = <div className="h-16 animate-pulse bg-white/5 rounded-lg" />
+  else if (!research) content = <p className="text-sm text-gray-500 py-4 text-center">No research yet for {symbol}. Run a market scan to generate an AI recommendation.</p>
+  else if (!research.has_research) content = <p className="text-sm text-gray-500 py-4 text-center">{research.company_name ?? symbol} does not have a live recommendation yet.</p>
+  else {
+    const directionClass = research.direction === "BUY" ? "badge-green" : research.direction === "SELL" ? "badge-red" : "badge-blue"
+    content = <>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={directionClass}>{research.direction ?? "HOLD"}{research.signal ? ` · ${research.signal.replaceAll("_", " ")}` : ""}</span>
+        {research.risk_level && <span className="text-xs text-gray-500">{research.risk_level} risk</span>}
+        {research.timeframe && <span className="text-xs text-gray-500">{research.timeframe}</span>}
+        {research.generated_at && <span className="ml-auto text-[11px] text-gray-500">Generated {new Date(research.generated_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</span>}
       </div>
-      {content}
-    </div>
-  )
+      <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Stat label="Score" text={research.score != null ? research.score.toFixed(1) : "—"} />
+        <Stat label="Confidence" text={research.confidence != null ? `${Math.round(research.confidence)}%` : "—"} />
+        <Stat label="Expected Return" text={research.predicted_return_pct != null ? formatPercent(research.predicted_return_pct) : "—"} />
+        <Stat label="Current · Target" text={`${research.current_price != null ? formatCurrency(research.current_price, "INR") : "—"}${research.price_target ? ` → ${formatCurrency(research.price_target, "INR")}` : ""}`} />
+      </div>
+      {research.reasoning && <div className="mt-4 flex items-start gap-2 text-sm text-gray-300 bg-white/5 rounded-lg p-4"><Sparkles size={15} className="text-titan-400 shrink-0 mt-0.5" /><p>{research.reasoning}</p></div>}
+      {(research.evidence?.length ?? 0) > 0 && <div className="mt-3"><p className="text-xs text-gray-500 mb-2">Evidence</p><ul className="space-y-1.5">{research.evidence!.slice(0, 8).map((e, i) => <li key={i} className="text-xs text-gray-400 flex items-start gap-2"><CheckCircle2 size={13} className="text-emerald-500 shrink-0 mt-0.5" />{e}</li>)}</ul></div>}
+      {(research.caution?.length ?? 0) > 0 && <div className="mt-3"><p className="text-xs text-gray-500 mb-2">Caution</p><ul className="space-y-1.5">{research.caution!.slice(0, 5).map((c, i) => <li key={i} className="text-xs text-amber-400/90 flex items-start gap-2"><AlertTriangle size={13} className="shrink-0 mt-0.5" />{c}</li>)}</ul></div>}
+      <div className="mt-4 flex justify-end"><button onClick={onRefresh} className="text-xs text-titan-400 hover:text-titan-300 inline-flex items-center gap-1"><Activity size={12} /> Refresh research</button></div>
+    </>
+  }
+  return <div className="glass-card p-5"><div className="flex items-center justify-between gap-3 mb-4"><h3 className="text-sm font-semibold text-white flex items-center gap-2"><BookOpen size={16} className="text-titan-400" /> Titan Research</h3>{research && <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-titan-600/10 border border-titan-600/25 text-titan-300 text-xs font-medium"><CalendarRange size={12} />{research.days ? `${research.days.toLocaleString("en-IN")} data days` : "research"}</span>}</div>{content}</div>
 }

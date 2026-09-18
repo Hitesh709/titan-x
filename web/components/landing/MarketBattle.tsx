@@ -1,9 +1,98 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { createPortal } from "react-dom"
 import { usePublicMarket } from "./MarketTicker"
 import NiftyHeatmap from "./NiftyHeatmap"
+
+function LandingLiveOverlay() {
+  const { markets, score, regime } = usePublicMarket()
+  const [targets, setTargets] = useState<{ sentiment: HTMLElement | null; chart: HTMLElement | null; news: HTMLElement | null }>({ sentiment: null, chart: null, news: null })
+
+  const live = useMemo(() => markets.filter((m: any) => typeof m.change_pct === "number" && Number.isFinite(m.change_pct)), [markets])
+  const positive = live.filter((m: any) => Number(m.change_pct) > 0).length
+  const negative = live.filter((m: any) => Number(m.change_pct) < 0).length
+  const avg = live.length ? live.reduce((s: number, m: any) => s + Number(m.change_pct || 0), 0) / live.length : 0
+  const scoreValue = typeof score === "number" ? Math.round(score) : null
+  const isBear = String(regime || "").toLowerCase().includes("bear") || (scoreValue != null && scoreValue < 45)
+  const isBull = !isBear && (String(regime || "").toLowerCase().includes("bull") || (scoreValue != null && scoreValue > 55))
+  const breadth = live.length ? Math.round((positive / live.length) * 100) : null
+  const momentum = live.length ? Math.round(Math.max(0, Math.min(100, 50 + avg * 18))) : null
+  const volumeProxy = live.length ? Math.round(Math.max(0, Math.min(100, 50 + (positive - negative) * 2.5))) : null
+  const technicalProxy = scoreValue != null ? Math.round((scoreValue * 0.7) + (breadth ?? 50) * 0.3) : null
+
+  useEffect(() => {
+    const find = () => setTargets({
+      sentiment: document.querySelector<HTMLElement>(".ref-sentiment"),
+      chart: document.querySelector<HTMLElement>(".prediction .chart"),
+      news: document.querySelector<HTMLElement>(".news"),
+    })
+    find()
+    const timer = window.setTimeout(find, 50)
+    return () => window.clearTimeout(timer)
+  }, [])
+
+  useEffect(() => {
+    if (!targets.sentiment || !targets.chart || !targets.news) return
+    targets.sentiment.classList.add("tx-live-connected")
+    targets.chart.classList.add("tx-live-chart-connected")
+    targets.news.classList.add("tx-live-news-connected")
+    return () => {
+      targets.sentiment?.classList.remove("tx-live-connected")
+      targets.chart?.classList.remove("tx-live-chart-connected")
+      targets.news?.classList.remove("tx-live-news-connected")
+    }
+  }, [targets])
+
+  const meter = (label: string, value: number | null) => (
+    <div className="tx-live-meter" key={label}>
+      <span>{label}</span><i><b style={{ width: `${value == null ? 0 : value}%` }} /></i><em>{value == null ? "—" : `${value}%`}</em>
+    </div>
+  )
+
+  const chartBars = live.slice(0, 12).map((m: any) => Math.max(8, Math.min(96, 50 + Number(m.change_pct || 0) * 18)))
+
+  return <>
+    {targets.sentiment && createPortal(
+      <div className="tx-live-sentiment-data" aria-label="Live market sentiment components">
+        {meter("Momentum", momentum)}
+        {meter("Breadth", breadth)}
+        {meter("Flow", volumeProxy)}
+        {meter("Technical", technicalProxy)}
+        {meter("Overall", scoreValue)}
+        <small>{live.length ? `${positive} UP / ${negative} DOWN • ${live.length} LIVE INDICES` : "WAITING FOR LIVE INDEX FEED"}</small>
+      </div>,
+      targets.sentiment,
+    )}
+    {targets.chart && createPortal(
+      <div className="tx-live-index-chart" aria-label="Live global index momentum">
+        <div className="tx-chart-caption"><span>LIVE INDEX MOMENTUM</span><b>{live.length ? `${positive} UP / ${negative} DOWN` : "CONNECTING"}</b></div>
+        <div className="tx-chart-bars">
+          {chartBars.length ? chartBars.map((height: number, i: number) => <i key={`${i}-${height}`} style={{ height: `${height}%` }} className={Number(live[i]?.change_pct || 0) >= 0 ? "is-up" : "is-down"} />) : <span className="tx-chart-empty">Waiting for live index data…</span>}
+        </div>
+        <div className="tx-chart-axis"><span>NEGATIVE</span><span>0</span><span>POSITIVE</span></div>
+      </div>,
+      targets.chart,
+    )}
+    {targets.news && createPortal(
+      <div className="tx-live-intelligence" aria-label="Live market intelligence">
+        <div className="tx-intel-row"><b>01</b><span>Market regime</span><strong>{isBear ? "BEARISH" : isBull ? "BULLISH" : "BALANCED"}</strong></div>
+        <div className="tx-intel-row"><b>02</b><span>Index breadth</span><strong>{positive} UP / {negative} DOWN</strong></div>
+        <div className="tx-intel-row"><b>03</b><span>Average index move</span><strong>{avg >= 0 ? "+" : ""}{avg.toFixed(2)}%</strong></div>
+        <div className="tx-intel-row"><b>04</b><span>AI market score</span><strong>{scoreValue == null ? "—" : scoreValue}</strong></div>
+      </div>,
+      targets.news,
+    )}
+    <style>{`
+      .ref-sentiment.tx-live-connected>.meter{display:none!important}
+      .ref-sentiment.tx-live-connected>.tx-live-sentiment-data{display:block}
+      .tx-live-sentiment-data{margin-top:8px}.tx-live-sentiment-data small{display:block;margin-top:8px;color:#60758e;font:700 6px 'JetBrains Mono',monospace;letter-spacing:.04em}
+      .tx-live-meter{display:grid;grid-template-columns:60px 1fr 30px;align-items:center;gap:7px;font-size:8px;color:#a5b4c9;margin:7px 0}.tx-live-meter i{height:5px;border-radius:10px;background:#17283b;overflow:hidden}.tx-live-meter i b{display:block;height:100%;background:linear-gradient(90deg,#1c9fff,#35e2a0);border-radius:10px;box-shadow:0 0 8px rgba(53,226,160,.3)}.tx-live-meter em{font-style:normal;text-align:right;color:#d2dceb}
+      .prediction .chart.tx-live-chart-connected>svg,.prediction .chart.tx-live-chart-connected>.chart-glow{display:none!important}.tx-live-index-chart{position:absolute;inset:0;padding:12px 10px 8px;display:flex;flex-direction:column}.tx-chart-caption{display:flex;justify-content:space-between;color:#6c829b;font:700 7px 'JetBrains Mono',monospace;letter-spacing:.06em}.tx-chart-caption b{color:#39e29c}.tx-chart-bars{flex:1;display:flex;align-items:center;gap:6px;border-bottom:1px solid rgba(80,140,220,.14);margin-top:8px;min-height:0}.tx-chart-bars i{flex:1;min-width:4px;max-width:34px;border-radius:4px 4px 0 0;background:#31d99b;box-shadow:0 0 10px rgba(49,217,155,.22)}.tx-chart-bars i.is-down{background:#ff536b;box-shadow:0 0 10px rgba(255,83,107,.18);align-self:flex-start;margin-top:auto;border-radius:0 0 4px 4px}.tx-chart-axis{display:flex;justify-content:space-between;color:#536a82;font:600 6px 'JetBrains Mono',monospace;padding-top:5px}.tx-chart-empty{margin:auto;color:#60758d;font:700 8px 'JetBrains Mono',monospace}
+      .news.tx-live-news-connected>.news-row{display:none!important}.news.tx-live-news-connected>.tx-live-intelligence{display:block}.tx-live-intelligence{margin-top:8px}.tx-intel-row{display:grid;grid-template-columns:25px 1fr auto;gap:7px;align-items:center;padding:12px 0;border-bottom:1px solid rgba(80,140,220,.08);font:700 8px 'JetBrains Mono',monospace}.tx-intel-row:last-child{border-bottom:0}.tx-intel-row>b{color:#4dbaff}.tx-intel-row span{color:#9aaabd}.tx-intel-row strong{color:#3fe2a0;text-align:right}
+    `}</style>
+  </>
+}
 
 /** Live homepage market visual. No synthetic fallback score is displayed. */
 export default function MarketBattle({ className = "" }: { className?: string }) {
@@ -55,6 +144,7 @@ export default function MarketBattle({ className = "" }: { className?: string })
         `}</style>
       </div>
       {heatmapHost ? createPortal(<NiftyHeatmap />, heatmapHost) : null}
+      <LandingLiveOverlay />
       <style>{`
         .map-panel .nifty-heatmap-host{position:relative;overflow:hidden;}
         .map-panel .nifty-heatmap-host > .map-dot,
