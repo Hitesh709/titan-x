@@ -297,3 +297,4 @@ export default function CandlestickChart({ symbol }: { symbol: string }) {
     </div>
     <div className="mt-2 flex items-center gap-4 text-[10px] text-gray-500"><span>● BUY / SELL markers from Titan X Fusion engine</span><span className="ml-auto">Real OHLCV + client indicator calculations</span></div>
   </div>
+}
