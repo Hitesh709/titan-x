@@ -16,10 +16,11 @@ export type FusionSignal = {
   regime: string
   confirmed: boolean
   data_points: number
+  gates?: Record<string, boolean | string>
 }
 
 export default function TitanXFusion({ symbol }: { symbol: string }) {
-  const [timeframe, setTimeframe] = useState<"5m" | "15m">("5m")
+  const [timeframe, setTimeframe] = useState<"5m" | "15m" | "30m">("5m")
   const [data, setData] = useState<FusionSignal | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -30,7 +31,7 @@ export default function TitanXFusion({ symbol }: { symbol: string }) {
       setLoading(true)
       setError(null)
       try {
-        const result = await api.get<FusionSignal>(`/market-data/fusion/${encodeURIComponent(symbol)}?interval=${timeframe}`)
+        const result = await api.get<FusionSignal>(`/fusion/signal?symbol=${encodeURIComponent(symbol)}&interval=${timeframe}`)
         if (active) setData(result)
       } catch (e) {
         if (active) setError(e instanceof Error ? e.message : "Fusion signal unavailable")
@@ -62,7 +63,7 @@ export default function TitanXFusion({ symbol }: { symbol: string }) {
           <p className="text-[11px] text-gray-500 mt-1">One confirmation-based engine · BUY / SELL / HOLD</p>
         </div>
         <div className="flex gap-1.5">
-          {(["5m", "15m"] as const).map((tf) => (
+          {(["5m", "15m", "30m"] as const).map((tf) => (
             <button
               key={tf}
               onClick={() => setTimeframe(tf)}
@@ -111,10 +112,21 @@ export default function TitanXFusion({ symbol }: { symbol: string }) {
             )}
           </div>
 
+          {data?.gates && Object.keys(data.gates).length > 0 && (
+            <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2">
+              {Object.entries(data.gates).map(([name, value]) => (
+                <div key={name} className="rounded-lg border border-white/5 bg-white/[0.025] px-2.5 py-2">
+                  <div className="text-[8px] uppercase tracking-wider text-gray-600">{name.replaceAll("_", " ")}</div>
+                  <div className={`text-[10px] mt-1 font-semibold ${value === true ? "text-emerald-300" : "text-amber-300"}`}>{value === true ? "PASS" : String(value)}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
           {(isBuy || isSell) && data?.reason && (
             <div className="mt-3 rounded-lg bg-white/[0.025] border border-white/5 p-3 text-xs text-gray-400">{data.reason}</div>
           )}
-          <div className="mt-3 text-[9px] text-gray-600">Real OHLCV · {data?.data_points ?? 0} data points · No signal score · Signal uses closed-candle confirmation</div>
+          <div className="mt-3 text-[9px] text-gray-600">Real OHLCV · Gate-based Fusion · Signal uses closed-candle confirmation</div>
         </>
       )}
     </section>
