@@ -206,36 +206,14 @@ async def fusion_chart(
     series: list[dict[str, Any]] = []
     warmup = 60
     for i in range(warmup, n):
-        close_i = closes[i]
-        e9_i = e9_vals[i]
-        e20_i = e20_vals[i]
-        e50_i = e50_vals[i]
-        rsi_i = rsi_vals[i]
-        md_i = macd_line[i]
-        ms_i = macd_signal[i]
-        mh_i = macd_hist[i]
-        atr_i = atr_vals[i]
-        sd_i = st_dir[i]
-        adv_i = adx_line[i]
-
-        # Trend structure: EMA9>EMA20>EMA50 & price>EMA20 & SuperTrend up
-        trend_ok = e9_i > e20_i > e50_i and close_i > e20_i and sd_i == "up"
-        # VWAP gate: price above VWAP and not more than 2×ATR extended
-        vwap_i = vwap_vals[i]\n        vwap_ok = vwap_i is not None and close_i > vwap_i
-
-        if rsi_i > 52 and md_i > ms_i and mh_i >= 0 and vwap_ok and trend_ok:
-            series.append({
-                "time": points[i].timestamp.isoformat() if points[i].timestamp else points[i].trade_date.isoformat(),
-                "side": "BUY",
-                "reason": _sanitize_reason("Fusion signal – trend + momentum + VWAP"),
-            })
-        elif rsi_i < 48 and md_i < ms_i and mh_i <= 0 and not vwap_ok and not trend_ok:
-            series.append({
-                "time": points[i].timestamp.isoformat() if points[i].timestamp else points[i].trade_date.isoformat(),
-                "side": "SELL",
-                "reason": _sanitize_reason("Fusion signal – bearish trend + momentum"),
-            })
-        # HOLD bars are intentionally omitted
+        series.append({
+            "time": item["time"],
+            "side": item["side"],
+            "reason": _sanitize_reason(item.get("reason", "Fusion signal")),
+            "entry": item.get("entry"),
+            "stop_loss": item.get("stop_loss"),
+            "target": item.get("target"),
+        })
 
     # ------------------------------------------------------------------
     #  Candles – use the point time if present, otherwise fall back to date.
