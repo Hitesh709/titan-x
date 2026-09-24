@@ -221,7 +221,7 @@ async def fusion_chart(
         # Trend structure: EMA9>EMA20>EMA50 & price>EMA20 & SuperTrend up
         trend_ok = e9_i > e20_i > e50_i and close_i > e20_i and sd_i == "up"
         # VWAP gate: price above VWAP and not more than 2×ATR extended
-        vwap_ok = close_i > (sum(highs[i - 14 : i + 1]) / 14)  # placeholder VWAP
+        vwap_i = vwap_vals[i]\n        vwap_ok = vwap_i is not None and close_i > vwap_i
 
         if rsi_i > 52 and md_i > ms_i and mh_i >= 0 and vwap_ok and trend_ok:
             series.append({
