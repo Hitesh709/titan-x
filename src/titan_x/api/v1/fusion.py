@@ -120,6 +120,7 @@ async def fusion_signal(
         "target": decision.get("target"),
         "price": decision.get("price"),
         "regime": decision.get("regime"),
+        "gates": decision.get("gates", {}),
         "stale": False,  # caller can add staleness check if desired
     }
     return result
