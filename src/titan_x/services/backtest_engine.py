@@ -63,7 +63,11 @@ class BacktestEngine:
             logger.exception("backtest_execution_failed", backtest_id=backtest_id)
             raise
 
-    async def _execute_backtest(self, backtest: Backtest) -> dict[str, Any]:
+    async def _execute_backtest(
+        self,
+        backtest: Backtest,
+        signals_override: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         symbol, start, end = backtest.symbol, backtest.start_date, backtest.end_date
         config = json.loads(backtest.config_json) if backtest.config_json else {}
         strategy_params = json.loads(backtest.strategy_params_json) if backtest.strategy_params_json else {}
@@ -78,7 +82,9 @@ class BacktestEngine:
         prices = await self._load_price_data(symbol, start, end)
         HistoricalDataValidator.validate(prices, symbol, start, end, minimum_bars=30)
         indicators = self._compute_indicators(prices, backtest.strategy_type, strategy_params)
-        signals = self._generate_signals(prices, indicators, backtest.strategy_type, strategy_params)
+        signals = signals_override if signals_override is not None else self._generate_signals(
+            prices, indicators, backtest.strategy_type, strategy_params
+        )
         trades, equity_curve = self._simulate_trades(
             prices, signals, backtest.initial_capital, commission_pct, slippage_pct,
             position_sizing, position_value_pct, execution_delay_bars,
@@ -119,14 +125,30 @@ class BacktestEngine:
         fast_period, slow_period = params.get("fast_period", 10), params.get("slow_period", 30)
         rsi_period, bb_period = params.get("rsi_period", 14), params.get("bb_period", 20)
         bb_std = params.get("bb_std", 2.0)
-        sma_fast, sma_slow, rsi, bb_mid = self._sma(closes, fast_period), self._sma(closes, slow_period), self._rsi(closes, rsi_period), self._sma(closes, bb_period)
+        sma_fast, sma_slow = self._sma(closes, fast_period), self._sma(closes, slow_period)
+        rsi, bb_mid = self._rsi(closes, rsi_period), self._sma(closes, bb_period)
+        atr_period = int(params.get("atr_period", 14))
+        true_ranges = [
+            (p["high"] - p["low"]) if i == 0 else max(
+                p["high"] - p["low"],
+                abs(p["high"] - prices[i - 1]["close"]),
+                abs(p["low"] - prices[i - 1]["close"]),
+            )
+            for i, p in enumerate(prices)
+        ]
+        atr = self._sma(true_ranges, atr_period)
         for i in range(len(closes)):
-            indicators["sma_fast"][i], indicators["sma_slow"][i], indicators["rsi"][i], indicators["bb_middle"][i] = sma_fast[i], sma_slow[i], rsi[i], bb_mid[i]
+            indicators["sma_fast"][i] = sma_fast[i]
+            indicators["sma_slow"][i] = sma_slow[i]
+            indicators["rsi"][i] = rsi[i]
+            indicators["bb_middle"][i] = bb_mid[i]
+            indicators["atr"][i] = atr[i]
             if bb_mid[i] is not None:
                 period_data = closes[max(0, i - bb_period + 1):i + 1]
                 if len(period_data) >= bb_period:
                     std = math.sqrt(sum((c - bb_mid[i]) ** 2 for c in period_data) / bb_period)
-                    indicators["bb_upper"][i], indicators["bb_lower"][i] = bb_mid[i] + bb_std * std, bb_mid[i] - bb_std * std
+                    indicators["bb_upper"][i] = bb_mid[i] + bb_std * std
+                    indicators["bb_lower"][i] = bb_mid[i] - bb_std * std
         return indicators
 
     def _generate_signals(self, prices: list[dict[str, Any]], indicators: dict[str, list[float | None]], strategy_type: str, params: dict[str, Any]) -> list[dict[str, Any]]:
