@@ -6,6 +6,8 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from titan_x.models.strategy import Strategy
+
 from titan_x.services.backtest_engine import BacktestEngine
 from titan_x.services.historical_data_validator import HistoricalDataValidator
 from titan_x.services.optimization_engine import OptimizationEngine
@@ -50,10 +52,7 @@ class StrategyValidationService:
         if train_bars <= 0 or test_bars <= 0:
             raise ValueError("train_bars and test_bars must be positive")
 
-        strategy = await self._session.get(
-            __import__("titan_x.models.strategy", fromlist=["Strategy"]).Strategy,
-            strategy_id,
-        )
+        strategy = await self._session.get(Strategy, strategy_id)
         if strategy is None or strategy.user_id != user_id:
             raise ValueError("Strategy not found")
 
