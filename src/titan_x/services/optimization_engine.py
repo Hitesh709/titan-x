@@ -81,14 +81,6 @@ class OptimizationEngine:
                     json.loads(strategy.position_rules_json), combo,
                 )
 
-                await builder.update_strategy(
-                    strategy_id=strategy_id,
-                    entry_criteria=entry_criteria,
-                    exit_criteria=exit_criteria,
-                    risk_rules=risk_rules,
-                    position_rules=position_rules,
-                )
-
                 result = await builder.run_backtest(
                     strategy_id=strategy_id,
                     user_id=user_id,
@@ -98,6 +90,11 @@ class OptimizationEngine:
                     initial_capital=initial_capital,
                     commission_pct=commission_pct,
                     slippage_pct=slippage_pct,
+                    criteria_override={
+                        "entry_criteria": entry_criteria,
+                        "exit_criteria": exit_criteria,
+                        "position_rules": position_rules,
+                    },
                 )
 
                 metrics = result.get("metrics", {})
