@@ -190,12 +190,21 @@ class BacktestEngine:
                     commission = entry_price * quantity * commission_pct
                     if quantity > 0 and position_value > 0 and entry_price * quantity + commission <= cash:
                         cash -= entry_price * quantity + commission
-                        position = {"symbol": s.get("symbol", ""), "entry_date": d, "entry_price": entry_price, "quantity": quantity, "commission": commission, "slippage": open_price * slippage_pct, "entry_signal": s.get("signal_type"), "stop_loss_pct": s.get("stop_loss_pct"), "take_profit_pct": s.get("take_profit_pct")}
+                        position = {"symbol": s.get("symbol", ""), "entry_date": d, "entry_price": entry_price, "quantity": quantity, "commission": commission, "slippage": open_price * slippage_pct, "entry_signal": s.get("signal_type"), "stop_loss_pct": s.get("stop_loss_pct"), "take_profit_pct": s.get("take_profit_pct"), "trailing_stop_pct": s.get("trailing_stop_pct"), "highest_price": open_price}
             if position is not None:
                 triggered = False
-                if position.get("stop_loss_pct") is not None and ((bar["low"] - position["entry_price"]) / position["entry_price"]) * 100 <= -abs(position["stop_loss_pct"]): triggered = True
-                if position.get("take_profit_pct") is not None and ((bar["high"] - position["entry_price"]) / position["entry_price"]) * 100 >= abs(position["take_profit_pct"]): triggered = True
-                if triggered and i + execution_delay_bars < len(prices): pending.setdefault(i + execution_delay_bars, []).append({"action": "exit", "signal_type": "risk_exit"})
+                position["highest_price"] = max(position.get("highest_price", position["entry_price"]), bar["high"])
+                if position.get("stop_loss_pct") is not None and ((bar["low"] - position["entry_price"]) / position["entry_price"]) * 100 <= -abs(position["stop_loss_pct"]):
+                    triggered = True
+                if position.get("take_profit_pct") is not None and ((bar["high"] - position["entry_price"]) / position["entry_price"]) * 100 >= abs(position["take_profit_pct"]):
+                    triggered = True
+                trailing_pct = position.get("trailing_stop_pct")
+                if trailing_pct is not None and position["highest_price"] > 0:
+                    trailing_price = position["highest_price"] * (1 - abs(trailing_pct) / 100)
+                    if bar["low"] <= trailing_price:
+                        triggered = True
+                if triggered and i + execution_delay_bars < len(prices):
+                    pending.setdefault(i + execution_delay_bars, []).append({"action": "exit", "signal_type": "risk_exit"})
             for s in signal_by_date.get(d, []):
                 target = i + execution_delay_bars
                 if target < len(prices): pending.setdefault(target, []).append(s)
