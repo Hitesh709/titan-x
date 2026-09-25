@@ -18,6 +18,7 @@ from titan_x.services.rule_evaluator import (
     calculate_position_size,
     evaluate_entry_rules,
     get_exit_params,
+    evaluate_exit_rule,
 )
 
 logger = structlog.get_logger(__name__)
@@ -171,7 +172,7 @@ class StrategyBuilder:
         backtest_obj.strategy_type = "composed"
         await self._session.flush()
 
-        result = await engine._execute_backtest(backtest_obj)
+        result = await engine._execute_backtest(backtest_obj, signals_override=signals)
         return result
 
     def _prepare_price_indicators(
@@ -207,12 +208,36 @@ class StrategyBuilder:
     ) -> list[dict[str, Any]]:
         signals: list[dict[str, Any]] = []
         has_position = False
-        position_bar: BarData | None = None
         prev_bar: BarData | None = None
         prev_ind: Indicators | None = None
 
         for i in range(len(prices)):
             bar, ind = self._prepare_price_indicators(prices, indicators_raw, i)
+
+            if has_position:
+                exit_triggered = self._evaluate_exit_rules(
+                    exit_criteria, bar, prev_bar, ind, prev_ind,
+                )
+                max_holding_days = exit_params.get("max_holding_days")
+                if (
+                    not exit_triggered
+                    and max_holding_days is not None
+                    and position_bar is not None
+                    and (bar.date - position_bar.date).days >= max_holding_days
+                ):
+                    exit_triggered = True
+                if exit_triggered:
+                    signals.append({
+                        "signal_date": bar.date,
+                        "action": "sell",
+                        "price": bar.close,
+                        "confidence": 1.0,
+                        "signal_type": "composed_exit",
+                        "source": "strategy_builder",
+                        "metadata_json": json.dumps({"strategy_trigger": "exit_rules"}),
+                    })
+                    has_position = False
+                    position_bar = None
 
             if not has_position and evaluate_entry_rules(entry_criteria, bar, prev_bar, ind, prev_ind):
                 signals.append({
@@ -224,6 +249,7 @@ class StrategyBuilder:
                     "source": "strategy_builder",
                     "stop_loss_pct": exit_params.get("stop_loss_pct"),
                     "take_profit_pct": exit_params.get("take_profit_pct"),
+                    "trailing_stop_pct": exit_params.get("trailing_stop_pct"),
                     "metadata_json": json.dumps({"strategy_trigger": "entry_rules"}),
                 })
                 has_position = True
@@ -233,6 +259,27 @@ class StrategyBuilder:
             prev_ind = ind
 
         return signals
+
+    def _evaluate_exit_rules(
+        self,
+        exit_criteria: list[dict[str, Any]],
+        bar: BarData,
+        prev_bar: BarData | None,
+        ind: Indicators,
+        prev_ind: Indicators | None,
+    ) -> bool:
+        for group in exit_criteria:
+            logic = group.get("logic", "and")
+            results = [
+                evaluate_exit_rule(rule, bar, prev_bar, ind, prev_ind)
+                for rule in group.get("rules", [])
+                if rule.get("type", "indicator") not in (
+                    "stop_loss", "take_profit", "trailing_stop", "max_holding_days"
+                )
+            ]
+            if results and ((logic == "and" and all(results)) or (logic != "and" and any(results))):
+                return True
+        return False
 
     def _to_dict(self, strategy: Strategy) -> dict[str, Any]:
         return {
