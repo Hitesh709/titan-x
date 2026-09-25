@@ -208,6 +208,7 @@ class StrategyBuilder:
     ) -> list[dict[str, Any]]:
         signals: list[dict[str, Any]] = []
         has_position = False
+        position_bar: BarData | None = None
         prev_bar: BarData | None = None
         prev_ind: Indicators | None = None
 
