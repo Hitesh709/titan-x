@@ -124,14 +124,16 @@ class StrategyBuilder:
         commission_pct: float = 0.001,
         slippage_pct: float = 0.001,
         config: dict[str, Any] | None = None,
+        criteria_override: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         strategy = await self._repo.get(strategy_id)
         if strategy is None:
             raise ValueError(f"Strategy {strategy_id} not found")
 
-        entry_criteria = json.loads(strategy.entry_criteria_json)
-        exit_criteria = json.loads(strategy.exit_criteria_json)
-        position_rules = json.loads(strategy.position_rules_json)
+        overrides = criteria_override or {}
+        entry_criteria = overrides.get("entry_criteria", json.loads(strategy.entry_criteria_json))
+        exit_criteria = overrides.get("exit_criteria", json.loads(strategy.exit_criteria_json))
+        position_rules = overrides.get("position_rules", json.loads(strategy.position_rules_json))
         exit_params = get_exit_params(exit_criteria)
 
         engine = BacktestEngine(self._session)
