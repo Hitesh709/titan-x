@@ -86,6 +86,7 @@ class TitanXFusionEngine:
         points: Sequence[MarketDataPoint],
         *,
         dedupe: bool = True,
+        interval: str = "5m",
     ) -> dict[str, Any]:
         """Evaluate the latest *confirmed* bar and return a decision dict.
 
@@ -132,7 +133,7 @@ class TitanXFusionEngine:
         # ------------------------------------------------------------------
         #  Locate the last *confirmed* bar (not the currently forming one)
         # ------------------------------------------------------------------
-        confirmed_idx = self._last_confirmed_bar_idx(points)
+        confirmed_idx = self._last_confirmed_bar_idx(points, interval=interval)
         if confirmed_idx is None:
             return {
                 "decision": "HOLD",
@@ -300,7 +301,12 @@ class TitanXFusionEngine:
             result.append(window_sum / period)
         return result
 
-    def _last_confirmed_bar_idx(self, points: Sequence[MarketDataPoint]) -> int | None:
+    def _last_confirmed_bar_idx(
+        self,
+        points: Sequence[MarketDataPoint],
+        *,
+        interval: str = "5m",
+    ) -> int | None:
         """Index of the last bar whose interval has fully elapsed.
 
         If all ``timestamp`` fields are ``None`` we fall back to the last bar.
@@ -311,10 +317,7 @@ class TitanXFusionEngine:
         if not has_ts:
             return len(points) - 1
 
-        # Simple heuristic: the last bar whose timestamp is at least one interval
-        # seconds in the past.  We use a fixed "5m" equivalent for demo purposes;
-        # in production the caller would pass the interval.
-        interval_seconds = 300  # 5 minutes – match default interval
+        interval_seconds = {"5m": 300, "15m": 900, "30m": 1800}.get(interval, 300)
         for i in range(len(points) - 1, -1, -1):
             ts = points[i].timestamp
             if ts is not None and (now - ts).total_seconds() > interval_seconds:
@@ -397,6 +400,9 @@ class TitanXFusionEngine:
         # ------------------------------------------------------------------
         #  4. VWAP gate
         # ------------------------------------------------------------------
+        if vwap_val is None:
+            return {"decision": "HOLD", "reason": "VWAP unavailable at confirmed bar", "gates": {}}
+
         vwap_ok_buy = close > vwap_val and (close - vwap_val) <= 2.0 * atr_val
         vwap_ok_sell = close < vwap_val and (vwap_val - close) <= 2.0 * atr_val
 
