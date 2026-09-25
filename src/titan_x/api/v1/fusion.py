@@ -103,7 +103,7 @@ async def fusion_signal(
         )
 
     engine = TitanXFusionEngine(_params)
-    decision = engine.evaluate(points, dedupe=True)
+    decision = engine.evaluate(points, dedupe=True, interval=interval)
 
     # Sanitize the reason string for safe JSON transport.
     sanitized_reason = _sanitize_reason(decision["reason"])
@@ -202,19 +202,17 @@ async def fusion_chart(
     vol_sma = sum(vols[-20:]) / min(20, len(vols)) if len(vols) >= 20 else 0.0
 
     # ------------------------------------------------------------------
-    #  Per‑bar signal series (markers) – BUY/SELL only (no HOLD clutter)
+    #  Per-bar signal series – reuse the canonical Fusion engine.
+    #  Do not maintain a second chart-specific signal implementation here.
     # ------------------------------------------------------------------
-    series: list[dict[str, Any]] = []
-    warmup = 60
-    for i in range(warmup, n):
-        series.append({
-            "time": item["time"],
-            "side": item["side"],
+    engine = TitanXFusionEngine(_params)
+    series = [
+        {
+            **item,
             "reason": _sanitize_reason(item.get("reason", "Fusion signal")),
-            "entry": item.get("entry"),
-            "stop_loss": item.get("stop_loss"),
-            "target": item.get("target"),
-        })
+        }
+        for item in engine.build_series(points)
+    ]
 
     # ------------------------------------------------------------------
     #  Candles – use the point time if present, otherwise fall back to date.
