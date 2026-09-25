@@ -19,6 +19,7 @@ from titan_x.models.user import User
 from titan_x.services.backtest_engine import BacktestEngine
 from titan_x.services.benchmark_analyzer import BenchmarkAnalyzer
 from titan_x.services.drawdown_analyzer import DrawdownAnalyzer
+from titan_x.services.strategy_validation import StrategyValidationService
 
 backtest_router = APIRouter(
     prefix="/backtests",
@@ -137,6 +138,47 @@ async def list_backtests(
         "created_at": r.created_at.isoformat() if r.created_at else None,
     } for r in rows]
     return PaginatedResponse(items=items, total=total, skip=skip, limit=limit)
+
+
+@backtest_router.post("/strategy-validation/walk-forward")
+async def run_strategy_walk_forward_validation(
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    session: Annotated[AsyncSession, Depends(request_session)],
+    strategy_id: int = Query(..., gt=0),
+    symbol: str = Query(..., min_length=1, max_length=16),
+    start_date: date = Query(...),
+    end_date: date = Query(...),
+    train_bars: int = Query(60, ge=5),
+    test_bars: int = Query(20, ge=1),
+    step_bars: int | None = Query(None, ge=1),
+    initial_capital: float = Query(10000.0, gt=0),
+    commission_pct: float = Query(0.001, ge=0),
+    slippage_pct: float = Query(0.001, ge=0),
+    parameter_ranges: str | None = Query(None),
+    metric: str = Query("sharpe_ratio", min_length=1, max_length=64),
+    direction: str = Query("maximize", pattern="^(maximize|minimize)$"),
+) -> dict:
+    try:
+        ranges = _loads_json(parameter_ranges) if parameter_ranges else None
+        service = StrategyValidationService(session)
+        return await service.run_walk_forward(
+            strategy_id=strategy_id,
+            user_id=current_user.id,
+            symbol=symbol.strip().upper(),
+            start_date=start_date,
+            end_date=end_date,
+            train_bars=train_bars,
+            test_bars=test_bars,
+            step_bars=step_bars,
+            initial_capital=initial_capital,
+            commission_pct=commission_pct,
+            slippage_pct=slippage_pct,
+            parameter_ranges=ranges,
+            metric=metric,
+            direction=direction,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @backtest_router.get("/{backtest_id}")
