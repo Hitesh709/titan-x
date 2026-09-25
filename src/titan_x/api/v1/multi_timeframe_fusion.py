@@ -46,7 +46,7 @@ async def multi_timeframe_signal(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Insufficient candle data for {symbol} on {interval}",
             )
-        decision = engine.evaluate(points, dedupe=False)
+        decision = engine.evaluate(points, dedupe=False, interval=interval)
         results[interval] = {
             "decision": decision["decision"],
             "reason": _sanitize_reason(decision.get("reason", "")),
