@@ -170,6 +170,8 @@ class StrategyBuilder:
         signals = self._generate_strategy_signals(
             prices, indicators_raw, entry_criteria, exit_criteria, position_rules, exit_params,
         )
+        for signal in signals:
+            signal["symbol"] = symbol.upper()
 
         backtest_obj.strategy_type = "composed"
         await self._session.flush()
