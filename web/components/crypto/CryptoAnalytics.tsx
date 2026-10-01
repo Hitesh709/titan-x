@@ -1,0 +1,14 @@
+"use client"
+import {useEffect,useMemo,useState} from "react"
+const KEY="titanx.crypto.paper.v1"
+const money=(n:number)=>n.toLocaleString("en-US",{maximumFractionDigits:2})
+type Trade={side:"BUY"|"SELL";qty:number;price:number;time:string}
+type State={cash:number;realized:number;trades:Trade[];equityHistory?:{time:string;equity:number}[]}
+export default function CryptoAnalytics(){
+ const[s,setS]=useState<State|null>(null)
+ useEffect(()=>{const read=()=>{try{const v=localStorage.getItem(KEY);if(v)setS(JSON.parse(v))}catch{}};read();const id=window.setInterval(read,2000);return()=>window.clearInterval(id)},[])
+ const stats=useMemo(()=>{if(!s)return null;const sells=s.trades.filter(t=>t.side==="SELL");const h=s.equityHistory||[];const current=h.length?h[h.length-1].equity:s.cash;const peak=Math.max(100000,...h.map(x=>x.equity));const dd=peak?Math.max(0,(peak-current)/peak*100):0;const gp=Math.max(s.realized,0),gl=Math.max(-s.realized,0);return{trades:s.trades.length,closed:sells.length,winRate:sells.length&&s.realized>0?100:0,profitFactor:gl?gp/gl:gp>0?Infinity:0,drawdown:dd,returnPct:(current/100000-1)*100,current,history:h}},[s])
+ if(!stats)return <section className="glass-card p-5"><div className="tx-section-title">Crypto Performance Analytics</div><div className="text-xs text-slate-600 mt-3">Waiting for paper-trading data...</div></section>
+ const h=stats.history;const min=Math.min(100000,...h.map(x=>x.equity));const max=Math.max(100000,...h.map(x=>x.equity));const range=max-min||1;const path=h.length>1?h.map((v,i)=>(i?"L":"M")+" "+(i/(h.length-1)*100).toFixed(2)+" "+(65-((v.equity-min)/range)*55).toFixed(2)).join(" "):""
+ return <section className="glass-card p-5"><div className="flex justify-between items-center"><div><div className="tx-section-title">Crypto Performance Analytics</div><div className="text-[11px] text-slate-600 mt-1">Paper portfolio · browser-local performance</div></div><span className="tx-terminal-badge">ANALYTICS</span></div><div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-2 mt-4">{[["Equity","$ "+money(stats.current)],["Return",(stats.returnPct>=0?"+":"")+stats.returnPct.toFixed(2)+"%"],["Trades",String(stats.trades)],["Closed",String(stats.closed)],["Win rate",stats.winRate.toFixed(1)+"%"],["Profit factor",Number.isFinite(stats.profitFactor)?stats.profitFactor.toFixed(2):"∞"],["Max drawdown",stats.drawdown.toFixed(2)+"%"]].map(([a,b])=><div className="tx-crypto-asset" key={a}><small>{a}</small><b>{b}</b></div>)}</div><div className="mt-5 h-32 rounded-xl border border-blue-900/30 bg-[#020b20] p-3"><div className="text-[10px] text-slate-600 mb-2">EQUITY CURVE</div>{path?<svg viewBox="0 0 100 70" preserveAspectRatio="none" className="w-full h-24"><path d={path} fill="none" stroke="#26dfff" strokeWidth="1.2" vectorEffect="non-scaling-stroke"/></svg>:<div className="text-xs text-slate-700">Trade to begin the equity curve.</div>}</div></section>
+}
