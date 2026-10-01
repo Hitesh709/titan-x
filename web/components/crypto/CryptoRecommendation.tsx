@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import api from "@/lib/api"
 import { RefreshCw, ShieldCheck, Target, Zap } from "lucide-react"
 import { useCryptoLivePrices } from "./CryptoLiveTicker"
 
@@ -28,9 +29,8 @@ export default function CryptoRecommendation({symbol}:{symbol:string}){
   const load=async()=>{
     setLoading(true);setError("")
     try{
-      const r=await fetch("/api/v1/crypto-recommendation?symbol="+encodeURIComponent(symbol)+"&mode="+mode,{cache:"no-store"})
-      if(!r.ok)throw new Error((await r.json().catch(()=>({}))).detail||"Recommendation unavailable")
-      setData(await r.json())
+      const result=await api.get<Rec>("/crypto-recommendation?symbol="+encodeURIComponent(symbol)+"&mode="+mode)
+      setData(result)
     }catch(e){setError(e instanceof Error?e.message:"Recommendation unavailable")}
     finally{setLoading(false)}
   }
