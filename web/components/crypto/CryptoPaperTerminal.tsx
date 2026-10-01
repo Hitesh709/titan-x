@@ -11,7 +11,7 @@ export default function CryptoPaperTerminal({symbol}:{symbol:string}){
  const {prices}=useCryptoLivePrices();const[account,setAccount]=useState<Account|null>(null),[portfolio,setPortfolio]=useState<Portfolio|null>(null),[trades,setTrades]=useState<Trade[]>([]),[price,setPrice]=useState(0),[qty,setQty]=useState("0.01"),[side,setSide]=useState<"BUY"|"SELL">("BUY"),[stop,setStop]=useState(""),[take,setTake]=useState(""),[msg,setMsg]=useState(""),[busy,setBusy]=useState(false)
  const load=useCallback(async()=>{try{const[a,p,t]=await Promise.all([api.get<Account>("/crypto-paper/account"),api.get<Portfolio>("/crypto-paper/portfolio"),api.get<{id:number}[]>("/crypto-paper/trades?limit=20")]);setAccount(a);setPortfolio(p);setTrades(t as Trade[])}catch(e){setMsg(e instanceof Error?e.message:"Crypto paper account unavailable")}},[])
  useEffect(()=>{void load()},[load])
- useEffect(()=>{let alive=true;const tick=async()=>{try{const r=await fetch("https://api.binance.com/api/v3/ticker/price?symbol="+symbol,{cache:"no-store"});const j=await r.json();if(alive)setPrice(Number(j.price))}catch{}};void tick();const id=window.setInterval(tick,15000);return()=>{alive=false;window.clearInterval(id)}},[symbol])
+ useEffect(()=>{const p=prices[symbol]?.price;if(p)setPrice(p)},[symbol,prices])
  const livePrice=prices[symbol]?.price||price; const position=portfolio?.positions.find(p=>p.symbol===symbol),q=Math.max(0,Number(qty)||0),cost=q*livePrice,equity=portfolio?.equity||account?.initial_capital||100000
  const effectivePrice=livePrice; const unrealized=portfolio?.positions.reduce((s,p)=>s+p.unrealized_pnl,0)||0,exposure=equity?((position?.market_value||0)/equity)*100:0
  const rr=stop&&take&&livePrice>Number(stop)?(Number(take)-livePrice)/(livePrice-Number(stop)):0
