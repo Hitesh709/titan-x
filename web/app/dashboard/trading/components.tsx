@@ -46,7 +46,7 @@ function formatWhen(iso: string | null): string {
 
 export function AccountSummary({ account }: { account: PaperAccountSummary | null }) {
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="tx-stat-grid grid grid-cols-2 lg:grid-cols-4 gap-4">
       <div className="glass-card p-4">
         <div className="text-xs text-gray-500 mb-1">Portfolio Value</div>
         <div className="text-xl font-bold text-white">
@@ -65,7 +65,7 @@ export function AccountSummary({ account }: { account: PaperAccountSummary | nul
       </div>
       <div className="glass-card p-4">
         <div className="text-xs text-gray-500 mb-1">Total P&amp;L</div>
-        <div className={`text-xl font-bold ${getChangeColor(account?.total_pnl ?? 0)}`}>
+        <div className={`text-xl font-bold tx-stat-value ${getChangeColor(account?.total_pnl ?? 0)}`}>
           {formatCurrency(account?.total_pnl ?? 0)}
         </div>
         <div className="text-xs text-gray-500 mt-1">
@@ -74,7 +74,7 @@ export function AccountSummary({ account }: { account: PaperAccountSummary | nul
       </div>
       <div className="glass-card p-4">
         <div className="text-xs text-gray-500 mb-1">Total Return</div>
-        <div className={`text-xl font-bold ${getChangeColor(account?.total_pnl ?? 0)}`}>
+        <div className={`text-xl font-bold tx-stat-value ${getChangeColor(account?.total_pnl ?? 0)}`}>
           {formatCurrency(account?.total_pnl ?? 0)}
         </div>
         <div className="text-xs text-gray-500 mt-1">
@@ -109,11 +109,11 @@ export function QuickTradeForm(props: QuickTradeFormProps) {
     onSubmit, submitting, formError, formSuccess,
   } = props
   return (
-    <form onSubmit={onSubmit} className="glass-card p-5 relative z-20">
+    <form onSubmit={onSubmit} className="glass-card tx-quick-trade p-5 relative z-20">
       <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
         <Zap size={16} className="text-titan-400" /> Quick Trade
       </h3>
-      <div className="flex flex-wrap gap-4 items-end">
+      <div className="tx-trade-fields flex flex-wrap gap-4 items-end">
         <div className="min-w-[160px]">
           <label className="block text-xs text-gray-500 mb-1">Symbol</label>
           <SymbolAutocomplete value={symbol} onChange={onSymbolChange} placeholder="RELIANCE" className="w-full" />
