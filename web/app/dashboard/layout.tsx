@@ -6,15 +6,15 @@ import { useAuth } from "@/contexts/AuthContext"
 import { startLiveTicker } from "@/lib/live"
 import api from "@/lib/api"
 import type { PaginatedResponse } from "@/types"
-import { LayoutDashboard, BarChart3, Briefcase, TrendingUp, Newspaper, Bell, Star, Settings, LogOut, ChevronLeft, ChevronRight, Search, Target, Brain, Activity, Menu, TestTube, Loader2, Crown } from "lucide-react"
+import { LayoutDashboard, BarChart3, Briefcase, TrendingUp, Newspaper, Bell, Star, Settings, LogOut, ChevronLeft, ChevronRight, Search, Target, Brain, Activity, Menu, TestTube, Loader2, Crown, Bitcoin, Layers } from "lucide-react"
 
 interface CompanySearchResult { symbol: string; company_name: string; sector: string | null; exchange: string }
 const sidebarItems = [
-  { icon: LayoutDashboard, label: "Overview", href: "/dashboard" }, { icon: TrendingUp, label: "Markets", href: "/dashboard/markets" },
+  { icon: LayoutDashboard, label: "Overview", href: "/dashboard" }, { icon: Layers, label: "Market Hub", href: "/market-select" }, { icon: TrendingUp, label: "Markets", href: "/dashboard/markets" },
   { icon: Briefcase, label: "Portfolio", href: "/dashboard/portfolio" }, { icon: BarChart3, label: "Analysis", href: "/dashboard/analysis" },
   { icon: Target, label: "Research", href: "/dashboard/research" }, { icon: Brain, label: "Recommendations", href: "/dashboard/recommendations" },
   { icon: Crown, label: "Premium", href: "/dashboard/subscription" }, { icon: Newspaper, label: "News & Insights", href: "/dashboard/news" },
-  { icon: Activity, label: "Trading", href: "/dashboard/trading" }, { icon: TestTube, label: "Backtesting", href: "/dashboard/backtest" },
+  { icon: Activity, label: "Trading", href: "/dashboard/trading" }, { icon: Bitcoin, label: "Crypto", href: "/dashboard/crypto" }, { icon: TestTube, label: "Backtesting", href: "/dashboard/backtest" },
   { icon: Target, label: "Screener", href: "/dashboard/screener" }, { icon: Star, label: "Watchlists", href: "/dashboard/watchlists" },
   { icon: Bell, label: "Alerts", href: "/dashboard/alerts" }, { icon: Settings, label: "Settings", href: "/dashboard/settings" },
 ]
