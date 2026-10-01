@@ -147,6 +147,7 @@ async def _recommend(symbol: str, mode: str) -> dict[str, Any]:
         "target": target,
         "rule": "All selected timeframes must agree; otherwise HOLD",
         "timeframes": results,
+        "confidence": round(max(buys, sells) / len(results) * 100, 1),
         "summary": (
             f"{buys}/{len(results)} timeframes bullish, {sells}/{len(results)} bearish"
         ),
