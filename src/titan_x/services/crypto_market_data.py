@@ -78,3 +78,13 @@ async def market_overview() -> dict[str,Any]:
     losers=sorted(active,key=lambda x:x["priceChangePercent"])[:10]
     breadth={"up":sum(x["priceChangePercent"]>0 for x in active),"down":sum(x["priceChangePercent"]<0 for x in active),"flat":sum(x["priceChangePercent"]==0 for x in active)}
     return {"provider":provider,"assets":len(active),"gainers":gainers,"losers":losers,"breadth":breadth,"volume":sum(x["quoteVolume"] for x in active)}
+
+
+async def derivatives_overview(limit:int=100) -> dict[str,Any]:
+    data=await _get(f"{BYBIT}/v5/market/tickers",{"category":"linear"})
+    rows=[]
+    for x in data.get("result",{}).get("list",[]):
+        if not x.get("symbol","").endswith("USDT"): continue
+        rows.append({"symbol":x["symbol"],"lastPrice":float(x["lastPrice"]),"priceChangePercent":float(x.get("price24hPcnt",0))*100,"volume24h":float(x.get("turnover24h",0)),"fundingRate":float(x.get("fundingRate",0) or 0),"openInterest":float(x.get("openInterestValue",0) or 0)})
+    rows.sort(key=lambda x:x["volume24h"],reverse=True)
+    return {"provider":"bybit","category":"linear","contracts":len(rows),"contracts_top":rows[:limit]}
