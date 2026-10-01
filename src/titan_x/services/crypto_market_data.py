@@ -108,6 +108,18 @@ async def market_overview() -> dict[str,Any]:
 
 
 async def derivatives_overview(limit:int=100) -> dict[str,Any]:
+    try:
+        data=await _get(f"{OKX}/api/v5/market/tickers",{"instType":"SWAP"})
+        rows=[]
+        for x in data.get("data",[]):
+            inst=str(x.get("instId",""))
+            if not inst.endswith("-USDT-SWAP"): continue
+            last=float(x.get("last") or 0); open24=float(x.get("sodUtc0") or 0)
+            rows.append({"symbol":inst.replace("-USDT-SWAP","USDT"),"lastPrice":last,"priceChangePercent":((last-open24)/open24*100 if open24 else 0),"volume24h":float(x.get("volCcy24h") or 0),"fundingRate":0.0,"openInterest":0.0})
+        rows.sort(key=lambda x:x["volume24h"],reverse=True)
+        if rows: return {"provider":"okx","category":"swap","contracts":len(rows),"contracts_top":rows[:limit]}
+    except Exception:
+        pass
     data=await _get(f"{BYBIT}/v5/market/tickers",{"category":"linear"})
     rows=[]
     for x in data.get("result",{}).get("list",[]):
