@@ -12,6 +12,7 @@ import time
 from collections import defaultdict
 from typing import Any
 
+import httpx
 import structlog
 import websockets
 
@@ -38,7 +39,44 @@ class CryptoRealtimeMarket:
     async def start(self) -> None:
         if self._task is None or self._task.done():
             self._stop.clear()
+            await self._warmup()
             self._task = asyncio.create_task(self._run(), name="crypto-realtime-market")
+
+    async def _warmup(self) -> None:
+        async def load(symbol: str, tf: str) -> None:
+            try:
+                async with httpx.AsyncClient(timeout=8) as client:
+                    response = await client.get(
+                        "https://api.binance.com/api/v3/klines",
+                        params={"symbol": symbol, "interval": tf, "limit": 180},
+                    )
+                    response.raise_for_status()
+                    rows = response.json()
+                self.candles[symbol][tf] = [
+                    {
+                        "open": float(x[1]),
+                        "high": float(x[2]),
+                        "low": float(x[3]),
+                        "close": float(x[4]),
+                        "volume": float(x[5]),
+                        "closed": True,
+                        "open_time": float(x[0]),
+                    }
+                    for x in rows
+                ][-220:]
+                if rows:
+                    self.prices[symbol] = float(rows[-1][4])
+            except Exception as exc:
+                log.warning(
+                    "crypto_realtime_warmup_failed",
+                    symbol=symbol,
+                    timeframe=tf,
+                    error=str(exc),
+                )
+
+        await asyncio.gather(
+            *(load(symbol, tf) for symbol in SYMBOLS for tf in TIMEFRAMES)
+        )
 
     async def stop(self) -> None:
         self._stop.set()
