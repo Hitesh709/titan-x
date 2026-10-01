@@ -162,3 +162,23 @@ html.dark body { background:radial-gradient(circle at 72% -10%,rgba(45,76,170,.2
   .tx-content .overflow-x-auto{-webkit-overflow-scrolling:touch}
   .tx-content .grid{gap:12px}
 }
+
+
+/* Neon trading command-center v2 — visual upgrade, existing trading logic preserved */
+.tx-trading-page{max-width:1600px;margin:0 auto;}
+.tx-stat-grid{align-items:stretch;}
+.tx-stat-card{min-height:118px!important;padding:18px!important;background:linear-gradient(145deg,rgba(7,27,61,.94),rgba(3,14,35,.96))!important;position:relative;overflow:hidden;}
+.tx-stat-card:before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 88% 100%,rgba(0,180,255,.12),transparent 35%);pointer-events:none;}
+.tx-stat-green{border-color:rgba(0,235,180,.35)!important}.tx-stat-blue{border-color:rgba(24,130,255,.42)!important}.tx-stat-cyan{border-color:rgba(0,204,255,.32)!important}.tx-stat-purple{border-color:rgba(161,73,255,.40)!important}
+.tx-stat-top{display:flex;justify-content:space-between;align-items:center}.tx-stat-dot{width:7px;height:7px;border-radius:50%;background:#20dfff;box-shadow:0 0 12px #20dfff}.tx-stat-green .tx-stat-dot{background:#00f0a0;box-shadow:0 0 12px #00f0a0}.tx-stat-purple .tx-stat-dot{background:#a95aff;box-shadow:0 0 12px #a95aff}
+.tx-stat-value{font-size:24px!important;letter-spacing:-.03em;margin-top:6px}.tx-stat-card:after{content:"";position:absolute;right:14px;bottom:13px;width:92px;height:28px;border-bottom:2px solid currentColor;border-radius:50%;opacity:.65;transform:rotate(-7deg);pointer-events:none}
+.tx-stat-green:after{color:#00f0a0}.tx-stat-blue:after{color:#149cff}.tx-stat-cyan:after{color:#11d8ff}.tx-stat-purple:after{color:#a95aff}
+.tx-command-panel{border-radius:16px!important;background:linear-gradient(145deg,rgba(7,27,61,.96),rgba(2,13,33,.97))!important;border-color:rgba(49,137,255,.40)!important;box-shadow:0 0 35px rgba(23,109,232,.08),inset 0 0 30px rgba(50,114,220,.045)!important}
+.tx-command-head{border-bottom:1px solid rgba(61,124,222,.18);padding-bottom:15px!important}.tx-command-head h3{font-size:17px!important}.tx-command-head p{max-width:760px}
+.tx-autobot-panel .tx-bot-controls{padding:0 2px}.tx-autobot-panel .tx-bot-controls>div{min-width:0}.tx-autobot-panel .input-field{height:42px!important}.tx-autobot-panel button.bg-titan-500{height:42px;border-radius:10px!important;font-size:13px!important}
+.tx-bot-metrics>div{background:rgba(7,30,66,.42)!important;border:1px solid rgba(50,119,221,.16)!important;border-radius:10px!important;min-height:67px;transition:.2s}.tx-bot-metrics>div:hover{border-color:rgba(48,170,255,.35)!important;transform:translateY(-1px)}
+.tx-live-account{background:rgba(4,18,42,.62)!important;border-color:rgba(48,116,221,.18)!important}
+.tx-quick-trade{border-radius:15px!important}.tx-quick-trade h3{font-size:15px!important}.tx-trade-fields{gap:14px!important}.tx-trade-fields label{font-size:10px!important;letter-spacing:.04em;text-transform:uppercase}.tx-trade-fields .btn-primary{height:42px;border-radius:10px!important;padding-left:22px!important;padding-right:22px!important}
+.tx-data-panel{border-radius:15px!important}
+@media(max-width:900px){.tx-stat-value{font-size:20px!important}.tx-trade-fields>div{flex:1 1 140px}.tx-trade-fields>button{flex:1 1 180px}.tx-command-head{padding-bottom:12px!important}}
+@media(max-width:640px){.tx-stat-grid{grid-template-columns:1fr 1fr}.tx-stat-card{min-height:104px!important;padding:14px!important}.tx-stat-value{font-size:18px!important}.tx-stat-card:after{width:55px}.tx-autobot-panel{padding:14px!important}.tx-bot-metrics{grid-template-columns:1fr 1fr}.tx-command-head{align-items:flex-start}}
