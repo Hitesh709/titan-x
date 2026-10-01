@@ -182,3 +182,47 @@ html.dark body { background:radial-gradient(circle at 72% -10%,rgba(45,76,170,.2
 .tx-data-panel{border-radius:15px!important}
 @media(max-width:900px){.tx-stat-value{font-size:20px!important}.tx-trade-fields>div{flex:1 1 140px}.tx-trade-fields>button{flex:1 1 180px}.tx-command-head{padding-bottom:12px!important}}
 @media(max-width:640px){.tx-stat-grid{grid-template-columns:1fr 1fr}.tx-stat-card{min-height:104px!important;padding:14px!important}.tx-stat-value{font-size:18px!important}.tx-stat-card:after{width:55px}.tx-autobot-panel{padding:14px!important}.tx-bot-metrics{grid-template-columns:1fr 1fr}.tx-command-head{align-items:flex-start}}
+
+
+/* TITAN X — Global Neon Fintech System */
+.tx-shell{background:#020713!important;}
+.tx-sidebar{width:240px;}
+.tx-brand{position:relative;}
+.tx-brand:after{content:"TRADE BEYOND LIMITS";position:absolute;left:68px;bottom:7px;font-size:7px;letter-spacing:.18em;color:#4d6b91;white-space:nowrap;}
+.tx-sidebar .sidebar-link{font-weight:550;}
+.tx-topbar{backdrop-filter:blur(22px)!important;}
+.tx-content{position:relative;background-color:#020817!important;background-image:linear-gradient(rgba(27,88,174,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(27,88,174,.035) 1px,transparent 1px)!important;background-size:44px 44px!important;}
+.tx-content:before{content:"";position:fixed;inset:72px 0 0 240px;pointer-events:none;background:radial-gradient(circle at 72% 0%,rgba(47,91,220,.12),transparent 26%),radial-gradient(circle at 18% 58%,rgba(0,183,255,.055),transparent 25%);z-index:0;}
+.tx-content>*{position:relative;z-index:1;}
+.tx-content .glass-card,.tx-content .glass{border-radius:14px!important;background:linear-gradient(145deg,rgba(7,24,54,.88),rgba(2,12,30,.94))!important;border:1px solid rgba(48,119,235,.27)!important;box-shadow:inset 0 0 25px rgba(27,91,178,.035),0 12px 34px rgba(0,0,0,.18)!important;}
+.tx-content .glass-card:before{content:"";position:absolute;left:16px;right:16px;top:0;height:1px;background:linear-gradient(90deg,transparent,rgba(46,190,255,.35),rgba(151,67,255,.22),transparent);pointer-events:none;}
+.tx-content .glass-card:hover{border-color:rgba(62,154,255,.43)!important;box-shadow:0 16px 42px rgba(0,0,0,.24),0 0 26px rgba(30,122,235,.07)!important;}
+.tx-content h1{font-size:26px!important;font-weight:750!important;}
+.tx-content h2{font-weight:720!important;}
+.tx-content h3{font-weight:680!important;}
+.tx-content .btn-primary,.tx-content button.bg-titan-500{min-height:38px;border-radius:9px!important;background:linear-gradient(100deg,#079eff,#713dff)!important;border:1px solid rgba(73,190,255,.50)!important;box-shadow:0 0 20px rgba(28,130,255,.20)!important;}
+.tx-content .btn-primary:hover,.tx-content button.bg-titan-500:hover{box-shadow:0 0 30px rgba(38,142,255,.40)!important;}
+.tx-content .input-field,.tx-content input,.tx-content select,.tx-content textarea{border-radius:9px!important;min-height:38px;background:rgba(2,13,31,.80)!important;}
+.tx-content .badge-blue{border-radius:7px!important;}
+.tx-content .grid{min-width:0;}
+.tx-content .overflow-hidden{border-color:rgba(51,117,221,.18);}
+.tx-content table thead th{background:rgba(3,14,34,.72)!important;}
+.tx-content table tbody tr:hover{background:rgba(28,96,184,.10)!important;}
+.tx-page-hero{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin-bottom:2px;}
+.tx-page-hero h1{margin:0;}
+.tx-page-hero p{margin-top:5px;}
+.tx-kpi-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;}
+.tx-kpi{position:relative;min-height:112px;padding:17px;border-radius:13px;overflow:hidden;background:linear-gradient(145deg,rgba(8,28,62,.92),rgba(3,14,35,.96));border:1px solid rgba(51,125,238,.30);}
+.tx-kpi:nth-child(1){border-color:rgba(0,226,185,.32)}.tx-kpi:nth-child(2){border-color:rgba(20,147,255,.38)}.tx-kpi:nth-child(3){border-color:rgba(0,207,255,.30)}.tx-kpi:nth-child(4){border-color:rgba(164,73,255,.38)}
+.tx-kpi-value{font-size:23px;font-weight:750;letter-spacing:-.03em;margin-top:8px;color:#f4f8ff;text-shadow:0 0 18px rgba(44,151,255,.12);}
+.tx-kpi-label{font-size:10px;text-transform:uppercase;letter-spacing:.10em;color:#6e88ad;font-weight:700;}
+.tx-section-title{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700;color:#eef6ff;margin-bottom:14px;}
+.tx-section-title svg{color:#3bd1ff;filter:drop-shadow(0 0 7px rgba(39,194,255,.55));}
+.tx-terminal-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border-radius:999px;font-size:9px;font-weight:800;letter-spacing:.08em;color:#54ffc3;background:rgba(0,240,160,.07);border:1px solid rgba(0,240,160,.25);}
+.tx-terminal-badge:before{content:"";width:6px;height:6px;border-radius:50%;background:#00efaa;box-shadow:0 0 9px #00efaa;}
+.tx-profile{display:flex;align-items:center;gap:9px;padding-left:5px;}
+.tx-avatar{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff;background:linear-gradient(135deg,#7b3dff,#087eff);box-shadow:0 0 16px rgba(91,61,255,.45);border:1px solid rgba(125,93,255,.55);}
+.tx-profile-name{font-size:12px;color:#f2f7ff;font-weight:700;line-height:1.1;}.tx-profile-sub{font-size:9px;color:#687f9f;margin-top:3px;}
+@media(max-width:1100px){.tx-sidebar{width:220px}.tx-content:before{left:220px}.tx-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
+@media(max-width:1024px){.tx-content:before{left:0;}.tx-brand:after{display:none}.tx-profile-name,.tx-profile-sub{display:none}.tx-profile{display:none;}}
+@media(max-width:640px){.tx-content{padding:12px!important}.tx-content h1{font-size:22px!important}.tx-kpi-grid{grid-template-columns:1fr 1fr;gap:10px}.tx-kpi{min-height:98px;padding:13px}.tx-kpi-value{font-size:18px}.tx-page-hero{align-items:flex-start;flex-direction:column;}.tx-content .glass-card{border-radius:11px!important}}
