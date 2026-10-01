@@ -3,8 +3,8 @@ import {useEffect,useMemo,useState} from "react"
 const KEY="titanx.crypto.paper.v1"
 type Pos={symbol:string;qty:number;avg:number;stop?:number;take?:number}
 type Trade={id:number;symbol:string;side:"BUY"|"SELL";qty:number;price:number;time:string}
-type State={cash:number;positions:Pos[];trades:Trade[];realized:number}
-const initial:State={cash:100000,positions:[],trades:[],realized:0}
+type State={cash:number;positions:Pos[];trades:Trade[];realized:number;equityHistory?:{time:string;equity:number}[]}
+const initial:State={cash:100000,positions:[],trades:[],realized:0,equityHistory:[]}
 const money=(n:number)=>n.toLocaleString("en-US",{maximumFractionDigits:2})
 export default function CryptoPaperTerminal({symbol}:{symbol:string}){const[state,setState]=useState<State>(initial),[prices,setPrices]=useState<Record<string,number>>({}),[price,setPrice]=useState(0),[qty,setQty]=useState("0.01"),[side,setSide]=useState<"BUY"|"SELL">("BUY"),[stop,setStop]=useState(""),[take,setTake]=useState(""),[msg,setMsg]=useState("")
 useEffect(()=>{try{const s=localStorage.getItem(KEY);if(s)setState(JSON.parse(s))}catch{}},[])
