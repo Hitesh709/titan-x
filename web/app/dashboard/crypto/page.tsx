@@ -1,5 +1,2 @@
-import CryptoDashboard from "@/components/crypto/CryptoDashboard"
-
-export default function CryptoDashboardPage(){
-  return <CryptoDashboard />
-}
+import { redirect } from "next/navigation"
+export default function LegacyCryptoRoute(){ redirect("/crypto") }
