@@ -21,6 +21,7 @@ from titan_x.core.middleware import (
     TrustedHostMiddleware,
 )
 from titan_x.security.security_events import SecurityEvent
+from titan_x.services.crypto_realtime_bot import RUNNER as CRYPTO_REALTIME_BOT
 
 settings: Settings = get_settings()
 configure_logging(settings.log_level, settings.log_format)
@@ -30,9 +31,11 @@ logger = structlog.get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await on_startup(app, settings)
+    await CRYPTO_REALTIME_BOT.start(app.state.session_factory)
     try:
         yield
     finally:
+        await CRYPTO_REALTIME_BOT.stop()
         await on_shutdown(app, settings)
 
 
