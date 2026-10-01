@@ -5,7 +5,8 @@ import { Activity,ArrowDownRight,ArrowUpRight,ChevronLeft,RefreshCw,Search,Shiel
 import Link from "next/link"
 import CryptoTechnicalPanel from "./CryptoTechnicalPanel"
 import CryptoPaperTerminal from "./CryptoPaperTerminal"
-import CryptoAnalytics from "./CryptoAnalytics"\nimport CryptoBotPanel from "./CryptoBotPanel"
+import CryptoAnalytics from "./CryptoAnalytics"
+import CryptoBotPanel from "./CryptoBotPanel"
 import CryptoRecommendation from "./CryptoRecommendation"
 import CryptoLiveTicker,{useCryptoLivePrices} from "./CryptoLiveTicker"
 type T={symbol:string;lastPrice:string;priceChangePercent:string;quoteVolume:string}
