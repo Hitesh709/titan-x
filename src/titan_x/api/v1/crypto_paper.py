@@ -1,6 +1,6 @@
 from decimal import Decimal
 from typing import Annotated
-import httpx
+from titan_x.services.crypto_market_data import ticker as market_ticker
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,10 +11,8 @@ from titan_x.models.crypto_paper import CryptoPaperAccount, CryptoPaperPosition,
 router=APIRouter(prefix="/crypto-paper",tags=["crypto-paper"])
 D=Decimal
 async def price(symbol:str)->D:
-    async with httpx.AsyncClient(timeout=5) as c:
-        r=await c.get("https://api.binance.com/api/v3/ticker/price",params={"symbol":symbol.upper()})
-        r.raise_for_status()
-        return D(str(r.json()["price"]))
+    data,_provider=await market_ticker(symbol)
+    return D(str(data["lastPrice"]))
 async def account(session,user_id:int):
     a=(await session.execute(select(CryptoPaperAccount).where(CryptoPaperAccount.user_id==user_id))).scalar_one_or_none()
     if a is None:
