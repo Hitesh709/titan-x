@@ -13,6 +13,7 @@ type Rec = {
   target: number | null
   rule: string
   summary: string
+  confidence: number
   timeframes: Array<{ timeframe: string; decision: string; price: number; rsi: number; atr: number; reason: string }>
 }
 
@@ -49,7 +50,7 @@ export default function CryptoRecommendation({symbol}:{symbol:string}){
       <button onClick={()=>void load()} className="btn-primary text-xs"><RefreshCw size={13} className={loading?"animate-spin":""}/> Refresh</button>
     </div>
 
-    <div className="tx-tabs mt-4">
+    <div className="tx-tabs mt-4 overflow-x-auto flex-nowrap">
       <button className={"tx-tab "+(mode==="intraday"?"tx-tab-active":"")} onClick={()=>setMode("intraday")}><Zap size={13}/> Intraday</button>
       <button className={"tx-tab "+(mode==="delivery"?"tx-tab-active":"")} onClick={()=>setMode("delivery")}><ShieldCheck size={13}/> Delivery / Positional</button>
     </div>
@@ -59,7 +60,7 @@ export default function CryptoRecommendation({symbol}:{symbol:string}){
       <div className={"rounded-xl border p-5 "+actionClass}>
         <div className="text-[10px] uppercase tracking-wider opacity-70">{mode==="intraday"?"Intraday":"Delivery / Positional"} recommendation</div>
         <div className="text-4xl font-black mt-2">{action}</div>
-        <div className="text-xs mt-2 opacity-70">{data.horizon}</div>
+        <div className="text-xs mt-2 opacity-70">{data.horizon}</div><div className="mt-4"><div className="flex justify-between text-[10px] uppercase tracking-wider"><span>Consensus</span><b>{data.confidence.toFixed(0)}%</b></div><div className="h-2 rounded-full bg-slate-900 mt-1 overflow-hidden"><div className="h-full bg-cyan-400" style={{width:data.confidence+"%"}}/></div></div>
         <div className="grid grid-cols-2 gap-2 mt-5 text-xs">
           <div className="tx-kpi p-3"><span className="tx-kpi-label">LIVE PRICE</span><b className="block mt-1 text-white">{live?money(live):data.timeframes.at(-1)?.price?money(data.timeframes.at(-1)!.price):"—"}</b></div>
           <div className="tx-kpi p-3"><span className="tx-kpi-label">ENTRY</span><b className="block mt-1 text-white">{data.entry?money(data.entry):"WAIT"}</b></div>
