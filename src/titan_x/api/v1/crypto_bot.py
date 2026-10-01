@@ -9,6 +9,8 @@ from titan_x.api.dependencies import get_current_active_user, request_session
 from titan_x.models.user import User
 from titan_x.models.crypto_bot import CryptoPaperBotState
 from titan_x.models.crypto_paper import CryptoPaperAccount, CryptoPaperPosition, CryptoPaperTrade
+from titan_x.services.crypto_realtime_market import MARKET
+from titan_x.services.crypto_realtime_bot import RUNNER
 
 router=APIRouter(prefix="/crypto-paper-bot",tags=["crypto-paper-bot"])
 D=Decimal
@@ -52,6 +54,10 @@ async def get_state(session,user_id:int):
     if s is None:
         s=CryptoPaperBotState(user_id=user_id);session.add(s);await session.flush()
     return s
+
+@router.get("/realtime-status")
+async def realtime_status(current_user:Annotated[User,Depends(get_current_active_user)]):
+    return {"market_connected":MARKET.connected,"messages":MARKET.messages,"last_event_ms":MARKET.last_event_ms,"enabled_users":RUNNER.enabled_users,"cycles":RUNNER.cycles,"paper_trades":RUNNER.trades,"last_cycle_ms":RUNNER.last_cycle_ms}
 
 @router.get("/status")
 async def status(current_user:Annotated[User,Depends(get_current_active_user)],session:Annotated[AsyncSession,Depends(request_session)]):
