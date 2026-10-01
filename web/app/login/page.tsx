@@ -65,7 +65,7 @@ function LoginInner() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      window.location.href = "/dashboard"
+      window.location.href = "/market-select"
     }
   }, [isAuthenticated])
 
@@ -143,7 +143,7 @@ function LoginInner() {
           api.setRefreshToken(data.refresh_token)
           setNotice("Login approved. Signing you in...")
           window.setTimeout(() => {
-            window.location.href = "/dashboard"
+            window.location.href = "/market-select"
           }, 350)
         }
       } catch (err) {
