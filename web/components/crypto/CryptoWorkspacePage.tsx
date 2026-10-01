@@ -1,6 +1,6 @@
 "use client"
 
-import { useSearchParams } from "next/navigation"
+import { useEffect, useState } from "react"
 import { ArrowRight, BarChart3, Bot, FlaskConical, ShieldCheck, Star } from "lucide-react"
 import Link from "next/link"
 import CryptoTechnicalPanel from "./CryptoTechnicalPanel"
