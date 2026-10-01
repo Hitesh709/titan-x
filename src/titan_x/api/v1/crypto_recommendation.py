@@ -13,6 +13,7 @@ from decimal import Decimal
 from typing import Any
 
 import httpx
+from titan_x.services.crypto_market_data import candles as market_candles
 from fastapi import APIRouter, HTTPException, Query
 
 router = APIRouter(prefix="/crypto-recommendation", tags=["crypto-recommendation"])
@@ -22,23 +23,8 @@ DELIVERY_TFS = ("4h", "1d", "1w")
 
 
 async def _candles(symbol: str, interval: str, limit: int = 220) -> list[dict[str, float]]:
-    async with httpx.AsyncClient(timeout=8) as client:
-        response = await client.get(
-            "https://api.binance.com/api/v3/klines",
-            params={"symbol": symbol, "interval": interval, "limit": limit},
-        )
-        response.raise_for_status()
-        rows = response.json()
-    return [
-        {
-            "open": float(x[1]),
-            "high": float(x[2]),
-            "low": float(x[3]),
-            "close": float(x[4]),
-            "volume": float(x[5]),
-        }
-        for x in rows
-    ]
+    rows, _provider = await market_candles(symbol, interval, limit)
+    return rows
 
 
 def _ema(values: list[float], period: int) -> list[float]:
