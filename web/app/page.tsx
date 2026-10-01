@@ -61,7 +61,7 @@ export default function LandingPage() {
         <div className={`ref-links ${menu ? "open" : ""}`}>
           {[["Home","home"],["Markets","markets"],["AI Intelligence","ai"],["Trading","trading"],["Analytics","analytics"],["Risk Engine","risk"],["Products","products"],["API","api"],["About","about"]].map(([label,id]) => <a key={id} href={`#${id}`} onClick={()=>setMenu(false)}>{label}</a>)}
         </div>
-        <div className="ref-actions"><button>◐</button><button>⌕</button>{isAuthenticated?<Link href="/dashboard">Platform</Link>:<Link href="/login">Login</Link>}<Link className="ref-start" href={isAuthenticated?"/dashboard":"/register"}>Get Started <ArrowRight size={14}/></Link></div>
+        <div className="ref-actions"><button>◐</button><button>⌕</button>{isAuthenticated?<Link href="/market-select">Platform</Link>:<Link href="/login">Login</Link>}<Link className="ref-start" href={isAuthenticated?"/market-select":"/register"}>Get Started <ArrowRight size={14}/></Link></div>
         <button className="ref-menu" onClick={()=>setMenu(v=>!v)} aria-label="Menu">{menu?<X/>:<Menu/>}</button>
       </div>
     </nav>
