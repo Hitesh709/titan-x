@@ -7,6 +7,8 @@ import CryptoTechnicalPanel from "./CryptoTechnicalPanel"
 import CryptoPaperTerminal from "./CryptoPaperTerminal"
 import CryptoAnalytics from "./CryptoAnalytics"
 import CryptoRecommendation from "./CryptoRecommendation"
+import CryptoMarkets from "./CryptoMarkets"
+import CryptoResearch from "./CryptoResearch"
 import CryptoBotPanel from "./CryptoBotPanel"
 
 const symbols=["BTCUSDT","ETHUSDT","SOLUSDT","BNBUSDT","XRPUSDT","DOGEUSDT","ADAUSDT","AVAXUSDT"]
@@ -24,10 +26,10 @@ export default function CryptoWorkspacePage({mode}:{mode:string}) {
   const [symbol,setSymbol]=useState("BTCUSDT")
   useEffect(()=>{ const value=new URLSearchParams(window.location.search).get("symbol")?.toUpperCase(); if(value && symbols.includes(value)) setSymbol(value) },[])
 
-  if(mode==="markets") return <div className="space-y-5"><Header title="Crypto Markets" subtitle="Live 24/7 digital-asset market terminal" /><div className="glass-card p-4"><div className="tx-tabs">{symbols.map(s=><Link key={s} href={"/crypto/markets?symbol="+s} className={"tx-tab "+(s===symbol?"tx-tab-active":"")}>{s.replace("USDT","")}/USDT</Link>)}</div></div><CryptoTechnicalPanel symbol={symbol}/></div>
+  if(mode==="markets") return <CryptoMarkets />
   if(mode==="analysis") return <div className="space-y-5"><Header title="Crypto Analysis" subtitle="Technical structure, multi-timeframe confirmation and performance" /><CryptoTechnicalPanel symbol={symbol}/><CryptoAnalytics/></div>
-  if(mode==="research") return <div className="space-y-5"><Header title="Crypto Research" subtitle="Dedicated intraday and delivery/positional research signals" /><CryptoRecommendation symbol={symbol}/></div>
-  if(mode==="recommendations") return <div className="space-y-5"><Header title="Crypto Recommendations" subtitle="Live research signals for digital assets" /><CryptoRecommendation symbol={symbol}/></div>
+  if(mode==="research") return <CryptoResearch />
+  if(mode==="recommendations") return <div className="space-y-5"><Header title="Crypto Recommendations" subtitle="Actionable multi-timeframe signals with entry, stop and target" /><CryptoRecommendation symbol={symbol}/></div>
   if(mode==="portfolio") return <div className="space-y-5"><Header title="Crypto Portfolio" subtitle="Persistent crypto paper portfolio and performance" /><CryptoPaperTerminal symbol={symbol}/><CryptoAnalytics/></div>
   if(mode==="trading") return <div className="space-y-5"><Header title="Crypto Trading" subtitle="Dedicated crypto paper-trading terminal" /><CryptoPaperTerminal symbol={symbol}/></div>
   if(mode==="bot") return <div className="space-y-5"><Header title="Crypto Auto Bot" subtitle="Event-driven 24/7 crypto paper automation" /><CryptoBotPanel/><CryptoAnalytics/></div>
