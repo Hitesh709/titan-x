@@ -105,10 +105,10 @@ export default function AutoBotPanel({ initialSymbol = "RELIANCE" }: AutoBotPane
   const holdings = overview?.positions ?? []
 
   return (
-    <section className="glass-card p-5 border border-titan-500/20 relative overflow-hidden">
+    <section className="glass-card tx-command-panel tx-autobot-panel p-5 border border-titan-500/20 relative overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-br from-titan-500/5 via-transparent to-fuchsia-500/5 pointer-events-none" />
       <div className="relative">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <div className="tx-command-head flex flex-wrap items-center justify-between gap-3 mb-5">
           <div>
             <h3 className="text-sm font-semibold text-white flex items-center gap-2"><Bot size={17} className="text-titan-400" /> Auto Bot Trading <span className="text-[9px] uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Demo Money</span></h3>
             <p className="text-xs text-gray-500 mt-1">Continuous multi-stock algorithm · 3-hour window · 3% stop-loss / 6% take-profit · live price management.</p>
@@ -116,14 +116,14 @@ export default function AutoBotPanel({ initialSymbol = "RELIANCE" }: AutoBotPane
           <div className="flex items-center gap-2 text-[10px] text-gray-500"><ShieldCheck size={14} className="text-emerald-400" /> No real broker orders</div>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-end">
+        <div className="tx-bot-controls grid grid-cols-2 md:grid-cols-4 gap-3 items-end">
           <div><label className="block text-[10px] text-gray-500 mb-1">Trading capital (₹)</label><input type="number" min={1} step={1000} value={amount} onChange={(e) => setAmount(Math.max(1, Number(e.target.value) || 1))} className="input-field w-full text-sm" disabled={running} /></div>
           <div><label className="block text-[10px] text-gray-500 mb-1">Profile ratio</label><input type="number" min={0.2} max={20} step={0.1} value={profileRatio} onChange={(e) => setProfileRatio(Math.max(0.2, Math.min(20, Number(e.target.value) || 1)))} className="input-field w-full text-sm" disabled={running} /></div>
           <div><label className="block text-[10px] text-gray-500 mb-1">Strategy window</label><div className="input-field w-full text-sm text-white flex items-center gap-2"><Target size={14} /> 3 hours</div></div>
           <div>{running ? <button onClick={squareOff} disabled={stopping} className="w-full px-4 py-2 rounded-lg text-sm font-semibold border border-red-500/30 bg-red-500/10 text-red-400 inline-flex items-center justify-center gap-2 disabled:opacity-50"><Pause size={14} /> {stopping ? "Squaring off…" : "Stop & Square Off"}</button> : <button onClick={start} disabled={busy} className="w-full px-4 py-2 rounded-lg text-sm font-semibold bg-titan-500 text-white inline-flex items-center justify-center gap-2 disabled:opacity-50"><Play size={14} /> Start Auto Bot</button>}</div>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 md:grid-cols-6 gap-3">
+        <div className="tx-bot-metrics mt-4 grid grid-cols-2 md:grid-cols-6 gap-3">
           <div className="rounded-lg bg-white/[0.03] border border-white/5 p-3"><div className="text-[10px] text-gray-500">Candidates</div><div className="text-lg font-bold text-white">{last?.universe_candidates ?? "—"}</div></div>
           <div className="rounded-lg bg-white/[0.03] border border-white/5 p-3"><div className="text-[10px] text-gray-500">Qualified</div><div className="text-lg font-bold text-white">{last?.eligible_candidates ?? "—"}</div></div>
           <div className="rounded-lg bg-white/[0.03] border border-white/5 p-3"><div className="text-[10px] text-gray-500">Trades this run</div><div className="text-lg font-bold text-titan-300">{trades.length}</div></div>
@@ -133,7 +133,7 @@ export default function AutoBotPanel({ initialSymbol = "RELIANCE" }: AutoBotPane
         </div>
 
         {summary && (
-          <div className="mt-4 rounded-lg border border-white/5 bg-white/[0.02] p-3">
+          <div className="tx-live-account mt-4 rounded-lg border border-white/5 bg-white/[0.02] p-3">
             <div className="flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-wider text-gray-500 mb-2">
               <Wallet size={12} className="text-titan-400" /> Live account <span className="normal-case text-emerald-400">· refreshing every 5s</span>
             </div>
