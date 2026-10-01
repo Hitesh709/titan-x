@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Annotated
-import httpx
+from titan_x.services.crypto_market_data import candles as market_candles
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,10 +17,8 @@ D=Decimal
 TFS=("5m","15m","30m")
 
 async def candles(symbol:str,interval:str):
-    async with httpx.AsyncClient(timeout=6) as c:
-        r=await c.get("https://api.binance.com/api/v3/klines",params={"symbol":symbol,"interval":interval,"limit":180})
-        r.raise_for_status()
-        return [{"o":D(str(x[1])),"h":D(str(x[2])),"l":D(str(x[3])),"c":D(str(x[4])),"v":D(str(x[5]))} for x in r.json()]
+    rows,_provider=await market_candles(symbol,interval,180)
+    return [{"o":D(str(x["open"])),"h":D(str(x["high"])),"l":D(str(x["low"])),"c":D(str(x["close"])),"v":D(str(x["volume"]))} for x in rows]
 
 def ema(vals:list[D],n:int)->list[D]:
     k=D(2)/(n+1);e=vals[0];out=[]
