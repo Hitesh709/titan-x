@@ -2,7 +2,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query
 from titan_x.api.dependencies import get_current_active_user
 from titan_x.models.user import User
-from titan_x.services.crypto_market_data import candles, market_overview, ticker, universe
+from titan_x.services.crypto_market_data import candles, derivatives_overview, market_overview, ticker, universe
 
 router=APIRouter(prefix="/crypto-market",tags=["crypto-market"])
 
@@ -29,3 +29,9 @@ async def get_candles(current_user:Annotated[User,Depends(get_current_active_use
         rows,provider=await candles(symbol,interval,limit)
         return {"symbol":symbol.upper(),"interval":interval,"provider":provider,"candles":rows}
     except Exception as exc:raise HTTPException(502,f"Crypto candles unavailable: {exc}") from exc
+
+
+@router.get("/derivatives")
+async def get_derivatives(current_user:Annotated[User,Depends(get_current_active_user)],limit:int=Query(100,ge=1,le=500)):
+    try:return await derivatives_overview(limit)
+    except Exception as exc:raise HTTPException(502,f"Crypto derivatives unavailable: {exc}") from exc
