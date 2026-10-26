@@ -228,7 +228,7 @@ function LoginInner() {
     ? "Verify your identity to continue"
     : qrMode
       ? "Scan with any smartphone and verify by SMS"
-      : "Sign in to your TITAN X account"
+      : "Sign in to your XECAPS account"
 
   const aside = (
     <>
