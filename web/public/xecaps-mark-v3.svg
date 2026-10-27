@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="XECAPS Xe logo">
+  <defs>
+    <linearGradient id="blue" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#198cff"/><stop offset="1" stop-color="#0750d5"/></linearGradient>
+    <linearGradient id="pink" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff50ad"/><stop offset="1" stop-color="#ed0067"/></linearGradient>
+    <linearGradient id="silver" x1="0" y1="0" x2="0.9" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="0.55" stop-color="#edf1f7"/><stop offset="1" stop-color="#bfc8d6"/></linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="2" stdDeviation="1.6" flood-color="#00102b" flood-opacity=".45"/></filter>
+  </defs>
+  <rect x="3" y="3" width="122" height="122" rx="24" fill="#09152b" stroke="#2e77ff" stroke-width="2"/>
+  <path d="M27 4H64V124H27C14.3 124 4 113.7 4 101V27C4 14.3 14.3 4 27 4Z" fill="url(#blue)"/>
+  <path d="M64 4H101C113.7 4 124 14.3 124 27V101C124 113.7 113.7 124 101 124H64Z" fill="url(#pink)"/>
+  <path d="M22 34H39L50 49L61 34H78L59 64L78 94H61L50 79L39 94H22L41 64Z" fill="url(#silver)" stroke="#fff" stroke-opacity=".55" stroke-width="1" filter="url(#shadow)"/>
+  <path d="M81 48C94 48 103 57 103 70C103 72 103 74 102 76H79C80 82 84 85 90 85C94 85 98 83 101 80L107 88C102 93 96 96 89 96C75 96 66 86 66 72C66 58 72 48 81 48ZM80 66H91C91 61 89 58 85 58C82 58 80 61 80 66Z" fill="url(#silver)" stroke="#fff" stroke-opacity=".6" stroke-width="1" filter="url(#shadow)"/>
+</svg>
