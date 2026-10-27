@@ -1,15 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="XECAPS logo mark">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="XECAPS Xe monogram">
   <defs>
-    <linearGradient id="blueBg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#168bff"/><stop offset="1" stop-color="#0750d6"/></linearGradient>
-    <linearGradient id="pinkBg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff4fa9"/><stop offset="1" stop-color="#ed0067"/></linearGradient>
-    <linearGradient id="silver" x1="0" y1="0" x2="0.8" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".48" stop-color="#e7ebf2"/><stop offset="1" stop-color="#aeb8c8"/></linearGradient>
-    <filter id="shadow" x="-30%" y="-30%" width="160%" height="170%"><feDropShadow dx="0" dy="2.5" stdDeviation="2" flood-color="#000" flood-opacity=".45"/></filter>
+    <linearGradient id="blue" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#168bff"/><stop offset="1" stop-color="#0645c9"/></linearGradient>
+    <linearGradient id="pink" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff4ca8"/><stop offset="1" stop-color="#ed0067"/></linearGradient>
+    <linearGradient id="silver" x1="0" y1="0" x2=".8" y2="1"><stop offset="0" stop-color="#fff"/><stop offset=".5" stop-color="#e8edf5"/><stop offset="1" stop-color="#b9c3d1"/></linearGradient>
+    <filter id="shadow" x="-25%" y="-25%" width="150%" height="160%"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#00102c" flood-opacity=".55"/></filter>
   </defs>
-  <rect x="3" y="3" width="122" height="122" rx="27" fill="#08142b" stroke="#2e7cff" stroke-width="2"/>
-  <path d="M30 4H64V124H30C15.64 124 4 112.36 4 98V30C4 15.64 15.64 4 30 4Z" fill="url(#blueBg)"/>
-  <path d="M64 4H98C112.36 4 124 15.64 124 30V98C124 112.36 112.36 124 98 124H64Z" fill="url(#pinkBg)"/>
-  <path d="M24 27H42L63 53L84 27H103L74 64L103 100H84L63 76L42 100H23L52 64Z" fill="url(#silver)" stroke="#fff" stroke-opacity=".65" stroke-width="1.4" filter="url(#shadow)"/>
-  <path d="M62 58C67 46 78 41 89 46C100 51 103 63 99 73H76C79 80 88 80 95 74L101 82C90 93 73 89 66 78C62 72 60 65 62 58ZM77 63H90C90 58 86 55 82 57C79 58 78 60 77 63Z" fill="url(#silver)" stroke="#fff" stroke-opacity=".75" stroke-width="1.1" filter="url(#shadow)"/>
-  <path d="M91 27L101 17L109 25L117 12" fill="none" stroke="#ff4fa9" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M107 12H117V22" fill="none" stroke="#ff4fa9" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="3" y="3" width="122" height="122" rx="25" fill="#07142c" stroke="#2b73ff" stroke-width="2"/>
+  <path d="M28 4H64V124H28C14.75 124 4 113.25 4 100V28C4 14.75 14.75 4 28 4Z" fill="url(#blue)"/>
+  <path d="M64 4H100C113.25 4 124 14.75 124 28V100C124 113.25 113.25 124 100 124H64Z" fill="url(#pink)"/>
+  <path d="M22 31L42 31L60 53L78 31H98L70 64L98 97H78L60 75L42 97H22L50 64Z" fill="url(#silver)" stroke="#fff" stroke-opacity=".55" stroke-width="1.2" filter="url(#shadow)"/>
+  <path d="M61 60C66 48 78 43 88 47C98 51 103 61 100 72H77C79 79 88 80 95 74L101 82C91 91 76 89 68 80C62 74 59 67 61 60ZM77 63H90C90 58 86 55 82 57C79 58 78 60 77 63Z" fill="url(#silver)" stroke="#fff" stroke-opacity=".75" stroke-width="1" filter="url(#shadow)"/>
 </svg>
