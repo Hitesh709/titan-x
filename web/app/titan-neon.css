@@ -188,7 +188,7 @@ html.dark body { background:radial-gradient(circle at 72% -10%,rgba(45,76,170,.2
 .tx-shell{background:#020713!important;}
 .tx-sidebar{width:240px;}
 .tx-brand{position:relative;}
-.tx-brand:after{content:"TRADE BEYOND LIMITS";position:absolute;left:68px;bottom:7px;font-size:7px;letter-spacing:.18em;color:#4d6b91;white-space:nowrap;}
+
 .tx-sidebar .sidebar-link{font-weight:550;}
 .tx-topbar{backdrop-filter:blur(22px)!important;}
 .tx-content{position:relative;background-color:#020817!important;background-image:linear-gradient(rgba(27,88,174,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(27,88,174,.035) 1px,transparent 1px)!important;background-size:44px 44px!important;}
