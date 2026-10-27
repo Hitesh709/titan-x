@@ -20,7 +20,14 @@ export function AuthShell({
         <div className="w-full max-w-sm">
           <div className="mb-8">
             <Link href="/" className="flex items-center mb-8" aria-label="TITAN X home">
-              <img src="/titan-x-logo.svg" alt="TITAN X — AI · DATA · SPEED · PRECISION" className="h-14 w-auto object-contain drop-shadow-[0_0_18px_rgba(65,135,255,.25)]" />
+              <div className="flex items-center gap-3">
+                <img src="/xecaps-mark-v4.svg" alt="XECAPS XE monogram" className="h-12 w-14 shrink-0 object-contain drop-shadow-[0_0_12px_rgba(45,140,255,.2)]" />
+                <span className="flex flex-col leading-tight">
+                  <span className="text-lg font-extrabold tracking-[.16em] text-white">TITAN X</span>
+                  <span className="mt-0.5 text-[9px] font-semibold tracking-[.18em] text-slate-400">BY <span className="text-pink-400">XECAPS</span></span>
+                  <span className="mt-1 text-[8px] tracking-[.14em] text-slate-500">TRADE BEYOND LIMITS</span>
+                </span>
+              </div>
             </Link>
             <div className="mb-5 h-px bg-gradient-to-r from-cyan-400/30 via-violet-500/20 to-transparent" />
             <h1 className="text-2xl font-bold text-white tracking-tight">{title}</h1>
