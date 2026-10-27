@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 220" role="img" aria-label="XECAPS Xe striped monogram">
+<defs>
+ <linearGradient id="line" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ff3ca6"/><stop offset=".42" stop-color="#8c72d9"/><stop offset=".68" stop-color="#22bde9"/><stop offset="1" stop-color="#414c91"/></linearGradient>
+ <filter id="glow" x="-15%" y="-20%" width="130%" height="140%"><feGaussianBlur stdDeviation="1.4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+</defs>
+<g fill="none" stroke="url(#line)" stroke-width="2.4" stroke-linejoin="miter" opacity=".96" filter="url(#glow)">
+<!-- X: repeated parallel angular strokes -->
+<path d="M38 22H102L150 94L198 22H262L192 108L262 194H198L150 122L102 194H38L108 108Z"/>
+<path d="M49 22H111L156 91L202 22H273L204 108L273 194H202L156 125L111 194H49L119 108Z"/>
+<path d="M60 22H120L163 88L207 22H284L216 108L284 194H207L163 128L120 194H60L130 108Z"/>
+<path d="M71 22H129L170 85L212 22H295L228 108L295 194H212L170 131L129 194H71L141 108Z"/>
+<path d="M82 22H138L177 82L217 22H306L240 108L306 194H217L177 134L138 194H82L152 108Z"/>
+<!-- E: five striped contours -->
+<path d="M278 22H404L391 56H318L307 94H379L367 122H297L286 160H360L348 194H225L279 22Z"/>
+<path d="M267 22H393L380 56H307L296 94H368L356 122H286L275 160H349L337 194H214L267 22Z"/>
+<path d="M256 22H382L369 56H296L285 94H357L345 122H275L264 160H338L326 194H203L256 22Z"/>
+<path d="M245 22H371L358 56H285L274 94H346L334 122H264L253 160H327L315 194H192L245 22Z"/>
+<path d="M234 22H360L347 56H274L263 94H335L323 122H253L242 160H316L304 194H181L234 22Z"/>
+</g>
+</svg>
