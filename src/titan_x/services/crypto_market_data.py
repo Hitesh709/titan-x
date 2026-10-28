@@ -114,8 +114,8 @@ async def derivatives_overview(limit:int=100) -> dict[str,Any]:
         for x in data.get("data",[]):
             inst=str(x.get("instId",""))
             if not inst.endswith("-USDT-SWAP"): continue
-            last=float(x.get("last") or 0); open24=float(x.get("sodUtc0") or 0)
-            rows.append({"symbol":inst.replace("-USDT-SWAP","USDT"),"lastPrice":last,"priceChangePercent":((last-open24)/open24*100 if open24 else 0),"volume24h":float(x.get("volCcy24h") or 0),"fundingRate":0.0,"openInterest":0.0})
+            last=float(x.get("last") or 0); open24=float(x.get("open24h") or 0)
+            rows.append({"symbol":inst.replace("-USDT-SWAP","USDT"),"lastPrice":last,"priceChangePercent":((last-open24)/open24*100 if open24 else None),"volume24h":float(x.get("volCcy24h") or 0),"fundingRate":None,"openInterest":None})
         rows.sort(key=lambda x:x["volume24h"],reverse=True)
         if rows: return {"provider":"okx","category":"swap","contracts":len(rows),"contracts_top":rows[:limit]}
     except Exception:
