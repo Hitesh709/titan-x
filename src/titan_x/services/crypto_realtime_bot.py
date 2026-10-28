@@ -32,10 +32,12 @@ def _ema(values: list[float], n: int) -> list[float]:
     return out
 
 
-def _signal(candles: list[dict[str, float]]) -> tuple[str, float, float]:
-    if len(candles) < 60:
+def _signal(candles: list[dict[str, Any]]) -> tuple[str, float, float]:
+    # Never trade from an in-progress candle: its indicators can reverse before close.
+    confirmed = [candle for candle in candles if candle.get("closed", True)]
+    if len(confirmed) < 60:
         return "HOLD", 0.0, 0.0
-    close = [x["close"] for x in candles]
+    close = [float(x["close"]) for x in confirmed]
     e9, e20, e50 = _ema(close, 9)[-1], _ema(close, 20)[-1], _ema(close, 50)[-1]
     gains, losses = [], []
     for a, b in zip(close[-15:-1], close[-14:]):
@@ -47,7 +49,7 @@ def _signal(candles: list[dict[str, float]]) -> tuple[str, float, float]:
     m12, m26 = _ema(close, 12), _ema(close, 26)
     mac = [a - b for a, b in zip(m12, m26)]
     mac_signal = _ema(mac, 9)[-1]
-    volumes = [x["volume"] for x in candles]
+    volumes = [float(x["volume"]) for x in confirmed]
     volume_ok = volumes[-1] >= sum(volumes[-20:]) / min(20, len(volumes))
     bull = e9 > e20 > e50 and close[-1] > e20 and rsi > 52 and mac[-1] > mac_signal
     bear = e9 < e20 < e50 and close[-1] < e20 and rsi < 48 and mac[-1] < mac_signal
