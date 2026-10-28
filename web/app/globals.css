@@ -98,3 +98,47 @@ main .glass-card:hover { border-color:rgba(94,231,255,.16); box-shadow:0 18px 55
 @media (max-width:640px) { .market-ticker__label{padding:0 9px;font-size:8px}.market-ticker__item{min-width:190px;padding:0 12px;font-size:9px}.battle-stage{height:370px}.battle-header{top:13px;left:14px;right:14px}.battle-score{min-width:62px}.battle-score strong{font-size:19px}.battle-footer{font-size:8px;flex-wrap:wrap}.battle-footer span:last-child{display:none}.battle-instruction{bottom:11px}.battle-beast{top:33%;width:66%;height:48%}.battle-bull{left:-6%}.battle-bear{right:-6%}.battle-strike{width:18%;left:41%} }
 @media (prefers-reduced-motion:reduce) { *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important;} }
 ::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:3px}::-webkit-scrollbar-thumb:hover{background:rgba(94,231,255,.22)}
+
+
+/* TITAN X dashboard refresh — scoped to dashboard overview only */
+.titan-dashboard { width:100%; max-width:100%; min-width:0; color:#e8eefb; }
+.titan-dashboard > div:first-child { align-items:center; gap:16px; padding-bottom:4px; }
+.titan-dashboard h1 { font-size:clamp(1.55rem,2vw,2rem); letter-spacing:-.035em; line-height:1.15; }
+.titan-dashboard h2 { letter-spacing:-.035em; }
+.titan-dashboard p { line-height:1.5; }
+.titan-dashboard .glass-card { min-width:0; border:1px solid rgba(95,145,220,.19); border-radius:15px; background:linear-gradient(145deg,rgba(10,23,43,.96),rgba(5,14,29,.98)); box-shadow:0 8px 24px rgba(0,0,0,.13),inset 0 1px rgba(255,255,255,.025); transition:border-color .18s ease,box-shadow .18s ease,transform .18s ease; }
+.titan-dashboard .glass-card:hover { border-color:rgba(67,153,255,.35); box-shadow:0 12px 30px rgba(0,0,0,.18); }
+.titan-dashboard .grid { min-width:0; }
+.titan-dashboard .grid > * { min-width:0; }
+.titan-dashboard .text-gray-500 { color:#91a4c1!important; }
+.titan-dashboard .text-gray-600 { color:#7185a4!important; }
+.titan-dashboard .text-gray-400 { color:#b4c2d8!important; }
+.titan-dashboard .text-white { color:#f2f6ff!important; }
+.titan-dashboard .text-xl { font-size:1.3rem; line-height:1.45; }
+.titan-dashboard .text-3xl { font-size:clamp(1.8rem,2.4vw,2.45rem); line-height:1.15; }
+.titan-dashboard .p-6 { padding:clamp(16px,1.7vw,24px); }
+.titan-dashboard .p-5 { padding:clamp(14px,1.4vw,20px); }
+.titan-dashboard .p-4 { padding:clamp(12px,1.2vw,17px); }
+.titan-dashboard .gap-6 { gap:clamp(14px,1.4vw,20px); }
+.titan-dashboard .gap-4 { gap:clamp(10px,1vw,15px); }
+.titan-dashboard .border-b { border-color:rgba(115,151,205,.13)!important; }
+.titan-dashboard .bg-white\/5 { background-color:rgba(148,163,184,.08)!important; }
+.titan-dashboard .bg-titan-500 { background-color:#3984ff!important; }
+.titan-dashboard .text-titan-400 { color:#61b8ff!important; }
+.titan-dashboard .badge-blue { border:1px solid rgba(56,135,255,.22); background:rgba(37,99,235,.12); color:#9dc9ff; border-radius:7px; padding:3px 7px; }
+.titan-dashboard button { transition:background-color .18s ease,border-color .18s ease,color .18s ease; }
+.titan-dashboard button:focus-visible { outline:2px solid #54b9ff; outline-offset:3px; }
+@media (min-width:1500px) {
+  .titan-dashboard { gap:20px; }
+  .titan-dashboard .grid.lg\:grid-cols-2 { grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr); }
+}
+@media (max-width:1023px) {
+  .titan-dashboard .grid.grid-cols-2.lg\:grid-cols-4 { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .titan-dashboard .grid.lg\:grid-cols-2 { grid-template-columns:minmax(0,1fr); }
+}
+@media (max-width:640px) {
+  .titan-dashboard > div:first-child { align-items:flex-start; }
+  .titan-dashboard .glass-card { border-radius:12px; }
+  .titan-dashboard .text-3xl { font-size:1.8rem; }
+  .titan-dashboard .grid.grid-cols-2.lg\:grid-cols-4 { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
