@@ -14,9 +14,14 @@ from typing import Any
 
 import httpx
 from titan_x.services.crypto_market_data import candles as market_candles
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from titan_x.api.dependencies import get_current_active_user
 
-router = APIRouter(prefix="/crypto-recommendation", tags=["crypto-recommendation"])
+router = APIRouter(
+    prefix="/crypto-recommendation",
+    tags=["crypto-recommendation"],
+    dependencies=[Depends(get_current_active_user)],
+)
 
 INTRADAY_TFS = ("5m", "15m", "30m")
 DELIVERY_TFS = ("4h", "1d", "1w")
@@ -119,7 +124,7 @@ async def _recommend(symbol: str, mode: str) -> dict[str, Any]:
     for timeframe in timeframes:
         try:
             results.append(_evaluate(await _candles(symbol, timeframe), timeframe))
-        except (httpx.HTTPError, ValueError, KeyError) as exc:
+        except Exception as exc:
             raise HTTPException(status_code=502, detail=f"Market data unavailable for {symbol}: {exc}") from exc
 
     buys = sum(x["decision"] == "BUY" for x in results)
