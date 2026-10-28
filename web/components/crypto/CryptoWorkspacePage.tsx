@@ -24,7 +24,7 @@ const info: Record<string,{title:string;description:string;icon:any}> = {
 
 export default function CryptoWorkspacePage({mode}:{mode:string}) {
   const [symbol,setSymbol]=useState("BTCUSDT")
-  useEffect(()=>{ const value=new URLSearchParams(window.location.search).get("symbol")?.toUpperCase(); if(value && symbols.includes(value)) setSymbol(value) },[])
+  useEffect(()=>{ const value=new URLSearchParams(window.location.search).get("symbol")?.toUpperCase(); if(value && /^[A-Z0-9]{3,20}USDT$/.test(value)) setSymbol(value) },[])
 
   if(mode==="markets") return <CryptoMarkets />
   if(mode==="analysis") return <div className="space-y-5"><Header title="Crypto Analysis" subtitle="Technical structure, multi-timeframe confirmation and performance" /><CryptoTechnicalPanel symbol={symbol}/><CryptoAnalytics/></div>
