@@ -138,7 +138,8 @@ class CryptoRealtimeBotRunner:
             except asyncio.CancelledError:
                 raise
             except Exception:
-                # One bad user/order must not stop the market engine.
+                # Keep the runner alive, but back off so a database/provider fault cannot create a hot spin loop.
+                await asyncio.sleep(0.25)
                 continue
             await asyncio.sleep(0.001)
 
