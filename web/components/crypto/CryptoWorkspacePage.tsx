@@ -10,6 +10,7 @@ import CryptoRecommendation from "./CryptoRecommendation"
 import CryptoMarkets from "./CryptoMarkets"
 import CryptoResearch from "./CryptoResearch"
 import CryptoBotPanel from "./CryptoBotPanel"
+import CryptoUtilityWorkspace from "./CryptoUtilityWorkspace"
 
 const symbols=["BTCUSDT","ETHUSDT","SOLUSDT","BNBUSDT","XRPUSDT","DOGEUSDT","ADAUSDT","AVAXUSDT"]
 
@@ -33,6 +34,8 @@ export default function CryptoWorkspacePage({mode}:{mode:string}) {
   if(mode==="portfolio") return <div className="space-y-5"><Header title="Crypto Portfolio" subtitle="Persistent crypto paper portfolio and performance" /><CryptoPaperTerminal symbol={symbol}/><CryptoAnalytics/></div>
   if(mode==="trading") return <div className="space-y-5"><Header title="Crypto Trading" subtitle="Dedicated crypto paper-trading terminal" /><CryptoPaperTerminal symbol={symbol}/></div>
   if(mode==="bot") return <div className="space-y-5"><Header title="Crypto Auto Bot" subtitle="Event-driven 24/7 crypto paper automation" /><CryptoBotPanel/><CryptoAnalytics/></div>
+
+  if (["backtesting","risk","watchlists","alerts","news","settings"].includes(mode)) return <CryptoUtilityWorkspace mode={mode} />
 
   const x=info[mode]||info.risk
   const Icon=x.icon
