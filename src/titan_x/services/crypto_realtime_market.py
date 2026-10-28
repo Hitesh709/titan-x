@@ -1,4 +1,4 @@
-"""Low-latency Binance market stream for the crypto paper bot.
+"Low-latency Binance market stream for the crypto paper bot.
 
 The stream is the hot path: no REST request is made for each decision.
 Historical REST candles remain a fallback/warm-up source.
@@ -23,6 +23,7 @@ TIMEFRAMES = ("5m", "15m", "30m")
 STREAMS = [f"{s.lower()}@miniTicker" for s in SYMBOLS]
 STREAMS += [f"{s.lower()}@kline_{tf}" for s in SYMBOLS for tf in TIMEFRAMES]
 URL = "wss://stream.binance.com:9443/stream?streams=" + "/".join(STREAMS)
+
 
 class CryptoRealtimeMarket:
     def __init__(self) -> None:
@@ -52,6 +53,7 @@ class CryptoRealtimeMarket:
                     )
                     response.raise_for_status()
                     rows = response.json()
+                now_ms = time.time() * 1000
                 self.candles[symbol][tf] = [
                     {
                         "open": float(x[1]),
@@ -59,7 +61,8 @@ class CryptoRealtimeMarket:
                         "low": float(x[3]),
                         "close": float(x[4]),
                         "volume": float(x[5]),
-                        "closed": True,
+                        # Binance includes the active, not-yet-closed candle in REST results.
+                        "closed": float(x[6]) < now_ms,
                         "open_time": float(x[0]),
                     }
                     for x in rows
@@ -74,9 +77,7 @@ class CryptoRealtimeMarket:
                     error=str(exc),
                 )
 
-        await asyncio.gather(
-            *(load(symbol, tf) for symbol in SYMBOLS for tf in TIMEFRAMES)
-        )
+        await asyncio.gather(*(load(symbol, tf) for symbol in SYMBOLS for tf in TIMEFRAMES))
 
     async def stop(self) -> None:
         self._stop.set()
@@ -173,5 +174,6 @@ class CryptoRealtimeMarket:
                 self._changed_symbols.add(symbol)
         except (ValueError, TypeError, KeyError, json.JSONDecodeError):
             return
+
 
 MARKET = CryptoRealtimeMarket()
