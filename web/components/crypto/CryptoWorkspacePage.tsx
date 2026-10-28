@@ -11,6 +11,7 @@ import CryptoMarkets from "./CryptoMarkets"
 import CryptoResearch from "./CryptoResearch"
 import CryptoBotPanel from "./CryptoBotPanel"
 import CryptoUtilityWorkspace from "./CryptoUtilityWorkspace"
+import CryptoScreener from "./CryptoScreener"
 
 const symbols=["BTCUSDT","ETHUSDT","SOLUSDT","BNBUSDT","XRPUSDT","DOGEUSDT","ADAUSDT","AVAXUSDT"]
 
@@ -28,6 +29,7 @@ export default function CryptoWorkspacePage({mode}:{mode:string}) {
   useEffect(()=>{ const value=new URLSearchParams(window.location.search).get("symbol")?.toUpperCase(); if(value && /^[A-Z0-9]{3,20}USDT$/.test(value)) setSymbol(value) },[])
 
   if(mode==="markets") return <CryptoMarkets />
+  if(mode==="screener") return <CryptoScreener />
   if(mode==="analysis") return <div className="space-y-5"><Header title="Crypto Analysis" subtitle="Technical structure, multi-timeframe confirmation and performance" /><CryptoTechnicalPanel symbol={symbol}/><CryptoAnalytics/></div>
   if(mode==="research") return <CryptoResearch />
   if(mode==="recommendations") return <div className="space-y-5"><Header title="Crypto Recommendations" subtitle="Actionable multi-timeframe signals with entry, stop and target" /><CryptoRecommendation symbol={symbol}/></div>
