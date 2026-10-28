@@ -150,7 +150,7 @@ export default function DashboardPage() {
   const positionsPct = equity > 0 ? (positionsValue / equity) * 100 : 0
 
   return (
-    <div className="space-y-6">
+    <div className="titan-dashboard space-y-5">
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">Dashboard</h1>
