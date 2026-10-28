@@ -1,4 +1,4 @@
-"Low-latency Binance market stream for the crypto paper bot.
+"""Low-latency Binance market stream for the crypto paper bot.
 
 The stream is the hot path: no REST request is made for each decision.
 Historical REST candles remain a fallback/warm-up source.
