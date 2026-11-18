@@ -1,4 +1,5 @@
 import asyncio
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -81,14 +82,14 @@ async def _run_postgres_migrations() -> None:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
         )
-        stdout, _ = await asyncio.wait_for(process.communicate(), timeout=120)
+        stdout, _ = await asyncio.wait_for(process.communicate(), timeout=75)
     except asyncio.TimeoutError as exc:
         try:
             process.kill()
             await process.wait()
         except Exception:
             pass
-        raise RuntimeError("PostgreSQL migration timed out after 120 seconds") from exc
+        raise RuntimeError("PostgreSQL migration timed out after 75 seconds") from exc
 
     output = (stdout or b"").decode(errors="replace")
     if output:
@@ -116,7 +117,8 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
 
     async def _initialize_database() -> None:
         last_error: Exception | None = None
-        for attempt in range(1, 6):
+        max_attempts = 1 if os.getenv("VERCEL") else 5
+        for attempt in range(1, max_attempts + 1):
             try:
                 if is_postgres:
                     # Production PostgreSQL uses versioned Alembic migrations.
@@ -150,17 +152,18 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
                 logger.exception(
                     "database_initialization_attempt_failed",
                     attempt=attempt,
-                    max_attempts=5,
+                    max_attempts=max_attempts,
                 )
-                if attempt < 5:
+                if attempt < max_attempts:
                     await asyncio.sleep(3 * attempt)
-        logger.error("database_initialization_failed_after_retries", attempts=5)
+        logger.error("database_initialization_failed_after_retries", attempts=max_attempts)
         raise last_error if last_error is not None else RuntimeError("Database initialization failed")
 
     app.state.database_init_task = asyncio.create_task(_initialize_database())
     await app.state.database_init_task
 
-    try:
+    if not os.getenv("VERCEL"):
+      try:
         from titan_x.services.recommendation_scan_service import run_universe_load, run_background_scan
 
         async def _run_recommendation_scan(sf) -> None:
@@ -233,7 +236,7 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
             await _run_recommendation_scan(session_factory)
 
         asyncio.create_task(_universe_load_later())
-    except Exception:
+      except Exception:
         logger.exception("nse_universe_startup_failed")
 
     redis: Redis | None = None
@@ -275,7 +278,7 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
     else:
         app.state.task_queue = None
 
-    if settings.scheduler_enabled and redis is not None and app.state.database_ready.is_set():
+    if not os.getenv("VERCEL") and settings.scheduler_enabled and redis is not None and app.state.database_ready.is_set():
         scheduler = Scheduler(
             redis=redis,
             task_queue=app.state.task_queue,
@@ -330,7 +333,7 @@ async def on_startup(app: FastAPI, settings: Settings) -> None:
     else:
         app.state.scheduler = None
 
-    if settings.backup_enabled:
+    if settings.backup_enabled and not os.getenv("VERCEL"):
         from titan_x.infrastructure.backup import backup_loop
 
         asyncio.create_task(backup_loop(settings))
