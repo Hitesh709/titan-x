@@ -58,8 +58,22 @@ def create_app() -> FastAPI:
         return {
             "app": settings.app_name,
             "version": settings.app_version,
-            "docs": "/docs" if settings.docs_enabled else "/api/v1/",
+            "docs": "/docs" if settings.docs_enabled else None,
             "api": "/api/v1/",
+            "health": "/api/v1/health/live",
+        }
+
+    @_app.get("/api/v1/")
+    async def api_index() -> dict[str, object]:
+        return {
+            "app": settings.app_name,
+            "version": settings.app_version,
+            "status": "online",
+            "health": {
+                "live": "/api/v1/health/live",
+                "ready": "/api/v1/health/ready",
+            },
+            "docs": "/docs" if settings.docs_enabled else None,
         }
 
     _app.add_middleware(
