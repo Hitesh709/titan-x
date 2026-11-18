@@ -10,13 +10,14 @@ import { LayoutDashboard, BarChart3, Briefcase, TrendingUp, Newspaper, Bell, Sta
 
 interface CompanySearchResult { symbol: string; company_name: string; sector: string | null; exchange: string }
 const sidebarItems = [
-  { icon: LayoutDashboard, label: "Overview", href: "/dashboard" }, { icon: Layers, label: "Market Hub", href: "/market-select" }, { icon: TrendingUp, label: "Markets", href: "/dashboard/markets" },
+  { icon: LayoutDashboard, label: "Overview", href: "/dashboard" }, { icon: TrendingUp, label: "Markets", href: "/dashboard/markets" },
   { icon: Briefcase, label: "Portfolio", href: "/dashboard/portfolio" }, { icon: BarChart3, label: "Analysis", href: "/dashboard/analysis" },
   { icon: Target, label: "Research", href: "/dashboard/research" }, { icon: Brain, label: "Recommendations", href: "/dashboard/recommendations" },
-  { icon: Crown, label: "Premium", href: "/dashboard/subscription" }, { icon: Newspaper, label: "News & Insights", href: "/dashboard/news" },
-  { icon: Activity, label: "Trading", href: "/dashboard/trading" }, { icon: TestTube, label: "Backtesting", href: "/dashboard/backtest" },
-  { icon: Target, label: "Screener", href: "/dashboard/screener" }, { icon: Star, label: "Watchlists", href: "/dashboard/watchlists" },
-  { icon: Bell, label: "Alerts", href: "/dashboard/alerts" }, { icon: Settings, label: "Settings", href: "/dashboard/settings" },
+  { icon: Newspaper, label: "News & Insights", href: "/dashboard/news" }, { icon: Activity, label: "Trading", href: "/dashboard/trading" },
+  { icon: TestTube, label: "Backtesting", href: "/dashboard/backtest" }, { icon: Target, label: "Screener", href: "/dashboard/screener" },
+  { icon: Star, label: "Watchlists", href: "/dashboard/watchlists" }, { icon: Bell, label: "Alerts", href: "/dashboard/alerts" },
+  { icon: Crown, label: "Premium", href: "/dashboard/subscription" }, { icon: Settings, label: "Settings", href: "/dashboard/settings" },
+  { icon: Layers, label: "Market Hub", href: "/market-select" },
 ]
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
