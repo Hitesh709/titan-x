@@ -54,7 +54,7 @@ def create_app() -> FastAPI:
     )
 
     @_app.get("/")
-    async def root() -> dict[str, str]:
+    async def root() -> dict[str, object]:
         return {
             "app": settings.app_name,
             "version": settings.app_version,
