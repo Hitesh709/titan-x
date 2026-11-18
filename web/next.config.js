@@ -22,7 +22,7 @@ const nextConfig = {
     return [
       {
         source: '/api/v1/:path*',
-        destination: 'https://titan-x-api-oregon.onrender.com/api/v1/:path*',
+        destination: 'https://titan-x-mymy4.vercel.app/api/v1/:path*',
       },
     ]
   },
