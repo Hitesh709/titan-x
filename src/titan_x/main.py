@@ -1,3 +1,4 @@
+import os
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -31,11 +32,13 @@ logger = structlog.get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await on_startup(app, settings)
-    await CRYPTO_REALTIME_BOT.start(app.state.session_factory)
+    if not os.getenv("VERCEL"):
+        await CRYPTO_REALTIME_BOT.start(app.state.session_factory)
     try:
         yield
     finally:
-        await CRYPTO_REALTIME_BOT.stop()
+        if not os.getenv("VERCEL"):
+            await CRYPTO_REALTIME_BOT.stop()
         await on_shutdown(app, settings)
 
 
