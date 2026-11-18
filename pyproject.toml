@@ -7,7 +7,7 @@ name = "titan-x"
 version = "0.1.0"
 description = "TITAN X enterprise API"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12,<3.13"
 dependencies = [
   "alembic==1.16.5",
   "argon2-cffi==25.1.0",
