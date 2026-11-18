@@ -2,7 +2,7 @@
 from alembic import op
 import sqlalchemy as sa
 revision="0007_crypto_bot"
-down_revision="0006_crypto_paper"
+down_revision=("0006_crypto_paper", "0010")
 branch_labels=None
 depends_on=None
 
