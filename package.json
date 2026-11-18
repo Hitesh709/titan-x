@@ -1,0 +1,13 @@
+{
+  "name": "titan-x-deployment",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=20 <23"
+  },
+  "scripts": {
+    "install:frontend": "npm --prefix web ci",
+    "build": "npm run install:frontend && npm --prefix web run build",
+    "start": "npm --prefix web run start"
+  }
+}
