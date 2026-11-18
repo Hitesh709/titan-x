@@ -1,6 +1,7 @@
 """Add persistent crypto paper trading tables."""
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import inspect
 
 revision="0006_crypto_paper"
 down_revision="0005"
@@ -8,6 +9,13 @@ branch_labels=None
 depends_on=None
 
 def upgrade():
+    # Revision 0005 bootstraps the complete SQLAlchemy metadata on fresh
+    # databases, which already includes these crypto-paper tables. Avoid
+    # recreating them when that bootstrap has run.
+    existing_tables = set(inspect(op.get_bind()).get_table_names())
+    if "crypto_paper_accounts" in existing_tables:
+        return
+
     op.create_table("crypto_paper_accounts",
         sa.Column("id",sa.Integer(),primary_key=True),
         sa.Column("created_at",sa.DateTime(timezone=True),server_default=sa.func.now(),nullable=False),
